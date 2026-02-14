@@ -2,6 +2,8 @@ const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
+const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
+const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PREDICTION_CUTOFF_MINUTES = 90;
 const SCORING = { exactScore: 3, correctResult: 1, correctFirstScorer: 2 };
 const FALLBACK_FIXTURES = [
@@ -23,6 +25,8 @@ const CHELSEA_FIXTURES_PROXY_URL = `https://r.jina.ai/http://${CHELSEA_FIXTURES_
   /^https?:\/\//,
   ""
 )}`;
+const SPORTSDB_SEARCH_TEAMS_URL = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=";
+const SPORTSDB_LOOKUP_ALL_PLAYERS_URL = "https://www.thesportsdb.com/api/v1/json/3/lookup_all_players.php?id=";
 const TOP_SCORERS = [
   { name: "Joao Pedro", apps: 26, goals: 10 },
   { name: "Enzo Fernandez", apps: 25, goals: 8 },
@@ -70,6 +74,9 @@ const state = {
   activeLeagueFixtures: [],
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
+  teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS], ...OPPONENT_REGISTERED_PLAYERS },
+  teamSquadFetchedAt: {},
+  squadFetchInFlight: {},
   showAllUpcoming: false,
   overviewTab: "fixtures",
   upcomingFixtures: [...FALLBACK_FIXTURES],
@@ -134,8 +141,10 @@ setInterval(renderDeadlineCountdown, 1000);
 initializeApp();
 
 async function initializeApp() {
+  hydrateSquadCache();
   hydrateFixtureCache();
   await syncUpcomingFixturesFromChelsea();
+  primeSquadsForUpcomingFixtures();
   renderOverviewTabs();
   renderUpcomingFixtures();
   renderTopScorers();
@@ -206,6 +215,7 @@ async function onLogOut() {
 
 async function onRefreshAll() {
   await syncUpcomingFixturesFromChelsea(true);
+  primeSquadsForUpcomingFixtures(true);
   await loadOverallLeaderboard();
   await reloadAuthedData();
   render();
@@ -255,6 +265,7 @@ async function reloadAuthedData() {
 
   if (state.activeLeagueId) {
     await loadActiveLeagueData();
+    primeSquadsForFixtureList(state.activeLeagueFixtures);
   }
 }
 
@@ -958,13 +969,129 @@ function refreshScorerState(formEl, selectedPlayer, selectedLabelEl) {
 }
 
 function getFixturePlayerPools(opponent) {
-  const opponentPlayers = OPPONENT_REGISTERED_PLAYERS[opponent] || [];
-  const chelseaPlayers = CHELSEA_REGISTERED_PLAYERS;
+  maybeRefreshTeamSquad("Chelsea");
+  maybeRefreshTeamSquad(opponent);
+  const opponentPlayers = state.teamSquads[opponent] || OPPONENT_REGISTERED_PLAYERS[opponent] || [];
+  const chelseaPlayers = state.teamSquads.Chelsea || CHELSEA_REGISTERED_PLAYERS;
   return {
     opponentPlayers,
     chelseaPlayers,
     allPlayers: [...opponentPlayers, ...chelseaPlayers]
   };
+}
+
+function primeSquadsForUpcomingFixtures(force = false) {
+  maybeRefreshTeamSquad("Chelsea", force);
+  const opponents = getUpcomingFixturesForDisplay().map((fixture) => fixture.opponent);
+  opponents.forEach((name) => maybeRefreshTeamSquad(name, force));
+}
+
+function primeSquadsForFixtureList(fixtures) {
+  maybeRefreshTeamSquad("Chelsea");
+  fixtures.forEach((fixture) => maybeRefreshTeamSquad(fixture.opponent));
+}
+
+function maybeRefreshTeamSquad(teamName, force = false) {
+  if (!teamName || typeof teamName !== "string") {
+    return;
+  }
+  const fetchedAt = state.teamSquadFetchedAt[teamName] || 0;
+  if (!force && fetchedAt && Date.now() - fetchedAt < SQUAD_CACHE_MAX_AGE_MS) {
+    return;
+  }
+  if (state.squadFetchInFlight[teamName]) {
+    return;
+  }
+
+  state.squadFetchInFlight[teamName] = true;
+  fetchTeamSquad(teamName)
+    .then((players) => {
+      if (!Array.isArray(players) || players.length < 8) {
+        return;
+      }
+      state.teamSquads[teamName] = players;
+      state.teamSquadFetchedAt[teamName] = Date.now();
+      persistSquadCache();
+      render();
+    })
+    .catch(() => {
+      // Keep fallback list on fetch errors.
+    })
+    .finally(() => {
+      delete state.squadFetchInFlight[teamName];
+    });
+}
+
+async function fetchTeamSquad(teamName) {
+  const searchResponse = await fetch(`${SPORTSDB_SEARCH_TEAMS_URL}${encodeURIComponent(teamName)}`);
+  if (!searchResponse.ok) {
+    throw new Error(`Search failed: ${searchResponse.status}`);
+  }
+  const searchJson = await searchResponse.json();
+  const teams = Array.isArray(searchJson?.teams) ? searchJson.teams : [];
+  const selectedTeam = pickBestTeamMatch(teamName, teams);
+  if (!selectedTeam?.idTeam) {
+    throw new Error("Team not found");
+  }
+
+  const playersResponse = await fetch(`${SPORTSDB_LOOKUP_ALL_PLAYERS_URL}${selectedTeam.idTeam}`);
+  if (!playersResponse.ok) {
+    throw new Error(`Player lookup failed: ${playersResponse.status}`);
+  }
+  const playersJson = await playersResponse.json();
+  const players = Array.isArray(playersJson?.player) ? playersJson.player : [];
+
+  const cleaned = [];
+  const seen = new Set();
+  players.forEach((row) => {
+    const name = (row?.strPlayer || "").trim();
+    if (!name) {
+      return;
+    }
+    const status = (row?.strStatus || "").toLowerCase();
+    const position = (row?.strPosition || "").toLowerCase();
+    if (status === "coaching" || position.includes("coach") || position.includes("manager")) {
+      return;
+    }
+    if (status && status !== "active") {
+      return;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    cleaned.push(name);
+  });
+
+  return cleaned.sort((a, b) => a.localeCompare(b));
+}
+
+function pickBestTeamMatch(teamName, teams) {
+  if (!Array.isArray(teams) || teams.length === 0) {
+    return null;
+  }
+  const normalizedTarget = normalizeTeamName(teamName);
+  const exact = teams.find((team) => normalizeTeamName(team.strTeam) === normalizedTarget);
+  if (exact) {
+    return exact;
+  }
+
+  const premier = teams.find(
+    (team) =>
+      String(team.strSport || "").toLowerCase() === "soccer" &&
+      String(team.strLeague || "").toLowerCase().includes("premier")
+  );
+  return premier || teams[0];
+}
+
+function normalizeTeamName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/fc/g, "")
+    .replace(/football club/g, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function summarizeMemberScore(userId) {
@@ -1116,6 +1243,48 @@ function getUpcomingFixturesForDisplay() {
     const kickoff = new Date(`${fixture.date}T00:00:00`).getTime();
     return Number.isFinite(kickoff) && kickoff >= now - 24 * 60 * 60 * 1000;
   });
+}
+
+function hydrateSquadCache() {
+  const raw = localStorage.getItem(SQUAD_CACHE_KEY);
+  if (!raw) {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return;
+    }
+    const squads = parsed.squads && typeof parsed.squads === "object" ? parsed.squads : {};
+    const fetchedAt = parsed.fetchedAt && typeof parsed.fetchedAt === "object" ? parsed.fetchedAt : {};
+    Object.entries(squads).forEach(([teamName, players]) => {
+      if (!Array.isArray(players) || players.length === 0) {
+        return;
+      }
+      state.teamSquads[teamName] = players.filter((name) => typeof name === "string");
+    });
+    Object.entries(fetchedAt).forEach(([teamName, ts]) => {
+      if (typeof ts === "number" && Number.isFinite(ts)) {
+        state.teamSquadFetchedAt[teamName] = ts;
+      }
+    });
+  } catch {
+    // Ignore malformed squad cache.
+  }
+}
+
+function persistSquadCache() {
+  try {
+    localStorage.setItem(
+      SQUAD_CACHE_KEY,
+      JSON.stringify({
+        squads: state.teamSquads,
+        fetchedAt: state.teamSquadFetchedAt
+      })
+    );
+  } catch {
+    // Ignore localStorage write failures.
+  }
 }
 
 function hydrateFixtureCache() {
