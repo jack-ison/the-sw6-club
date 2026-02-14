@@ -61,11 +61,12 @@ const scorersSourceEl = document.getElementById("scorers-source");
 
 const authPanel = document.getElementById("auth-panel");
 const loginForm = document.getElementById("login-form");
+const authLoginFields = document.getElementById("auth-login-fields");
 const loginEmailInput = document.getElementById("login-email-input");
 const loginPasswordInput = document.getElementById("login-password-input");
+const loginBtn = document.getElementById("login-btn");
+const logoutInlineBtn = document.getElementById("logout-inline-btn");
 const sessionStatus = document.getElementById("session-status");
-const refreshBtn = document.getElementById("refresh-btn");
-const logoutBtn = document.getElementById("logout-btn");
 
 const leaguePanel = document.getElementById("league-panel");
 const createLeagueForm = document.getElementById("create-league-form");
@@ -93,8 +94,7 @@ upcomingToggleBtn.addEventListener("click", () => {
   renderUpcomingFixtures();
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
-if (refreshBtn) refreshBtn.addEventListener("click", onRefreshAll);
-if (logoutBtn) logoutBtn.addEventListener("click", onLogOut);
+if (logoutInlineBtn) logoutInlineBtn.addEventListener("click", onLogOut);
 if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague);
 if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
@@ -482,6 +482,9 @@ function render() {
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
+  if (authLoginFields) authLoginFields.classList.toggle("hidden", isAuthed);
+  if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed);
+  if (logoutInlineBtn) logoutInlineBtn.classList.toggle("hidden", !isAuthed);
 
   if (authPanel) authPanel.classList.toggle("hidden", !isConnected);
   if (leaguePanel) leaguePanel.classList.toggle("hidden", !isConnected || !isAuthed);

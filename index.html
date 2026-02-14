@@ -67,16 +67,15 @@
           <a class="ghost-link" href="signup.html">Create account</a>
         </div>
         <form id="login-form" class="auth-bar-form">
-          <input id="login-email-input" type="email" placeholder="Email" required />
-          <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
-          <button type="submit">Log In</button>
+          <div id="auth-login-fields" class="auth-login-fields">
+            <input id="login-email-input" type="email" placeholder="Email" required />
+            <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
+          </div>
+          <button id="login-btn" type="submit">Log In</button>
+          <button id="logout-inline-btn" type="button" class="danger-btn hidden">Log Out</button>
         </form>
         <div class="session-row">
           <p id="session-status" class="status">Not signed in.</p>
-          <div class="session-actions">
-            <button id="refresh-btn" type="button" class="ghost-btn">Refresh</button>
-            <button id="logout-btn" type="button" class="danger-btn">Log Out</button>
-          </div>
         </div>
       </section>
 

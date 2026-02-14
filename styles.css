@@ -358,10 +358,16 @@ button:disabled {
 
 .auth-bar-form {
   margin-top: 0.65rem;
-  display: grid;
-  grid-template-columns: 1.2fr 1fr auto;
-  gap: 0.55rem;
+  display: flex;
   align-items: center;
+  gap: 0.55rem;
+}
+
+.auth-login-fields {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 0.55rem;
 }
 
 .auth-card {
@@ -587,6 +593,11 @@ button:disabled {
   }
 
   .auth-bar-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .auth-login-fields {
     grid-template-columns: 1fr;
   }
 
