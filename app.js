@@ -241,6 +241,10 @@ async function reloadAuthedData() {
   }
 
   await loadLeaguesForUser();
+  if (state.leagues.length === 0) {
+    await ensureDefaultLeagueForUser();
+    await loadLeaguesForUser();
+  }
   if (!state.activeLeagueId && state.leagues[0]) {
     state.activeLeagueId = state.leagues[0].id;
   }
@@ -251,6 +255,52 @@ async function reloadAuthedData() {
 
   if (state.activeLeagueId) {
     await loadActiveLeagueData();
+  }
+}
+
+async function ensureDefaultLeagueForUser() {
+  const ownerId = state.session?.user?.id;
+  if (!ownerId) {
+    return;
+  }
+
+  const baseName = `${getCurrentUserDisplayName()}'s League`;
+  let createdLeague = null;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const name = attempt === 0 ? baseName : `${baseName} ${attempt + 1}`;
+    const code = createLeagueCode();
+    const { data, error } = await state.client
+      .from("leagues")
+      .insert({ name, code, owner_id: ownerId })
+      .select("id, name, code, owner_id, created_at")
+      .single();
+
+    if (!error && data) {
+      createdLeague = data;
+      break;
+    }
+
+    if (!isUniqueViolation(error)) {
+      console.error("Could not create default league", error?.message || error);
+      return;
+    }
+  }
+
+  if (!createdLeague) {
+    return;
+  }
+
+  const { error: memberError } = await state.client.from("league_members").insert({
+    league_id: createdLeague.id,
+    user_id: ownerId,
+    display_name: getCurrentUserDisplayName(),
+    country_code: getCurrentUserCountryCode(),
+    role: "owner"
+  });
+
+  if (memberError) {
+    console.error("Could not create default membership", memberError.message);
   }
 }
 
