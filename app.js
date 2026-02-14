@@ -214,16 +214,30 @@ async function onCreateLeague(event) {
   }
 
   const ownerId = state.session.user.id;
-  const code = createLeagueCode();
+  let leagueData = null;
+  let leagueError = null;
 
-  const { data: leagueData, error: leagueError } = await state.client
-    .from("leagues")
-    .insert({ name, code, owner_id: ownerId })
-    .select("id, name, code, owner_id, created_at")
-    .single();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = createLeagueCode();
+    const result = await state.client
+      .from("leagues")
+      .insert({ name, code, owner_id: ownerId })
+      .select("id, name, code, owner_id, created_at")
+      .single();
 
-  if (leagueError) {
-    alert(leagueError.message);
+    leagueData = result.data;
+    leagueError = result.error;
+    if (!leagueError) {
+      break;
+    }
+    if (!isUniqueViolation(leagueError)) {
+      alert(leagueError.message);
+      return;
+    }
+  }
+
+  if (leagueError || !leagueData) {
+    alert("Could not create a unique league code. Please try again.");
     return;
   }
 
@@ -774,11 +788,15 @@ function getCurrentUserDisplayName() {
 
 function createLeagueCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "CFC";
-  for (let i = 0; i < 3; i += 1) {
+  let code = "SW6";
+  for (let i = 0; i < 6; i += 1) {
     code += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return code;
+}
+
+function isUniqueViolation(error) {
+  return error?.code === "23505" || /duplicate|unique/i.test(error?.message || "");
 }
 
 function isFixtureLocked(fixture) {

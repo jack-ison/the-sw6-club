@@ -108,6 +108,55 @@ $$;
 
 grant execute on function public.join_league_by_code(text, text) to authenticated;
 
+create or replace function public.can_submit_prediction(p_fixture_id uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_league_id uuid;
+  v_kickoff timestamptz;
+  v_next_fixture_id uuid;
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  select f.league_id, f.kickoff
+  into v_league_id, v_kickoff
+  from public.fixtures f
+  where f.id = p_fixture_id;
+
+  if v_league_id is null then
+    return false;
+  end if;
+
+  if not public.is_league_member(v_league_id) then
+    return false;
+  end if;
+
+  if now() >= v_kickoff - interval '90 minutes' then
+    return false;
+  end if;
+
+  select f2.id
+  into v_next_fixture_id
+  from public.fixtures f2
+  left join public.results r2 on r2.fixture_id = f2.id
+  where f2.league_id = v_league_id
+    and r2.fixture_id is null
+    and f2.kickoff > now()
+  order by f2.kickoff asc
+  limit 1;
+
+  return v_next_fixture_id = p_fixture_id;
+end;
+$$;
+
+grant execute on function public.can_submit_prediction(uuid) to authenticated;
+
 alter table public.leagues enable row level security;
 alter table public.league_members enable row level security;
 alter table public.fixtures enable row level security;
@@ -220,6 +269,7 @@ on public.predictions
 for insert
 with check (
   user_id = auth.uid()
+  and public.can_submit_prediction(fixture_id)
   and exists (
     select 1
     from public.fixtures f
@@ -232,8 +282,14 @@ drop policy if exists predictions_update_self on public.predictions;
 create policy predictions_update_self
 on public.predictions
 for update
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
+using (
+  user_id = auth.uid()
+  and public.can_submit_prediction(fixture_id)
+)
+with check (
+  user_id = auth.uid()
+  and public.can_submit_prediction(fixture_id)
+);
 
 drop policy if exists predictions_delete_self_or_owner on public.predictions;
 create policy predictions_delete_self_or_owner
