@@ -60,11 +60,7 @@ const scorersTableBody = document.getElementById("scorers-table-body");
 const scorersSourceEl = document.getElementById("scorers-source");
 
 const authPanel = document.getElementById("auth-panel");
-const signupForm = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
-const signupNameInput = document.getElementById("signup-name-input");
-const signupEmailInput = document.getElementById("signup-email-input");
-const signupPasswordInput = document.getElementById("signup-password-input");
 const loginEmailInput = document.getElementById("login-email-input");
 const loginPasswordInput = document.getElementById("login-password-input");
 const sessionStatus = document.getElementById("session-status");
@@ -96,14 +92,13 @@ upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
 });
-signupForm.addEventListener("submit", onSignUp);
-loginForm.addEventListener("submit", onLogIn);
-refreshBtn.addEventListener("click", onRefreshAll);
-logoutBtn.addEventListener("click", onLogOut);
-createLeagueForm.addEventListener("submit", onCreateLeague);
-joinLeagueForm.addEventListener("submit", onJoinLeague);
-leagueSelect.addEventListener("change", onSwitchLeague);
-copyCodeBtn.addEventListener("click", onCopyLeagueCode);
+if (loginForm) loginForm.addEventListener("submit", onLogIn);
+if (refreshBtn) refreshBtn.addEventListener("click", onRefreshAll);
+if (logoutBtn) logoutBtn.addEventListener("click", onLogOut);
+if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague);
+if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
+if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
+if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
 
 setInterval(renderDeadlineCountdown, 1000);
 
@@ -143,35 +138,6 @@ function initSupabaseClient(url, key) {
     state.client = null;
     return false;
   }
-}
-
-async function onSignUp(event) {
-  event.preventDefault();
-  if (!state.client) {
-    alert("Supabase is unavailable right now.");
-    return;
-  }
-
-  const displayName = signupNameInput.value.trim();
-  const email = signupEmailInput.value.trim();
-  const password = signupPasswordInput.value;
-  if (!displayName || !email || !password) {
-    return;
-  }
-
-  const { error } = await state.client.auth.signUp({
-    email,
-    password,
-    options: { data: { display_name: displayName } }
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  alert("Sign-up successful. Confirm email if your Supabase project requires it.");
-  signupForm.reset();
 }
 
 async function onLogIn(event) {
@@ -503,15 +469,17 @@ function render() {
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
 
-  authPanel.classList.toggle("hidden", !isConnected);
-  leaguePanel.classList.toggle("hidden", !isConnected || !isAuthed);
+  if (authPanel) authPanel.classList.toggle("hidden", !isConnected);
+  if (leaguePanel) leaguePanel.classList.toggle("hidden", !isConnected || !isAuthed);
 
   if (!isConnected) {
-    sessionStatus.textContent = "Supabase is currently unavailable.";
+    if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
     return;
   }
 
-  sessionStatus.textContent = isAuthed ? `Signed in as ${state.session.user.email}` : "Not signed in.";
+  if (sessionStatus) {
+    sessionStatus.textContent = isAuthed ? `Signed in as ${state.session.user.email}` : "Not signed in.";
+  }
   if (!isAuthed) {
     renderDeadlineCountdown();
     return;

@@ -278,6 +278,24 @@ button:disabled {
   color: #274777;
 }
 
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--primary-soft);
+  color: #274777;
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 0.5rem 0.9rem;
+}
+
+.ghost-link:hover {
+  background: #dbe9ff;
+}
+
 .tab-btn {
   padding: 0.58rem 0.94rem;
 }
@@ -329,6 +347,26 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 0.65rem;
+}
+
+.auth-bar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.auth-bar-form {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.auth-card {
+  max-width: 520px;
+  margin: 1rem auto 0;
 }
 
 .session-actions,
@@ -536,14 +574,20 @@ button:disabled {
 
   .session-row,
   .league-meta,
-  .upcoming-head {
+  .upcoming-head,
+  .auth-bar-top {
     display: block;
   }
 
   .session-actions,
   .league-meta button,
-  .upcoming-head .ghost-btn {
+  .upcoming-head .ghost-btn,
+  .auth-bar-top .ghost-link {
     margin-top: 0.58rem;
+  }
+
+  .auth-bar-form {
+    grid-template-columns: 1fr;
   }
 
   .overview-tabs {

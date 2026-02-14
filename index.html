@@ -62,39 +62,15 @@
       </section>
 
       <section class="panel" id="auth-panel">
-        <h2>Sign Up / Log In</h2>
-        <div class="auth-grid">
-          <form id="signup-form" class="mini-form">
-            <h3>Sign Up</h3>
-            <label>
-              Display name
-              <input id="signup-name-input" type="text" required />
-            </label>
-            <label>
-              Email
-              <input id="signup-email-input" type="email" required />
-            </label>
-            <label>
-              Password
-              <input id="signup-password-input" type="password" minlength="6" required />
-            </label>
-            <button type="submit">Create Account</button>
-          </form>
-
-          <form id="login-form" class="mini-form">
-            <h3>Log In</h3>
-            <label>
-              Email
-              <input id="login-email-input" type="email" required />
-            </label>
-            <label>
-              Password
-              <input id="login-password-input" type="password" minlength="6" required />
-            </label>
-            <button type="submit">Log In</button>
-          </form>
+        <div class="auth-bar-top">
+          <h2>Log In</h2>
+          <a class="ghost-link" href="signup.html">Create account</a>
         </div>
-
+        <form id="login-form" class="auth-bar-form">
+          <input id="login-email-input" type="email" placeholder="Email" required />
+          <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
+          <button type="submit">Log In</button>
+        </form>
         <div class="session-row">
           <p id="session-status" class="status">Not signed in.</p>
           <div class="session-actions">
