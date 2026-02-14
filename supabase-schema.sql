@@ -183,6 +183,71 @@ $$;
 
 grant execute on function public.can_submit_prediction(uuid) to authenticated;
 
+create or replace function public.get_overall_leaderboard(p_limit integer default 10)
+returns table (
+  user_id uuid,
+  display_name text,
+  country_code text,
+  points integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with scored as (
+    select
+      p.user_id,
+      sum(
+        case
+          when p.chelsea_goals = r.chelsea_goals
+               and p.opponent_goals = r.opponent_goals then 3
+          when (
+            case
+              when p.chelsea_goals > p.opponent_goals then 'W'
+              when p.chelsea_goals < p.opponent_goals then 'L'
+              else 'D'
+            end
+          ) = (
+            case
+              when r.chelsea_goals > r.opponent_goals then 'W'
+              when r.chelsea_goals < r.opponent_goals then 'L'
+              else 'D'
+            end
+          ) then 1
+          else 0
+        end
+        +
+        case
+          when lower(trim(p.first_scorer)) = lower(trim(r.first_scorer)) then 2
+          else 0
+        end
+      )::integer as points
+    from public.predictions p
+    join public.results r on r.fixture_id = p.fixture_id
+    group by p.user_id
+  ),
+  member_meta as (
+    select distinct on (m.user_id)
+      m.user_id,
+      m.display_name,
+      m.country_code
+    from public.league_members m
+    order by m.user_id, m.joined_at desc
+  )
+  select
+    s.user_id,
+    coalesce(mm.display_name, 'Player') as display_name,
+    coalesce(mm.country_code, 'GB') as country_code,
+    s.points
+  from scored s
+  left join member_meta mm on mm.user_id = s.user_id
+  order by s.points desc, display_name asc
+  limit greatest(coalesce(p_limit, 10), 1);
+$$;
+
+grant execute on function public.get_overall_leaderboard(integer) to anon, authenticated;
+
 alter table public.leagues enable row level security;
 alter table public.league_members enable row level security;
 alter table public.fixtures enable row level security;

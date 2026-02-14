@@ -43,6 +43,8 @@ const state = {
   activeLeagueId: null,
   activeLeagueMembers: [],
   activeLeagueFixtures: [],
+  overallLeaderboard: [],
+  overallLeaderboardStatus: "Loading overall leaderboard...",
   showAllUpcoming: false,
   overviewTab: "fixtures",
   upcomingFixtures: [...FALLBACK_FIXTURES],
@@ -58,6 +60,8 @@ const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
 const scorersTableBody = document.getElementById("scorers-table-body");
 const scorersSourceEl = document.getElementById("scorers-source");
+const overallLeaderboardEl = document.getElementById("overall-leaderboard");
+const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
 
 const authPanel = document.getElementById("auth-panel");
 const loginForm = document.getElementById("login-form");
@@ -111,9 +115,12 @@ async function initializeApp() {
   renderUpcomingFixtures();
   renderTopScorers();
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
+    state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     render();
     return;
   }
+
+  await loadOverallLeaderboard();
 
   const {
     data: { session }
@@ -174,8 +181,28 @@ async function onLogOut() {
 
 async function onRefreshAll() {
   await syncUpcomingFixturesFromChelsea(true);
+  await loadOverallLeaderboard();
   await reloadAuthedData();
   render();
+}
+
+async function loadOverallLeaderboard() {
+  if (!state.client) {
+    state.overallLeaderboard = [];
+    state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
+    return;
+  }
+
+  const { data, error } = await state.client.rpc("get_overall_leaderboard", { p_limit: 10 });
+  if (error) {
+    state.overallLeaderboard = [];
+    state.overallLeaderboardStatus = "No global points data yet.";
+    return;
+  }
+
+  state.overallLeaderboard = Array.isArray(data) ? data : [];
+  state.overallLeaderboardStatus =
+    state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players across all leagues.";
 }
 
 async function reloadAuthedData() {
@@ -481,6 +508,7 @@ function render() {
   renderOverviewTabs();
   renderUpcomingFixtures();
   renderTopScorers();
+  renderOverallLeaderboard();
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -508,6 +536,31 @@ function render() {
   renderLeaderboard();
   renderFixtures();
   renderDeadlineCountdown();
+}
+
+function renderOverallLeaderboard() {
+  if (!overallLeaderboardEl || !overallLeaderboardStatusEl) {
+    return;
+  }
+
+  overallLeaderboardEl.textContent = "";
+  if (state.overallLeaderboard.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No players ranked yet.";
+    overallLeaderboardEl.appendChild(li);
+  } else {
+    state.overallLeaderboard.forEach((row, index) => {
+      const li = document.createElement("li");
+      li.textContent = `${index + 1}. ${formatMemberName(row.display_name || "Player", row.country_code || "GB")}`;
+      const pts = document.createElement("span");
+      pts.textContent = `${row.points || 0} pts`;
+      li.appendChild(pts);
+      overallLeaderboardEl.appendChild(li);
+    });
+  }
+
+  overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus;
 }
 
 function renderOverviewTabs() {
