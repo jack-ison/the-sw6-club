@@ -1,4 +1,5 @@
-const CONFIG_STORAGE_KEY = "cfc-supabase-config-v1";
+const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_CUTOFF_MINUTES = 90;
@@ -58,11 +59,6 @@ const upcomingSourceEl = document.getElementById("upcoming-source");
 const scorersTableBody = document.getElementById("scorers-table-body");
 const scorersSourceEl = document.getElementById("scorers-source");
 
-const configForm = document.getElementById("config-form");
-const supabaseUrlInput = document.getElementById("supabase-url-input");
-const supabaseKeyInput = document.getElementById("supabase-key-input");
-const configStatus = document.getElementById("config-status");
-
 const authPanel = document.getElementById("auth-panel");
 const signupForm = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
@@ -100,7 +96,6 @@ upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
 });
-configForm.addEventListener("submit", onSaveConfig);
 signupForm.addEventListener("submit", onSignUp);
 loginForm.addEventListener("submit", onLogIn);
 refreshBtn.addEventListener("click", onRefreshAll);
@@ -120,18 +115,7 @@ async function initializeApp() {
   renderOverviewTabs();
   renderUpcomingFixtures();
   renderTopScorers();
-  const config = loadConfig();
-  if (!config) {
-    configStatus.textContent = "Missing Supabase URL/key. Add them above.";
-    render();
-    return;
-  }
-
-  supabaseUrlInput.value = config.url;
-  supabaseKeyInput.value = config.key;
-
-  if (!initSupabaseClient(config.url, config.key)) {
-    configStatus.textContent = "Could not initialize Supabase client. Check your values.";
+  if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     render();
     return;
   }
@@ -148,7 +132,6 @@ async function initializeApp() {
   });
 
   await reloadAuthedData();
-  configStatus.textContent = "Connected to Supabase.";
   render();
 }
 
@@ -162,28 +145,10 @@ function initSupabaseClient(url, key) {
   }
 }
 
-async function onSaveConfig(event) {
-  event.preventDefault();
-  const url = supabaseUrlInput.value.trim();
-  const key = supabaseKeyInput.value.trim();
-  if (!url || !key) {
-    return;
-  }
-
-  saveConfig(url, key);
-  if (!initSupabaseClient(url, key)) {
-    configStatus.textContent = "Invalid Supabase config.";
-    return;
-  }
-
-  configStatus.textContent = "Config saved. Loading session...";
-  await initializeApp();
-}
-
 async function onSignUp(event) {
   event.preventDefault();
   if (!state.client) {
-    alert("Save Supabase config first.");
+    alert("Supabase is unavailable right now.");
     return;
   }
 
@@ -212,7 +177,7 @@ async function onSignUp(event) {
 async function onLogIn(event) {
   event.preventDefault();
   if (!state.client) {
-    alert("Save Supabase config first.");
+    alert("Supabase is unavailable right now.");
     return;
   }
 
@@ -542,7 +507,7 @@ function render() {
   leaguePanel.classList.toggle("hidden", !isConnected || !isAuthed);
 
   if (!isConnected) {
-    sessionStatus.textContent = "Add Supabase config to continue.";
+    sessionStatus.textContent = "Supabase is currently unavailable.";
     return;
   }
 
@@ -1233,24 +1198,4 @@ function getLondonOffsetMinutes(utcTimestamp) {
   const hourOffset = Number.parseInt(match[1], 10);
   const minuteOffset = Number.parseInt(match[2] || "0", 10);
   return hourOffset * 60 + Math.sign(hourOffset || 1) * minuteOffset;
-}
-
-function loadConfig() {
-  const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.url !== "string" || typeof parsed.key !== "string") {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveConfig(url, key) {
-  localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ url, key }));
 }
