@@ -774,6 +774,7 @@ function renderFixtures() {
 
   state.activeLeagueFixtures.forEach((fixture) => {
     const fragment = fixtureTemplate.content.cloneNode(true);
+    const fixtureBody = fragment.querySelector(".fixture-body");
     const titleEl = fragment.querySelector(".fixture-title");
     const badgeEl = fragment.querySelector(".status-badge");
     const metaEl = fragment.querySelector(".fixture-meta");
@@ -807,7 +808,7 @@ function renderFixtures() {
     } else if (hasStarted) {
       badgeEl.textContent = "Closed";
     } else if (!isNextFixture) {
-      badgeEl.textContent = "Future";
+      badgeEl.textContent = "Next Fixture Only";
     } else if (locked) {
       badgeEl.textContent = "Locked (90m cutoff)";
     } else {
@@ -873,6 +874,14 @@ function renderFixtures() {
       predictionForm.querySelectorAll("input, button").forEach((node) => {
         node.disabled = true;
       });
+    }
+
+    if (!isNextFixture) {
+      predictionForm.classList.add("hidden");
+      const note = document.createElement("p");
+      note.className = "status no-margin";
+      note.textContent = "Predictions are only available for the next fixture.";
+      fixtureBody.prepend(note);
     }
 
     if (!isOwner) {
