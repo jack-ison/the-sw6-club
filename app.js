@@ -72,6 +72,7 @@ const state = {
   activeLeagueId: null,
   activeLeagueMembers: [],
   activeLeagueFixtures: [],
+  activeLeagueLeaderboard: [],
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
   teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS], ...OPPONENT_REGISTERED_PLAYERS },
@@ -244,6 +245,7 @@ async function reloadAuthedData() {
   state.leagues = [];
   state.activeLeagueMembers = [];
   state.activeLeagueFixtures = [];
+  state.activeLeagueLeaderboard = [];
 
   if (!state.client || !state.session?.user) {
     state.activeLeagueId = null;
@@ -520,7 +522,7 @@ async function loadActiveLeagueData() {
     state.client
       .from("fixtures")
       .select(
-        "id, league_id, kickoff, opponent, competition, created_by, created_at, predictions(user_id, chelsea_goals, opponent_goals, first_scorer), results(chelsea_goals, opponent_goals, first_scorer)"
+        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer)"
       )
       .eq("league_id", league.id)
       .order("kickoff", { ascending: true })
@@ -538,11 +540,15 @@ async function loadActiveLeagueData() {
   state.activeLeagueMembers = memberResult.data || [];
   state.activeLeagueFixtures = (fixtureResult.data || []).map((fixture) => ({
     ...fixture,
-    predictions: fixture.predictions || [],
+    predictions: [],
     result: (fixture.results && fixture.results[0]) || null
   }));
 
+  await loadMyPredictionsForActiveFixtures();
+  await loadLeagueLeaderboard();
   await ensureUpcomingFixturesImported();
+  await loadMyPredictionsForActiveFixtures();
+  await loadLeagueLeaderboard();
 }
 
 async function ensureUpcomingFixturesImported() {
@@ -578,16 +584,56 @@ async function ensureUpcomingFixturesImported() {
   const { data } = await state.client
     .from("fixtures")
     .select(
-      "id, league_id, kickoff, opponent, competition, created_by, created_at, predictions(user_id, chelsea_goals, opponent_goals, first_scorer), results(chelsea_goals, opponent_goals, first_scorer)"
+      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer)"
     )
     .eq("league_id", league.id)
     .order("kickoff", { ascending: true });
 
   state.activeLeagueFixtures = (data || []).map((fixture) => ({
     ...fixture,
-    predictions: fixture.predictions || [],
+    predictions: [],
     result: (fixture.results && fixture.results[0]) || null
   }));
+}
+
+async function loadMyPredictionsForActiveFixtures() {
+  if (!state.session?.user || state.activeLeagueFixtures.length === 0) {
+    return;
+  }
+
+  const fixtureIds = state.activeLeagueFixtures.map((fixture) => fixture.id);
+  const { data, error } = await state.client
+    .from("predictions")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer")
+    .eq("user_id", state.session.user.id)
+    .in("fixture_id", fixtureIds);
+
+  if (error) {
+    return;
+  }
+
+  const byFixture = new Map((data || []).map((prediction) => [prediction.fixture_id, prediction]));
+  state.activeLeagueFixtures = state.activeLeagueFixtures.map((fixture) => {
+    const mine = byFixture.get(fixture.id);
+    return {
+      ...fixture,
+      predictions: mine ? [mine] : []
+    };
+  });
+}
+
+async function loadLeagueLeaderboard() {
+  const league = getActiveLeague();
+  if (!league) {
+    state.activeLeagueLeaderboard = [];
+    return;
+  }
+  const { data, error } = await state.client.rpc("get_league_leaderboard", { p_league_id: league.id });
+  if (error) {
+    state.activeLeagueLeaderboard = [];
+    return;
+  }
+  state.activeLeagueLeaderboard = Array.isArray(data) ? data : [];
 }
 
 function render() {
@@ -740,7 +786,7 @@ function renderLeagueSelect() {
 
 function renderLeaderboard() {
   leaderboardEl.textContent = "";
-  if (!state.activeLeagueId || state.activeLeagueMembers.length === 0) {
+  if (!state.activeLeagueId || state.activeLeagueLeaderboard.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
     li.textContent = "No members yet.";
@@ -748,19 +794,12 @@ function renderLeaderboard() {
     return;
   }
 
-  const rows = state.activeLeagueMembers
-    .map((member) => ({
-      name: member.display_name,
-      countryCode: member.country_code,
-      role: member.role,
-      ...summarizeMemberScore(member.user_id)
-    }))
-    .sort((a, b) => b.points - a.points || b.exact - a.exact || b.correctResult - a.correctResult);
+  const rows = state.activeLeagueLeaderboard;
 
   rows.forEach((row, index) => {
     const li = document.createElement("li");
     const prefix = row.role === "owner" ? "(Owner)" : "";
-    li.textContent = `${index + 1}. ${formatMemberName(row.name, row.countryCode)} ${prefix}`.trim();
+    li.textContent = `${index + 1}. ${formatMemberName(row.display_name, row.country_code)} ${prefix}`.trim();
     const right = document.createElement("span");
     right.textContent = `${row.points} pts`;
     li.appendChild(right);
@@ -791,7 +830,6 @@ function renderFixtures() {
     const metaEl = fragment.querySelector(".fixture-meta");
     const predictionForm = fragment.querySelector(".prediction-form");
     const resultForm = fragment.querySelector(".result-form");
-    const listEl = fragment.querySelector(".prediction-list");
     const predChelseaInput = predictionForm.querySelector(".pred-chelsea");
     const predOpponentInput = predictionForm.querySelector(".pred-opponent");
     const predScorerInput = predictionForm.querySelector(".pred-scorer");
@@ -911,24 +949,7 @@ function renderFixtures() {
       onSaveResult(fixture, resultForm);
     });
 
-    renderPredictionList(fixture, listEl);
     fixturesListEl.appendChild(fragment);
-  });
-}
-
-function renderPredictionList(fixture, listEl) {
-  listEl.textContent = "";
-  state.activeLeagueMembers.forEach((member) => {
-    const prediction = fixture.predictions.find((row) => row.user_id === member.user_id);
-    const li = document.createElement("li");
-    const memberLabel = formatMemberName(member.display_name, member.country_code);
-    if (!prediction) {
-      li.textContent = `${memberLabel}: no prediction`;
-    } else {
-      const pointsText = fixture.result ? ` | ${scorePrediction(prediction, fixture.result).points} pts` : "";
-      li.textContent = `${memberLabel}: ${prediction.chelsea_goals}-${prediction.opponent_goals}, scorer ${prediction.first_scorer}${pointsText}`;
-    }
-    listEl.appendChild(li);
   });
 }
 

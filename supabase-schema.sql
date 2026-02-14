@@ -248,6 +248,71 @@ $$;
 
 grant execute on function public.get_overall_leaderboard(integer) to anon, authenticated;
 
+create or replace function public.get_league_leaderboard(p_league_id uuid)
+returns table (
+  user_id uuid,
+  display_name text,
+  country_code text,
+  role text,
+  points integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with member_rows as (
+    select m.user_id, m.display_name, m.country_code, m.role
+    from public.league_members m
+    where m.league_id = p_league_id
+  ),
+  scored as (
+    select
+      p.user_id,
+      sum(
+        case
+          when p.chelsea_goals = r.chelsea_goals
+               and p.opponent_goals = r.opponent_goals then 3
+          when (
+            case
+              when p.chelsea_goals > p.opponent_goals then 'W'
+              when p.chelsea_goals < p.opponent_goals then 'L'
+              else 'D'
+            end
+          ) = (
+            case
+              when r.chelsea_goals > r.opponent_goals then 'W'
+              when r.chelsea_goals < r.opponent_goals then 'L'
+              else 'D'
+            end
+          ) then 1
+          else 0
+        end
+        +
+        case
+          when lower(trim(p.first_scorer)) = lower(trim(r.first_scorer)) then 2
+          else 0
+        end
+      )::integer as points
+    from public.predictions p
+    join public.results r on r.fixture_id = p.fixture_id
+    join public.fixtures f on f.id = p.fixture_id
+    where f.league_id = p_league_id
+    group by p.user_id
+  )
+  select
+    mr.user_id,
+    mr.display_name,
+    mr.country_code,
+    mr.role,
+    coalesce(sc.points, 0)::integer as points
+  from member_rows mr
+  left join scored sc on sc.user_id = mr.user_id
+  order by points desc, mr.display_name asc;
+$$;
+
+grant execute on function public.get_league_leaderboard(uuid) to authenticated;
+
 alter table public.leagues enable row level security;
 alter table public.league_members enable row level security;
 alter table public.fixtures enable row level security;
@@ -346,12 +411,7 @@ create policy predictions_select_member
 on public.predictions
 for select
 using (
-  exists (
-    select 1
-    from public.fixtures f
-    where f.id = fixture_id
-      and public.is_league_member(f.league_id)
-  )
+  user_id = auth.uid()
 );
 
 drop policy if exists predictions_insert_self on public.predictions;
