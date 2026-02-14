@@ -813,16 +813,17 @@ function renderFixtures() {
   const member = getCurrentMember();
   const isOwner = member?.role === "owner";
   const nextFixture = getNextFixtureForPrediction();
+  const fixturesToRender = nextFixture ? [nextFixture] : [];
 
-  if (state.activeLeagueFixtures.length === 0) {
+  if (fixturesToRender.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No fixtures available.";
+    li.textContent = "No upcoming fixture available for prediction.";
     fixturesListEl.appendChild(li);
     return;
   }
 
-  state.activeLeagueFixtures.forEach((fixture) => {
+  fixturesToRender.forEach((fixture) => {
     const fragment = fixtureTemplate.content.cloneNode(true);
     const fixtureBody = fragment.querySelector(".fixture-body");
     const titleEl = fragment.querySelector(".fixture-title");
@@ -856,8 +857,6 @@ function renderFixtures() {
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
       badgeEl.textContent = "Closed";
-    } else if (!isNextFixture) {
-      badgeEl.textContent = "Next Fixture Only";
     } else if (locked) {
       badgeEl.textContent = "Locked (90m cutoff)";
     } else {
@@ -923,14 +922,6 @@ function renderFixtures() {
       predictionForm.querySelectorAll("input, button").forEach((node) => {
         node.disabled = true;
       });
-    }
-
-    if (!isNextFixture) {
-      predictionForm.classList.add("hidden");
-      const note = document.createElement("p");
-      note.className = "status no-margin";
-      note.textContent = "Predictions are only available for the next fixture.";
-      fixtureBody.prepend(note);
     }
 
     if (!isOwner) {
