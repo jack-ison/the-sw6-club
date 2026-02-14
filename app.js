@@ -35,6 +35,31 @@ const TOP_SCORERS = [
   { name: "Estevao", apps: 19, goals: 2 },
   { name: "Marc Cucurella", apps: 24, goals: 1 }
 ];
+const CHELSEA_REGISTERED_PLAYERS = [
+  "Robert Sanchez", "Filip Jorgensen", "Djordje Petrovic", "Malo Gusto", "Reece James",
+  "Trevoh Chalobah", "Levi Colwill", "Wesley Fofana", "Benoit Badiashile", "Marc Cucurella",
+  "Enzo Fernandez", "Moises Caicedo", "Romeo Lavia", "Carney Chukwuemeka", "Cole Palmer",
+  "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
+  "Joao Pedro", "Estevao", "Kendry Paez"
+];
+const OPPONENT_REGISTERED_PLAYERS = {
+  Arsenal: ["David Raya", "Ben White", "William Saliba", "Gabriel", "Declan Rice", "Martin Odegaard", "Bukayo Saka", "Kai Havertz", "Gabriel Martinelli", "Leandro Trossard"],
+  "Aston Villa": ["Emiliano Martinez", "Matty Cash", "Pau Torres", "Ezri Konsa", "Douglas Luiz", "John McGinn", "Youri Tielemans", "Leon Bailey", "Ollie Watkins", "Moussa Diaby"],
+  Bournemouth: ["Neto", "Adam Smith", "Marcos Senesi", "Illia Zabarnyi", "Lewis Cook", "Ryan Christie", "Marcus Tavernier", "Justin Kluivert", "Antoine Semenyo", "Dominic Solanke"],
+  Brighton: ["Bart Verbruggen", "Lewis Dunk", "Jan Paul van Hecke", "Pervis Estupinan", "Pascal Gross", "Billy Gilmour", "Kaoru Mitoma", "Joao Pedro", "Danny Welbeck", "Evan Ferguson"],
+  "Brighton & Hove Albion": ["Bart Verbruggen", "Lewis Dunk", "Jan Paul van Hecke", "Pervis Estupinan", "Pascal Gross", "Billy Gilmour", "Kaoru Mitoma", "Joao Pedro", "Danny Welbeck", "Evan Ferguson"],
+  Burnley: ["James Trafford", "Dara O'Shea", "Jordan Beyer", "Vitinho", "Josh Cullen", "Sander Berge", "Lyle Foster", "Zeki Amdouni", "Wilson Odobert", "Johann Berg Gudmundsson"],
+  Everton: ["Jordan Pickford", "James Tarkowski", "Jarrad Branthwaite", "Vitalii Mykolenko", "Amadou Onana", "Idrissa Gueye", "Abdoulaye Doucoure", "Dwight McNeil", "Jack Harrison", "Dominic Calvert-Lewin"],
+  Leeds: ["Illan Meslier", "Pascal Struijk", "Joe Rodon", "Junior Firpo", "Ethan Ampadu", "Glen Kamara", "Crysencio Summerville", "Dan James", "Wilfried Gnonto", "Georginio Rutter"],
+  "Leeds United": ["Illan Meslier", "Pascal Struijk", "Joe Rodon", "Junior Firpo", "Ethan Ampadu", "Glen Kamara", "Crysencio Summerville", "Dan James", "Wilfried Gnonto", "Georginio Rutter"],
+  "Manchester City": ["Ederson", "Kyle Walker", "Ruben Dias", "Josko Gvardiol", "Rodri", "Kevin De Bruyne", "Bernardo Silva", "Phil Foden", "Jeremy Doku", "Erling Haaland"],
+  "Manchester United": ["Andre Onana", "Diogo Dalot", "Lisandro Martinez", "Raphael Varane", "Luke Shaw", "Casemiro", "Bruno Fernandes", "Kobbie Mainoo", "Marcus Rashford", "Rasmus Hojlund"],
+  Newcastle: ["Nick Pope", "Kieran Trippier", "Fabian Schar", "Sven Botman", "Dan Burn", "Bruno Guimaraes", "Joelinton", "Sean Longstaff", "Anthony Gordon", "Alexander Isak"],
+  "Newcastle United": ["Nick Pope", "Kieran Trippier", "Fabian Schar", "Sven Botman", "Dan Burn", "Bruno Guimaraes", "Joelinton", "Sean Longstaff", "Anthony Gordon", "Alexander Isak"],
+  Sunderland: ["Anthony Patterson", "Luke O'Nien", "Daniel Ballard", "Dennis Cirkin", "Dan Neil", "Jobe Bellingham", "Pierre Ekwah", "Patrick Roberts", "Jack Clarke", "Ross Stewart"],
+  Tottenham: ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"],
+  "Tottenham Hotspur": ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"]
+};
 
 const state = {
   client: null,
@@ -705,6 +730,20 @@ function renderFixtures() {
     const predictionForm = fragment.querySelector(".prediction-form");
     const resultForm = fragment.querySelector(".result-form");
     const listEl = fragment.querySelector(".prediction-list");
+    const predChelseaInput = predictionForm.querySelector(".pred-chelsea");
+    const predOpponentInput = predictionForm.querySelector(".pred-opponent");
+    const predScorerInput = predictionForm.querySelector(".pred-scorer");
+    const opponentNameEl = predictionForm.querySelector(".pred-opponent-name");
+    const opponentScoreValueEl = predictionForm.querySelector(".score-value-opponent");
+    const chelseaScoreValueEl = predictionForm.querySelector(".score-value-chelsea");
+    const opponentMinusBtn = predictionForm.querySelector(".score-minus-opponent");
+    const opponentPlusBtn = predictionForm.querySelector(".score-plus-opponent");
+    const chelseaMinusBtn = predictionForm.querySelector(".score-minus-chelsea");
+    const chelseaPlusBtn = predictionForm.querySelector(".score-plus-chelsea");
+    const scorerSelectedEl = predictionForm.querySelector(".selected-scorer-value");
+    const opponentGroupTitleEl = predictionForm.querySelector(".scorer-group-title-opponent");
+    const opponentChipWrap = predictionForm.querySelector(".player-chip-wrap-opponent");
+    const chelseaChipWrap = predictionForm.querySelector(".player-chip-wrap-chelsea");
 
     titleEl.textContent = `Chelsea vs ${fixture.opponent}`;
     metaEl.textContent = `${formatKickoff(fixture.kickoff)} | ${fixture.competition}`;
@@ -726,11 +765,53 @@ function renderFixtures() {
     }
 
     const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
+    predChelseaInput.value = "0";
+    predOpponentInput.value = "0";
+    predScorerInput.value = "";
     if (myPrediction) {
-      predictionForm.querySelector(".pred-chelsea").value = myPrediction.chelsea_goals;
-      predictionForm.querySelector(".pred-opponent").value = myPrediction.opponent_goals;
-      predictionForm.querySelector(".pred-scorer").value = myPrediction.first_scorer;
+      predChelseaInput.value = String(myPrediction.chelsea_goals);
+      predOpponentInput.value = String(myPrediction.opponent_goals);
+      predScorerInput.value = myPrediction.first_scorer;
     }
+
+    opponentNameEl.textContent = fixture.opponent;
+    opponentGroupTitleEl.textContent = `${fixture.opponent} Players`;
+    const playerPools = getFixturePlayerPools(fixture.opponent);
+    renderScorerButtons(
+      opponentChipWrap,
+      playerPools.opponentPlayers,
+      predScorerInput,
+      scorerSelectedEl
+    );
+    renderScorerButtons(
+      chelseaChipWrap,
+      playerPools.chelseaPlayers,
+      predScorerInput,
+      scorerSelectedEl
+    );
+    if (predScorerInput.value && !playerPools.allPlayers.includes(predScorerInput.value)) {
+      appendCustomScorerButton(chelseaChipWrap, predScorerInput.value, predScorerInput, scorerSelectedEl);
+    }
+    refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl);
+
+    const syncScoreDisplay = () => {
+      const opponentValue = Number.parseInt(predOpponentInput.value || "0", 10);
+      const chelseaValue = Number.parseInt(predChelseaInput.value || "0", 10);
+      opponentScoreValueEl.textContent = String(Number.isFinite(opponentValue) ? Math.max(opponentValue, 0) : 0);
+      chelseaScoreValueEl.textContent = String(Number.isFinite(chelseaValue) ? Math.max(chelseaValue, 0) : 0);
+    };
+    syncScoreDisplay();
+
+    const stepScore = (inputEl, delta) => {
+      const current = Number.parseInt(inputEl.value || "0", 10);
+      const safeCurrent = Number.isFinite(current) ? current : 0;
+      inputEl.value = String(Math.max(0, safeCurrent + delta));
+      syncScoreDisplay();
+    };
+    opponentMinusBtn.addEventListener("click", () => stepScore(predOpponentInput, -1));
+    opponentPlusBtn.addEventListener("click", () => stepScore(predOpponentInput, 1));
+    chelseaMinusBtn.addEventListener("click", () => stepScore(predChelseaInput, -1));
+    chelseaPlusBtn.addEventListener("click", () => stepScore(predChelseaInput, 1));
 
     if (fixture.result) {
       resultForm.querySelector(".result-chelsea").value = fixture.result.chelsea_goals;
@@ -779,6 +860,52 @@ function renderPredictionList(fixture, listEl) {
     }
     listEl.appendChild(li);
   });
+}
+
+function renderScorerButtons(container, players, targetInput, selectedLabelEl) {
+  container.textContent = "";
+  players.forEach((player) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "player-chip";
+    button.dataset.player = player;
+    button.textContent = player;
+    button.addEventListener("click", () => {
+      targetInput.value = player;
+      refreshScorerState(container.closest(".prediction-form"), player, selectedLabelEl);
+    });
+    container.appendChild(button);
+  });
+}
+
+function appendCustomScorerButton(container, player, targetInput, selectedLabelEl) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "player-chip";
+  button.dataset.player = player;
+  button.textContent = player;
+  button.addEventListener("click", () => {
+    targetInput.value = player;
+    refreshScorerState(container.closest(".prediction-form"), player, selectedLabelEl);
+  });
+  container.appendChild(button);
+}
+
+function refreshScorerState(formEl, selectedPlayer, selectedLabelEl) {
+  formEl.querySelectorAll(".player-chip").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.player === selectedPlayer);
+  });
+  selectedLabelEl.textContent = selectedPlayer || "None";
+}
+
+function getFixturePlayerPools(opponent) {
+  const opponentPlayers = OPPONENT_REGISTERED_PLAYERS[opponent] || [];
+  const chelseaPlayers = CHELSEA_REGISTERED_PLAYERS;
+  return {
+    opponentPlayers,
+    chelseaPlayers,
+    allPlayers: [...opponentPlayers, ...chelseaPlayers]
+  };
 }
 
 function summarizeMemberScore(userId) {

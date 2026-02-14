@@ -143,18 +143,42 @@
         <div class="fixture-body">
           <form class="prediction-form">
             <p class="mini-title">Your Prediction</p>
-            <label>
-              Chelsea goals
-              <input class="pred-chelsea" type="number" min="0" required />
-            </label>
-            <label>
-              Opponent goals
-              <input class="pred-opponent" type="number" min="0" required />
-            </label>
-            <label>
-              First Chelsea scorer
-              <input class="pred-scorer" type="text" required />
-            </label>
+            <div class="scoreboard-picker">
+              <div class="score-team">
+                <p class="score-team-name pred-opponent-name">Opponent</p>
+                <div class="score-stepper">
+                  <button type="button" class="score-minus score-minus-opponent">-</button>
+                  <span class="score-value score-value-opponent">0</span>
+                  <button type="button" class="score-plus score-plus-opponent">+</button>
+                </div>
+              </div>
+              <p class="score-separator">:</p>
+              <div class="score-team">
+                <p class="score-team-name">Chelsea</p>
+                <div class="score-stepper">
+                  <button type="button" class="score-minus score-minus-chelsea">-</button>
+                  <span class="score-value score-value-chelsea">0</span>
+                  <button type="button" class="score-plus score-plus-chelsea">+</button>
+                </div>
+              </div>
+            </div>
+            <input class="pred-chelsea" type="number" min="0" required hidden />
+            <input class="pred-opponent" type="number" min="0" required hidden />
+            <div class="goalscorer-picker">
+              <p class="mini-title no-margin">Select Goalscorer</p>
+              <p class="status no-margin">Selected: <span class="selected-scorer-value">None</span></p>
+              <input class="pred-scorer" type="text" required readonly placeholder="Pick a player below" />
+              <div class="scorer-groups">
+                <div class="scorer-group">
+                  <p class="scorer-group-title scorer-group-title-opponent">Opponent Players</p>
+                  <div class="player-chip-wrap player-chip-wrap-opponent"></div>
+                </div>
+                <div class="scorer-group">
+                  <p class="scorer-group-title">Chelsea Players</p>
+                  <div class="player-chip-wrap player-chip-wrap-chelsea"></div>
+                </div>
+              </div>
+            </div>
             <button type="submit">Save Prediction</button>
           </form>
 

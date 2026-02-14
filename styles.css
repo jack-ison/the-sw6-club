@@ -490,6 +490,137 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.prediction-form {
+  background: linear-gradient(180deg, #f7faff, #eef5ff);
+}
+
+.scoreboard-picker {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  background: #163564;
+  border-radius: 12px;
+  border: 1px solid #29538f;
+  padding: 0.65rem;
+}
+
+.score-team {
+  text-align: center;
+}
+
+.score-team-name {
+  margin: 0 0 0.35rem;
+  color: #cfe0ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.score-separator {
+  margin: 0;
+  color: #8db2ea;
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.score-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.score-minus,
+.score-plus {
+  border-radius: 999px;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.score-plus {
+  background: #18b36a;
+}
+
+.score-plus:hover {
+  background: #14995b;
+}
+
+.score-minus {
+  background: #4e6284;
+}
+
+.score-minus:hover {
+  background: #3d4f6c;
+}
+
+.score-value {
+  min-width: 24px;
+  text-align: center;
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 800;
+}
+
+.goalscorer-picker {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.scorer-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.scorer-group {
+  border: 1px solid #d8e6ff;
+  border-radius: 10px;
+  padding: 0.45rem;
+  background: #f7fbff;
+}
+
+.scorer-group-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #33527f;
+}
+
+.player-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.player-chip {
+  border-radius: 999px;
+  border: 1px solid #b9cdf0;
+  padding: 0.3rem 0.6rem;
+  background: #fff;
+  color: #284a7e;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.player-chip:hover {
+  background: #e8f1ff;
+}
+
+.player-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
 .prediction-form button,
 .result-form button {
   background: var(--success);
@@ -574,7 +705,8 @@ button:disabled {
   .league-forms,
   .two-col,
   .dashboard-grid,
-  .fixture-body {
+  .fixture-body,
+  .scorer-groups {
     grid-template-columns: 1fr;
   }
 
