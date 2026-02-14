@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The SW6 Club</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div class="hero-main">
+          <p class="kicker">SW6</p>
+          <h1>The SW6 Club</h1>
+          <p>See upcoming fixtures first, then sign in and compete with friends.</p>
+        </div>
+        <p id="deadline-countdown" class="hero-deadline"></p>
+      </header>
+
+      <section class="panel">
+        <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
+          <button id="overview-fixtures-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
+            Upcoming Fixtures
+          </button>
+          <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Top Scorers
+          </button>
+        </div>
+
+        <div id="fixtures-overview-panel">
+          <div class="upcoming-head">
+            <h2>Upcoming Chelsea Fixtures</h2>
+            <button id="upcoming-toggle-btn" type="button" class="ghost-btn">Show All</button>
+          </div>
+          <p id="upcoming-source" class="status no-margin"></p>
+          <ul id="upcoming-list" class="upcoming-list"></ul>
+        </div>
+
+        <div id="scorers-overview-panel" class="hidden">
+          <h2>Top Chelsea Scorers (Premier League 2025/26)</h2>
+          <p class="helper no-margin">Goals per game is calculated as goals divided by appearances.</p>
+          <div class="table-wrap">
+            <table class="scorers-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>Apps</th>
+                  <th>Goals</th>
+                  <th>Goals/Game</th>
+                </tr>
+              </thead>
+              <tbody id="scorers-table-body"></tbody>
+            </table>
+          </div>
+          <p id="scorers-source" class="status"></p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Connect Supabase</h2>
+        <p class="helper">
+          Run <code>supabase-schema.sql</code> in your Supabase SQL Editor, then paste project URL + anon key.
+        </p>
+        <form id="config-form" class="mini-form two-col">
+          <label>
+            Supabase URL
+            <input id="supabase-url-input" type="url" placeholder="https://xyzcompany.supabase.co" required />
+          </label>
+          <label>
+            Supabase anon key
+            <input id="supabase-key-input" type="text" placeholder="eyJhbGciOi..." required />
+          </label>
+          <button type="submit">Save Connection</button>
+        </form>
+        <p id="config-status" class="status" aria-live="polite"></p>
+      </section>
+
+      <section class="panel" id="auth-panel">
+        <h2>Sign Up / Log In</h2>
+        <div class="auth-grid">
+          <form id="signup-form" class="mini-form">
+            <h3>Sign Up</h3>
+            <label>
+              Display name
+              <input id="signup-name-input" type="text" required />
+            </label>
+            <label>
+              Email
+              <input id="signup-email-input" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="signup-password-input" type="password" minlength="6" required />
+            </label>
+            <button type="submit">Create Account</button>
+          </form>
+
+          <form id="login-form" class="mini-form">
+            <h3>Log In</h3>
+            <label>
+              Email
+              <input id="login-email-input" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="login-password-input" type="password" minlength="6" required />
+            </label>
+            <button type="submit">Log In</button>
+          </form>
+        </div>
+
+        <div class="session-row">
+          <p id="session-status" class="status">Not signed in.</p>
+          <div class="session-actions">
+            <button id="refresh-btn" type="button" class="ghost-btn">Refresh</button>
+            <button id="logout-btn" type="button" class="danger-btn">Log Out</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="league-panel">
+        <h2>League Dashboard</h2>
+        <div class="league-forms">
+          <form id="create-league-form" class="mini-form">
+            <h3>Create League</h3>
+            <label>
+              League name
+              <input id="league-name-input" type="text" required />
+            </label>
+            <button type="submit">Create</button>
+          </form>
+
+          <form id="join-league-form" class="mini-form">
+            <h3>Join League</h3>
+            <label>
+              League code
+              <input id="join-code-input" type="text" placeholder="e.g., CFC9M2" required />
+            </label>
+            <button type="submit">Join</button>
+          </form>
+        </div>
+
+        <div class="league-meta">
+          <label>
+            Active league
+            <select id="league-select"></select>
+          </label>
+          <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="subpanel">
+            <h3>Leaderboard</h3>
+            <ul id="leaderboard" class="leaderboard"></ul>
+          </article>
+        </div>
+
+        <h3 class="fixtures-title">Prediction Fixtures</h3>
+        <ul id="fixtures-list" class="fixtures-list"></ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Unofficial fan project. Not affiliated with Chelsea FC.</p>
+    </footer>
+
+    <template id="fixture-template">
+      <li class="fixture-item">
+        <div class="fixture-head">
+          <p class="fixture-title"></p>
+          <span class="status-badge"></span>
+        </div>
+        <p class="fixture-meta"></p>
+        <div class="fixture-body">
+          <form class="prediction-form">
+            <p class="mini-title">Your Prediction</p>
+            <label>
+              Chelsea goals
+              <input class="pred-chelsea" type="number" min="0" required />
+            </label>
+            <label>
+              Opponent goals
+              <input class="pred-opponent" type="number" min="0" required />
+            </label>
+            <label>
+              First Chelsea scorer
+              <input class="pred-scorer" type="text" required />
+            </label>
+            <button type="submit">Save Prediction</button>
+          </form>
+
+          <form class="result-form">
+            <p class="mini-title">Final Result (Owner)</p>
+            <label>
+              Chelsea goals
+              <input class="result-chelsea" type="number" min="0" required />
+            </label>
+            <label>
+              Opponent goals
+              <input class="result-opponent" type="number" min="0" required />
+            </label>
+            <label>
+              First Chelsea scorer
+              <input class="result-scorer" type="text" required />
+            </label>
+            <button type="submit">Save Result</button>
+          </form>
+        </div>
+
+        <div class="prediction-list-wrap">
+          <p class="mini-title">Submitted Predictions</p>
+          <ul class="prediction-list"></ul>
+        </div>
+      </li>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
