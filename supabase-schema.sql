@@ -14,10 +14,21 @@ create table if not exists public.league_members (
   league_id uuid not null references public.leagues(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   display_name text not null,
+  country_code text not null default 'GB' check (country_code ~ '^[A-Z]{2}$'),
   role text not null default 'member' check (role in ('owner', 'member')),
   joined_at timestamptz not null default now(),
   primary key (league_id, user_id)
 );
+
+alter table public.league_members
+  add column if not exists country_code text not null default 'GB';
+
+alter table public.league_members
+  drop constraint if exists league_members_country_code_check;
+
+alter table public.league_members
+  add constraint league_members_country_code_check
+  check (country_code ~ '^[A-Z]{2}$');
 
 create table if not exists public.fixtures (
   id uuid primary key default gen_random_uuid(),
@@ -78,7 +89,11 @@ as $$
   );
 $$;
 
-create or replace function public.join_league_by_code(p_code text, p_display_name text)
+create or replace function public.join_league_by_code(
+  p_code text,
+  p_display_name text,
+  p_country_code text default 'GB'
+)
 returns void
 language plpgsql
 security definer
@@ -99,14 +114,25 @@ begin
     raise exception 'League code not found';
   end if;
 
-  insert into public.league_members (league_id, user_id, display_name, role)
-  values (v_league_id, auth.uid(), trim(p_display_name), 'member')
+  insert into public.league_members (league_id, user_id, display_name, country_code, role)
+  values (
+    v_league_id,
+    auth.uid(),
+    trim(p_display_name),
+    case
+      when upper(trim(coalesce(p_country_code, ''))) ~ '^[A-Z]{2}$' then upper(trim(p_country_code))
+      else 'GB'
+    end,
+    'member'
+  )
   on conflict (league_id, user_id)
-  do update set display_name = excluded.display_name;
+  do update set
+    display_name = excluded.display_name,
+    country_code = excluded.country_code;
 end;
 $$;
 
-grant execute on function public.join_league_by_code(text, text) to authenticated;
+grant execute on function public.join_league_by_code(text, text, text) to authenticated;
 
 create or replace function public.can_submit_prediction(p_fixture_id uuid)
 returns boolean

@@ -245,6 +245,7 @@ async function onCreateLeague(event) {
     league_id: leagueData.id,
     user_id: ownerId,
     display_name: getCurrentUserDisplayName(),
+    country_code: getCurrentUserCountryCode(),
     role: "owner"
   });
 
@@ -272,7 +273,8 @@ async function onJoinLeague(event) {
 
   const { error } = await state.client.rpc("join_league_by_code", {
     p_code: code,
-    p_display_name: getCurrentUserDisplayName()
+    p_display_name: getCurrentUserDisplayName(),
+    p_country_code: getCurrentUserCountryCode()
   });
 
   if (error) {
@@ -400,7 +402,7 @@ async function loadActiveLeagueData() {
   const [memberResult, fixtureResult] = await Promise.all([
     state.client
       .from("league_members")
-      .select("user_id, display_name, role")
+      .select("user_id, display_name, country_code, role")
       .eq("league_id", league.id),
     state.client
       .from("fixtures")
@@ -608,13 +610,18 @@ function renderLeaderboard() {
   }
 
   const rows = state.activeLeagueMembers
-    .map((member) => ({ name: member.display_name, role: member.role, ...summarizeMemberScore(member.user_id) }))
+    .map((member) => ({
+      name: member.display_name,
+      countryCode: member.country_code,
+      role: member.role,
+      ...summarizeMemberScore(member.user_id)
+    }))
     .sort((a, b) => b.points - a.points || b.exact - a.exact || b.correctResult - a.correctResult);
 
   rows.forEach((row, index) => {
     const li = document.createElement("li");
     const prefix = row.role === "owner" ? "(Owner)" : "";
-    li.textContent = `${index + 1}. ${row.name} ${prefix}`.trim();
+    li.textContent = `${index + 1}. ${formatMemberName(row.name, row.countryCode)} ${prefix}`.trim();
     const right = document.createElement("span");
     right.textContent = `${row.points} pts`;
     li.appendChild(right);
@@ -710,11 +717,12 @@ function renderPredictionList(fixture, listEl) {
   state.activeLeagueMembers.forEach((member) => {
     const prediction = fixture.predictions.find((row) => row.user_id === member.user_id);
     const li = document.createElement("li");
+    const memberLabel = formatMemberName(member.display_name, member.country_code);
     if (!prediction) {
-      li.textContent = `${member.display_name}: no prediction`;
+      li.textContent = `${memberLabel}: no prediction`;
     } else {
       const pointsText = fixture.result ? ` | ${scorePrediction(prediction, fixture.result).points} pts` : "";
-      li.textContent = `${member.display_name}: ${prediction.chelsea_goals}-${prediction.opponent_goals}, scorer ${prediction.first_scorer}${pointsText}`;
+      li.textContent = `${memberLabel}: ${prediction.chelsea_goals}-${prediction.opponent_goals}, scorer ${prediction.first_scorer}${pointsText}`;
     }
     listEl.appendChild(li);
   });
@@ -787,6 +795,28 @@ function getCurrentUserDisplayName() {
   }
   const email = state.session?.user?.email || "player";
   return email.split("@")[0];
+}
+
+function getCurrentUserCountryCode() {
+  const raw = state.session?.user?.user_metadata?.country_code;
+  if (typeof raw !== "string") {
+    return "GB";
+  }
+  const code = raw.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : "GB";
+}
+
+function countryCodeToFlag(code) {
+  if (!/^[A-Z]{2}$/.test(code || "")) {
+    return "";
+  }
+  const chars = [...code].map((char) => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...chars);
+}
+
+function formatMemberName(displayName, countryCode) {
+  const flag = countryCodeToFlag(countryCode || "");
+  return flag ? `${flag} ${displayName}` : displayName;
 }
 
 function createLeagueCode() {
