@@ -36,11 +36,11 @@ body {
 }
 
 .app-shell {
-  max-width: 1120px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 2.4rem 1rem 3.2rem;
+  padding: 2.2rem 1rem 3rem;
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .hero {
@@ -115,7 +115,7 @@ body {
   background: var(--surface);
   border: 1px solid rgb(255 255 255 / 70%);
   border-radius: var(--radius-lg);
-  padding: 1rem;
+  padding: 1.05rem;
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(8px);
   animation: rise 180ms ease;
@@ -137,13 +137,14 @@ body {
 }
 
 .overview-tabs {
-  display: inline-flex;
-  gap: 0.45rem;
-  margin-bottom: 0.75rem;
-  padding: 0.32rem;
-  border-radius: 999px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  margin-bottom: 0.72rem;
+  padding: 0.34rem;
+  border-radius: 16px;
   border: 1px solid var(--line);
-  background: rgb(255 255 255 / 88%);
+  background: rgb(255 255 255 / 90%);
 }
 
 .upcoming-head {
@@ -298,7 +299,8 @@ button:disabled {
 }
 
 .tab-btn {
-  padding: 0.58rem 0.94rem;
+  padding: 0.52rem 0.84rem;
+  font-size: 0.86rem;
 }
 
 .tab-btn:not(.active):hover,
@@ -335,7 +337,7 @@ button:disabled {
 
 .status {
   margin: 0.74rem 0 0;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
 }
 
 .no-margin {
@@ -376,7 +378,7 @@ button:disabled {
 }
 
 .auth-thin {
-  padding: 0.62rem 0.82rem;
+  padding: 0.64rem 0.86rem;
   display: grid;
   gap: 0.42rem;
 }
@@ -478,11 +480,11 @@ button:disabled {
 }
 
 .fixtures-title {
-  margin-top: 1rem;
+  margin-top: 0.7rem;
 }
 
 .prediction-primary {
-  padding: 1.15rem;
+  padding: 1rem;
   position: relative;
   overflow: hidden;
   border: 1px solid #d5e3ff;
@@ -504,8 +506,8 @@ button:disabled {
 
 .prediction-primary .fixtures-title {
   margin-top: 0;
-  margin-bottom: 0.9rem;
-  font-size: 1.28rem;
+  margin-bottom: 0.78rem;
+  font-size: 1.2rem;
   position: relative;
   z-index: 1;
 }
@@ -516,13 +518,13 @@ button:disabled {
 }
 
 .fixtures-list {
-  gap: 0.75rem;
+  gap: 0.64rem;
 }
 
 .fixture-item {
   border: 1px solid #c8dafb;
   border-radius: 18px;
-  padding: 1rem;
+  padding: 0.84rem;
   background:
     radial-gradient(circle at 95% 4%, rgb(3 70 148 / 9%), transparent 33%),
     linear-gradient(180deg, #fff, #f8fbff);
@@ -545,12 +547,12 @@ button:disabled {
 
 .status-badge {
   border-radius: 999px;
-  padding: 0.28rem 0.62rem;
-  font-size: 0.76rem;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  background: linear-gradient(180deg, #f2f7ff, #deebff);
-  color: #1f467f;
-  border: 1px solid #bfd5fa;
+  background: #edf4ff;
+  color: #2a4d82;
+  border: 1px solid #cde0ff;
 }
 
 .fixture-meta {
@@ -569,10 +571,10 @@ button:disabled {
 .prediction-form {
   border: 1px solid #bfd5fa;
   border-radius: 14px;
-  padding: 0.74rem;
+  padding: 0.68rem;
   background: #fff;
   display: grid;
-  gap: 0.58rem;
+  gap: 0.52rem;
 }
 
 .prediction-form {
@@ -581,21 +583,21 @@ button:disabled {
 }
 
 .prediction-form.saved-state {
-  border-color: #85c9a6;
+  border-color: #99cfb3;
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 74%),
-    0 0 0 3px rgb(15 111 67 / 14%);
+    0 0 0 2px rgb(15 111 67 / 11%);
 }
 
 .prediction-ack {
   margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #1f6b43;
-  background: #e8f7ee;
-  border: 1px solid #a6dabd;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: #2d6a49;
+  background: #edf8f2;
+  border: 1px solid #b4dfc6;
   border-radius: 10px;
-  padding: 0.38rem 0.5rem;
+  padding: 0.32rem 0.45rem;
 }
 
 .prediction-ack.fresh {
@@ -612,7 +614,7 @@ button:disabled {
     linear-gradient(140deg, #0f315f 0%, #1c477f 45%, #265896 100%);
   border-radius: 14px;
   border: 1px solid #2c5e9a;
-  padding: 0.72rem;
+  padding: 0.66rem;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%);
 }
 
@@ -682,7 +684,7 @@ button:disabled {
   border: 1px solid #cfe0ff;
   border-radius: 12px;
   background: linear-gradient(180deg, rgb(255 255 255 / 94%), rgb(245 251 255 / 92%));
-  padding: 0.64rem;
+  padding: 0.58rem;
   display: grid;
   gap: 0.45rem;
 }
@@ -794,6 +796,8 @@ button:disabled {
   background: linear-gradient(140deg, #0f7d4a, #0b6439);
   color: #fff;
   box-shadow: 0 11px 20px rgb(8 73 43 / 28%);
+  width: 100%;
+  margin-top: 0.2rem;
 }
 
 .prediction-form button:hover {
@@ -802,7 +806,7 @@ button:disabled {
 
 .mini-title {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.71rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -841,9 +845,27 @@ button:disabled {
 }
 
 .site-footer {
-  max-width: 1120px;
+  max-width: 1040px;
   margin: 0 auto 2rem;
   padding: 0 1rem;
+}
+
+.section-kicker {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #42679e;
+}
+
+.overview-panel .section-kicker {
+  margin-bottom: 0.45rem;
+}
+
+.prediction-primary .section-kicker {
+  position: relative;
+  z-index: 1;
 }
 
 .site-footer p {

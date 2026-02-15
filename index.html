@@ -25,6 +25,7 @@
       </header>
 
       <section class="panel auth-thin" id="auth-panel">
+        <p class="section-kicker">Account</p>
         <form id="login-form" class="auth-bar-form">
           <div id="auth-login-fields" class="auth-login-fields">
             <input id="login-email-input" type="email" placeholder="Email" required />
@@ -38,17 +39,19 @@
       </section>
 
       <section class="panel prediction-primary">
+        <p class="section-kicker">Predict</p>
         <h2 class="fixtures-title">Next Game</h2>
         <ul id="fixtures-list" class="fixtures-list"></ul>
       </section>
 
-      <section class="panel">
+      <section class="panel overview-panel">
+        <p class="section-kicker">Track</p>
         <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
           <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Upcoming Fixtures
+            Fixtures
           </button>
           <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Top Scorers
+            Scorers
           </button>
           <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
             Global Leaderboard
