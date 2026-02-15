@@ -881,7 +881,7 @@ async function onCreateLeague(event) {
 
   const name = leagueNameInput.value.trim();
   const visibility = leagueVisibilityInput?.value === "private" ? "private" : "public";
-  const joinPassword = String(leaguePasswordInput?.value || "");
+  const joinPassword = String(leaguePasswordInput?.value || "").trim();
   if (!name) {
     return;
   }
@@ -890,20 +890,50 @@ async function onCreateLeague(event) {
     return;
   }
 
-  const { data, error } = await state.client.rpc("create_league", {
-    p_name: name,
-    p_is_public: visibility === "public",
-    p_join_password: visibility === "private" ? joinPassword : null,
-    p_display_name: getCurrentUserDisplayName(),
-    p_country_code: getCurrentUserCountryCode()
-  });
+  const createAttempts = [
+    {
+      p_name: name,
+      p_is_public: visibility === "public",
+      p_join_password: visibility === "private" ? joinPassword : null,
+      p_display_name: getCurrentUserDisplayName(),
+      p_country_code: getCurrentUserCountryCode()
+    },
+    {
+      // Backward-compatible call shape for older DB function signatures.
+      p_name: name,
+      p_join_password: visibility === "private" ? joinPassword : null,
+      p_display_name: getCurrentUserDisplayName(),
+      p_country_code: getCurrentUserCountryCode()
+    }
+  ];
+  let data = null;
+  let error = null;
+  for (const payload of createAttempts) {
+    const result = await state.client.rpc("create_league", payload);
+    data = result.data;
+    error = result.error;
+    if (!error) {
+      break;
+    }
+    const message = String(error?.message || "").toLowerCase();
+    if (!/function|signature|does not exist|could not find/.test(message)) {
+      break;
+    }
+  }
   let leagueData = Array.isArray(data) ? data[0] : data;
   if (error || !leagueData) {
     if (visibility === "public" && isMissingFunctionError(error, "create_league")) {
       leagueData = await createLeagueLegacyPublic(name, state.session.user.id);
     }
     if (!leagueData) {
-      alert(error?.message || "Could not create league right now.");
+      const message = String(error?.message || "");
+      if (visibility === "private" && isMissingFunctionError(error, "create_league")) {
+        alert(
+          "Private leagues are not enabled in your current database schema yet. Run the latest supabase-schema.sql, then try again."
+        );
+        return;
+      }
+      alert(message || "Could not create league right now.");
       return;
     }
   }
