@@ -1024,6 +1024,7 @@ function renderFixtures() {
     const opponentPlusBtn = predictionForm.querySelector(".score-plus-opponent");
     const chelseaMinusBtn = predictionForm.querySelector(".score-minus-chelsea");
     const chelseaPlusBtn = predictionForm.querySelector(".score-plus-chelsea");
+    const savePredictionBtn = predictionForm.querySelector("button[type='submit']");
     const scorerSelectedEl = predictionForm.querySelector(".selected-scorer-value");
     const scorerListEl = predictionForm.querySelector(".selected-scorer-list");
     const chelseaChipWrap = predictionForm.querySelector(".player-chip-wrap-chelsea");
@@ -1035,17 +1036,19 @@ function renderFixtures() {
     const predictionEnabled = isNextFixture && !locked;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
+    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
     if (fixture.result) {
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
       badgeEl.textContent = "Closed";
     } else if (locked) {
       badgeEl.textContent = "Locked (90m cutoff)";
+    } else if (myPrediction) {
+      badgeEl.textContent = "Saved (editable)";
     } else {
       badgeEl.textContent = "Open";
     }
 
-    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
     predChelseaInput.value = "0";
     predOpponentInput.value = "0";
     predScorerInput.value = "";
@@ -1102,6 +1105,12 @@ function renderFixtures() {
     chelseaPlusBtn.disabled = true;
     chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
     chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+    if (savePredictionBtn) {
+      savePredictionBtn.textContent = myPrediction ? "Update Prediction" : "Save Prediction";
+      savePredictionBtn.title = predictionEnabled
+        ? "You can edit your prediction until 90 minutes before kick-off."
+        : "";
+    }
 
     if (!predictionEnabled) {
       predictionForm.querySelectorAll("input, button, select").forEach((node) => {
