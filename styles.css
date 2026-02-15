@@ -96,22 +96,6 @@ body {
   color: rgb(255 255 255 / 88%);
 }
 
-.how-strip {
-  margin-top: 0.7rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.how-strip p {
-  margin: 0;
-  font-size: 0.76rem;
-  border-radius: 999px;
-  padding: 0.24rem 0.58rem;
-  border: 1px solid rgb(255 255 255 / 34%);
-  background: rgb(255 255 255 / 13%);
-}
-
 .hero-deadline {
   margin: 0;
   flex: 0 0 auto;
@@ -538,31 +522,13 @@ button:disabled {
 }
 
 .fixture-item {
-  display: grid;
-  gap: 0.62rem;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.next-fixture-card,
-.prediction-card {
   border: 1px solid #c8dafb;
-  border-radius: 14px;
-  padding: 0.76rem;
-  background: linear-gradient(180deg, #fff, #f8fbff);
-}
-
-.next-fixture-card {
-  box-shadow: 0 8px 18px rgb(3 70 148 / 8%);
-}
-
-.lock-line {
-  margin: 0.42rem 0 0;
-  font-size: 0.78rem;
-  color: #456395;
+  border-radius: 18px;
+  padding: 0.84rem;
+  background:
+    radial-gradient(circle at 95% 4%, rgb(3 70 148 / 9%), transparent 33%),
+    linear-gradient(180deg, #fff, #f8fbff);
+  box-shadow: 0 14px 26px rgb(3 70 148 / 8%);
 }
 
 .fixture-head {
@@ -596,7 +562,7 @@ button:disabled {
 }
 
 .fixture-body {
-  margin-top: 0;
+  margin-top: 0.72rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.66rem;
@@ -721,44 +687,6 @@ button:disabled {
   padding: 0.58rem;
   display: grid;
   gap: 0.45rem;
-}
-
-.scorer-helper {
-  margin: 0;
-  font-size: 0.75rem;
-  color: #4a689a;
-}
-
-.scorer-fast-tools {
-  display: grid;
-  grid-template-columns: 1.6fr repeat(3, 1fr);
-  gap: 0.36rem;
-}
-
-.scorer-fast-tools .ghost-btn {
-  padding: 0.52rem 0.6rem;
-  font-size: 0.74rem;
-}
-
-.quick-picks {
-  border: 1px dashed #bfd4f8;
-  border-radius: 10px;
-  padding: 0.35rem 0.42rem;
-}
-
-.quick-picks-title {
-  margin: 0 0 0.3rem;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #406699;
-  font-weight: 800;
-}
-
-.quick-picks-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.32rem;
 }
 
 .scorer-groups {
@@ -889,16 +817,6 @@ button:disabled {
   background: linear-gradient(140deg, #0c6f41, #094e2f);
 }
 
-.auth-cta-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.auth-cta-row .ghost-link,
-.auth-cta-row .ghost-btn {
-  flex: 1;
-}
-
 .mini-title {
   margin: 0;
   font-size: 0.71rem;
@@ -958,25 +876,6 @@ button:disabled {
   margin-bottom: 0.45rem;
 }
 
-.collapse-card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgb(255 255 255 / 86%);
-  margin-top: 0.55rem;
-}
-
-.collapse-card summary {
-  cursor: pointer;
-  padding: 0.62rem 0.72rem;
-  font-weight: 800;
-  color: #254679;
-}
-
-.collapse-body {
-  border-top: 1px solid var(--line);
-  padding: 0.72rem;
-}
-
 .prediction-primary .section-kicker {
   position: relative;
   z-index: 1;
@@ -1031,8 +930,7 @@ button:disabled {
   .two-col,
   .dashboard-grid,
   .fixture-body,
-  .scorer-groups,
-  .scorer-fast-tools {
+  .scorer-groups {
     grid-template-columns: 1fr;
   }
 
@@ -1066,7 +964,6 @@ button:disabled {
   .tab-btn {
     flex: 1;
     justify-content: center;
-    min-height: 44px;
   }
 
   .hero {
@@ -1077,16 +974,6 @@ button:disabled {
     margin-top: 0.75rem;
     max-width: none;
     text-align: left;
-  }
-
-  .player-chip,
-  .mini-step-btn,
-  .score-minus,
-  .score-plus,
-  .prediction-form button,
-  .auth-cta-row .ghost-btn,
-  .auth-cta-row .ghost-link {
-    min-height: 44px;
   }
 }
 

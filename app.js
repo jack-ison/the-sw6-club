@@ -3,7 +3,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
-const LAST_PREDICTION_KEY = "cfc-last-prediction-v1";
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 2;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -101,10 +100,7 @@ const state = {
   overviewTab: "global",
   upcomingFixtures: [...FALLBACK_FIXTURES],
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
-  lastPredictionAck: null,
-  fixturesLastUpdatedAt: null,
-  scorerStatsLastUpdatedAt: "2026-02-14T12:00:00Z",
-  pendingJoinCode: null
+  lastPredictionAck: null
 };
 
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
@@ -127,7 +123,6 @@ const overallLeaderboardEl = document.getElementById("overall-leaderboard");
 const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
 const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
-const dataSourceLineEl = document.getElementById("data-source-line");
 
 const authPanel = document.getElementById("auth-panel");
 const loginForm = document.getElementById("login-form");
@@ -145,71 +140,52 @@ const leagueNameInput = document.getElementById("league-name-input");
 const joinCodeInput = document.getElementById("join-code-input");
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
-const copyInviteLinkBtn = document.getElementById("copy-invite-link-btn");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
-const leagueMembersListEl = document.getElementById("league-members-list");
-const leagueResultsListEl = document.getElementById("league-results-list");
 
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
 
-if (overviewFixturesTabBtn) {
-  overviewFixturesTabBtn.addEventListener("click", () => {
-    state.overviewTab = "fixtures";
-    renderOverviewTabs();
-  });
-}
-if (overviewScorersTabBtn) {
-  overviewScorersTabBtn.addEventListener("click", () => {
-    state.overviewTab = "scorers";
-    renderOverviewTabs();
-  });
-}
-if (overviewGlobalTabBtn) {
-  overviewGlobalTabBtn.addEventListener("click", () => {
-    state.overviewTab = "global";
-    renderOverviewTabs();
-  });
-}
-if (overviewPastTabBtn) {
-  overviewPastTabBtn.addEventListener("click", () => {
-    state.overviewTab = "past";
-    renderOverviewTabs();
-  });
-}
-if (overviewLeaguesTabBtn) {
-  overviewLeaguesTabBtn.addEventListener("click", () => {
-    state.overviewTab = "leagues";
-    renderOverviewTabs();
-  });
-}
-if (overviewRulesTabBtn) {
-  overviewRulesTabBtn.addEventListener("click", () => {
-    state.overviewTab = "rules";
-    renderOverviewTabs();
-  });
-}
-if (upcomingToggleBtn) {
-  upcomingToggleBtn.addEventListener("click", () => {
-    state.showAllUpcoming = !state.showAllUpcoming;
-    renderUpcomingFixtures();
-  });
-}
+overviewFixturesTabBtn.addEventListener("click", () => {
+  state.overviewTab = "fixtures";
+  renderOverviewTabs();
+});
+overviewScorersTabBtn.addEventListener("click", () => {
+  state.overviewTab = "scorers";
+  renderOverviewTabs();
+});
+overviewGlobalTabBtn.addEventListener("click", () => {
+  state.overviewTab = "global";
+  renderOverviewTabs();
+});
+overviewPastTabBtn.addEventListener("click", () => {
+  state.overviewTab = "past";
+  renderOverviewTabs();
+});
+overviewLeaguesTabBtn.addEventListener("click", () => {
+  state.overviewTab = "leagues";
+  renderOverviewTabs();
+});
+overviewRulesTabBtn.addEventListener("click", () => {
+  state.overviewTab = "rules";
+  renderOverviewTabs();
+});
+upcomingToggleBtn.addEventListener("click", () => {
+  state.showAllUpcoming = !state.showAllUpcoming;
+  renderUpcomingFixtures();
+});
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
 if (logoutInlineBtn) logoutInlineBtn.addEventListener("click", onLogOut);
 if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague);
 if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
-if (copyInviteLinkBtn) copyInviteLinkBtn.addEventListener("click", onCopyInviteLink);
 
 setInterval(renderDeadlineCountdown, 1000);
 
 initializeApp();
 
 async function initializeApp() {
-  parseInboundParams();
   hydrateSquadCache();
   hydrateFixtureCache();
   await syncUpcomingFixturesFromChelsea();
@@ -232,18 +208,12 @@ async function initializeApp() {
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
-    if (sessionUpdate?.user) {
-      trackEvent("signup_complete", { via: "auth_state" });
-    }
     await reloadAuthedData();
-    await handlePendingJoinCode();
     render();
   });
 
   await reloadAuthedData();
-  await handlePendingJoinCode();
   render();
-  trackEvent(state.session?.user ? "view_home_signed_in" : "view_home_signed_out");
 }
 
 function initSupabaseClient(url, key) {
@@ -258,7 +228,6 @@ function initSupabaseClient(url, key) {
 
 async function onLogIn(event) {
   event.preventDefault();
-  trackEvent("signup_start", { action: "login_submit" });
   if (!state.client) {
     alert("Supabase is unavailable right now.");
     return;
@@ -446,7 +415,6 @@ async function onCreateLeague(event) {
 
   leagueNameInput.value = "";
   state.activeLeagueId = leagueData.id;
-  trackEvent("league_create", { league_id: leagueData.id });
   await reloadAuthedData();
   render();
 }
@@ -479,7 +447,6 @@ async function onJoinLeague(event) {
   if (joined) {
     state.activeLeagueId = joined.id;
     await loadActiveLeagueData();
-    trackEvent("league_join", { league_id: joined.id, via: "code" });
   }
   render();
 }
@@ -503,29 +470,9 @@ async function onCopyLeagueCode() {
   }
 }
 
-async function onCopyInviteLink() {
-  const league = getActiveLeague();
-  if (!league) {
-    return;
-  }
-  const inviteUrl = `${window.location.origin}/?join=${encodeURIComponent(league.code)}&league=${encodeURIComponent(
-    league.id
-  )}`;
-  try {
-    await navigator.clipboard.writeText(inviteUrl);
-    alert("Invite link copied");
-    trackEvent("invite_copy", { method: "url", league_id: league.id });
-  } catch {
-    alert(inviteUrl);
-    trackEvent("invite_copy", { method: "fallback", league_id: league.id });
-  }
-}
-
 async function onSavePrediction(fixture, form) {
-  trackEvent("prediction_start", { fixture_id: fixture.id });
   if (!state.session?.user || !canPredictFixture(fixture)) {
     alert("Only the next fixture can be predicted, and it locks 90 minutes before kickoff.");
-    trackEvent("prediction_submit_fail", { fixture_id: fixture.id, reason: "locked_or_invalid" });
     return;
   }
 
@@ -562,7 +509,6 @@ async function onSavePrediction(fixture, form) {
 
   if (error) {
     alert(error.message);
-    trackEvent("prediction_submit_fail", { fixture_id: fixture.id, reason: error.message });
     return;
   }
 
@@ -572,8 +518,6 @@ async function onSavePrediction(fixture, form) {
     at: Date.now()
   };
   cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
-  persistLastPredictionTemplate(form);
-  trackEvent("prediction_submit_success", { fixture_id: fixture.id, updated: hadExistingPrediction });
   await loadActiveLeagueData();
   render();
 }
@@ -840,8 +784,6 @@ function render() {
   renderTopScorers();
   renderOverallLeaderboard();
   renderPastGames();
-  renderLeagueHome();
-  renderDataSourceLine();
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -850,7 +792,6 @@ function render() {
   if (logoutInlineBtn) logoutInlineBtn.classList.toggle("hidden", !isAuthed);
 
   if (authPanel) authPanel.classList.toggle("hidden", !isConnected);
-  if (leaguePanel) leaguePanel.classList.toggle("hidden", !isAuthed);
 
   if (!isConnected) {
     if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
@@ -860,10 +801,13 @@ function render() {
   if (sessionStatus) {
     sessionStatus.textContent = isAuthed ? `Signed in as ${state.session.user.email}` : "Not signed in.";
   }
-  if (isAuthed) {
-    renderLeagueSelect();
-    renderLeaderboard();
+  if (!isAuthed) {
+    renderDeadlineCountdown();
+    return;
   }
+
+  renderLeagueSelect();
+  renderLeaderboard();
   renderFixtures();
   renderDeadlineCountdown();
 }
@@ -894,9 +838,6 @@ function renderOverallLeaderboard() {
 }
 
 function renderOverviewTabs() {
-  if (!overviewFixturesTabBtn && !fixturesOverviewPanel) {
-    return;
-  }
   const showFixtures = state.overviewTab === "fixtures";
   const showScorers = state.overviewTab === "scorers";
   const showGlobal = state.overviewTab === "global";
@@ -915,12 +856,12 @@ function renderOverviewTabs() {
   overviewPastTabBtn.setAttribute("aria-selected", String(showPast));
   overviewLeaguesTabBtn.setAttribute("aria-selected", String(showLeagues));
   overviewRulesTabBtn.setAttribute("aria-selected", String(showRules));
-  if (fixturesOverviewPanel) fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
-  if (scorersOverviewPanel) scorersOverviewPanel.classList.toggle("hidden", !showScorers);
-  if (globalOverviewPanel) globalOverviewPanel.classList.toggle("hidden", !showGlobal);
-  if (pastOverviewPanel) pastOverviewPanel.classList.toggle("hidden", !showPast);
-  if (leaguePanel) leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
-  if (rulesOverviewPanel) rulesOverviewPanel.classList.toggle("hidden", !showRules);
+  fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
+  scorersOverviewPanel.classList.toggle("hidden", !showScorers);
+  globalOverviewPanel.classList.toggle("hidden", !showGlobal);
+  pastOverviewPanel.classList.toggle("hidden", !showPast);
+  leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
+  rulesOverviewPanel.classList.toggle("hidden", !showRules);
 }
 
 function renderPastGames() {
@@ -989,9 +930,6 @@ function renderPastGames() {
 }
 
 function renderUpcomingFixtures() {
-  if (!upcomingListEl || !upcomingToggleBtn || !upcomingSourceEl) {
-    return;
-  }
   const upcoming = getUpcomingFixturesForDisplay();
 
   const visible = state.showAllUpcoming ? upcoming : upcoming.slice(0, 5);
@@ -1018,9 +956,6 @@ function renderUpcomingFixtures() {
 }
 
 function renderTopScorers() {
-  if (!scorersTableBody || !scorersSourceEl) {
-    return;
-  }
   scorersTableBody.textContent = "";
   TOP_SCORERS.forEach((player, index) => {
     const row = document.createElement("tr");
@@ -1048,16 +983,10 @@ function renderTopScorers() {
     scorersTableBody.appendChild(row);
   });
 
-  const updated = state.scorerStatsLastUpdatedAt
-    ? new Date(state.scorerStatsLastUpdatedAt).toLocaleString()
-    : "Unknown";
-  scorersSourceEl.textContent = `Last updated: ${updated}`;
+  scorersSourceEl.textContent = "Data snapshot: ESPN Chelsea Premier League stats (captured Feb 14, 2026).";
 }
 
 function renderLeagueSelect() {
-  if (!leagueSelect) {
-    return;
-  }
   leagueSelect.textContent = "";
   if (state.leagues.length === 0) {
     const option = document.createElement("option");
@@ -1080,9 +1009,6 @@ function renderLeagueSelect() {
 }
 
 function renderLeaderboard() {
-  if (!leaderboardEl) {
-    return;
-  }
   leaderboardEl.textContent = "";
   if (!state.activeLeagueId || state.activeLeagueLeaderboard.length === 0) {
     const li = document.createElement("li");
@@ -1108,7 +1034,7 @@ function renderLeaderboard() {
 function renderFixtures() {
   fixturesListEl.textContent = "";
 
-  const nextFixture = getRenderableNextFixture();
+  const nextFixture = getNextFixtureForPrediction();
   const fixturesToRender = nextFixture ? [nextFixture] : [];
 
   if (fixturesToRender.length === 0) {
@@ -1125,7 +1051,6 @@ function renderFixtures() {
     const titleEl = fragment.querySelector(".fixture-title");
     const badgeEl = fragment.querySelector(".status-badge");
     const metaEl = fragment.querySelector(".fixture-meta");
-    const lockLineEl = fragment.querySelector(".lock-line");
     const predictionForm = fragment.querySelector(".prediction-form");
     const predChelseaInput = predictionForm.querySelector(".pred-chelsea");
     const predOpponentInput = predictionForm.querySelector(".pred-opponent");
@@ -1140,14 +1065,6 @@ function renderFixtures() {
     const chelseaMinusBtn = predictionForm.querySelector(".score-minus-chelsea");
     const chelseaPlusBtn = predictionForm.querySelector(".score-plus-chelsea");
     const savePredictionBtn = predictionForm.querySelector("button[type='submit']");
-    const authCtaRow = predictionForm.querySelector(".auth-cta-row");
-    const createAccountCta = predictionForm.querySelector(".create-account-cta");
-    const loginCtaBtn = predictionForm.querySelector(".login-cta-btn");
-    const scorerSearchInput = predictionForm.querySelector(".scorer-search");
-    const quickPicksWrap = predictionForm.querySelector(".quick-picks-wrap");
-    const clearScorersBtn = predictionForm.querySelector(".clear-scorers-btn");
-    const undoScorerBtn = predictionForm.querySelector(".undo-scorer-btn");
-    const repeatLastBtn = predictionForm.querySelector(".repeat-last-btn");
     const scorerSelectedEl = predictionForm.querySelector(".selected-scorer-value");
     const scorerListEl = predictionForm.querySelector(".selected-scorer-list");
     const chelseaChipWrap = predictionForm.querySelector(".player-chip-wrap-chelsea");
@@ -1156,21 +1073,16 @@ function renderFixtures() {
     metaEl.textContent = `${formatKickoff(fixture.kickoff)} | ${fixture.competition}`;
     const isNextFixture = Boolean(nextFixture && fixture.id === nextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const isAuthed = Boolean(state.session?.user);
-    const predictionEnabled = isAuthed && isNextFixture && !locked;
+    const predictionEnabled = isNextFixture && !locked;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
-    const lockDeadline = new Date(new Date(fixture.kickoff).getTime() - PREDICTION_CUTOFF_MINUTES * 60 * 1000);
-    lockLineEl.textContent = `Closes 90 mins before KO (${lockDeadline.toLocaleString()})`;
 
-    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session?.user?.id);
+    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
     if (fixture.result) {
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
       badgeEl.textContent = "Closed";
     } else if (locked) {
       badgeEl.textContent = "Locked (90m cutoff)";
-    } else if (!isAuthed) {
-      badgeEl.textContent = "Preview";
     } else if (myPrediction) {
       badgeEl.textContent = "Saved (editable)";
     } else {
@@ -1214,14 +1126,6 @@ function renderFixtures() {
       }
     });
     refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl, scorerListEl);
-    applyScorerSearchFilter(predictionForm, scorerSearchInput?.value || "");
-    renderQuickPickChips(
-      quickPicksWrap,
-      getQuickPickPlayers(),
-      predScorerInput,
-      scorerSelectedEl,
-      scorerListEl
-    );
 
     const syncScoreDisplay = () => {
       const opponentValue = Number.parseInt(predOpponentInput.value || "0", 10);
@@ -1244,38 +1148,10 @@ function renderFixtures() {
     chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
     chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
     if (savePredictionBtn) {
-      savePredictionBtn.textContent = myPrediction ? "Submit prediction (update)" : "Submit prediction";
+      savePredictionBtn.textContent = myPrediction ? "Update Prediction" : "Save Prediction";
       savePredictionBtn.title = predictionEnabled
         ? "You can edit your prediction until 90 minutes before kick-off."
         : "";
-    }
-    if (scorerSearchInput) {
-      scorerSearchInput.addEventListener("input", () => {
-        applyScorerSearchFilter(predictionForm, scorerSearchInput.value);
-      });
-    }
-    if (clearScorersBtn) {
-      clearScorersBtn.addEventListener("click", () => {
-        predScorerInput.value = "";
-        refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl, scorerListEl);
-      });
-    }
-    if (undoScorerBtn) {
-      undoScorerBtn.addEventListener("click", () => {
-        const current = parseScorerSelections(predScorerInput.value);
-        if (current.length === 0) return;
-        current[current.length - 1].count -= 1;
-        if (current[current.length - 1].count <= 0) {
-          current.pop();
-        }
-        predScorerInput.value = serializeScorerSelections(current);
-        refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl, scorerListEl);
-      });
-    }
-    if (repeatLastBtn) {
-      repeatLastBtn.addEventListener("click", () => {
-        applyLastPredictionTemplate(predictionForm);
-      });
     }
     const ack = state.lastPredictionAck;
     const isRecentAck =
@@ -1302,26 +1178,6 @@ function renderFixtures() {
       predictionForm.querySelectorAll("input, button, select").forEach((node) => {
         node.disabled = true;
       });
-      if (!isAuthed && authCtaRow) {
-        authCtaRow.classList.remove("hidden");
-        if (createAccountCta) {
-          createAccountCta.href = `signup.html?next=${encodeURIComponent(window.location.href)}`;
-          createAccountCta.addEventListener("click", () => {
-            trackEvent("signup_start", { action: "create_account_cta" });
-          });
-        }
-        if (savePredictionBtn) {
-          savePredictionBtn.textContent = "Create account to submit";
-        }
-        if (loginCtaBtn) {
-          loginCtaBtn.disabled = false;
-          loginCtaBtn.addEventListener("click", () => {
-            loginEmailInput?.focus();
-            trackEvent("signup_start", { action: "login_cta" });
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          });
-        }
-      }
     }
 
     predictionForm.addEventListener("submit", (event) => {
@@ -1897,112 +1753,6 @@ function getPredictionScorersCache() {
   }
 }
 
-function parseInboundParams() {
-  const params = new URLSearchParams(window.location.search);
-  const join = params.get("join");
-  if (join) {
-    state.pendingJoinCode = join.trim().toUpperCase();
-  }
-  const leagueId = params.get("league");
-  if (leagueId) {
-    state.activeLeagueId = leagueId;
-  }
-  const pathMatch = window.location.pathname.match(/\/league\/([a-f0-9-]{8,})$/i);
-  if (pathMatch?.[1]) {
-    state.activeLeagueId = pathMatch[1];
-  }
-}
-
-async function handlePendingJoinCode() {
-  if (!state.pendingJoinCode || !state.session?.user || !state.client) {
-    return;
-  }
-  const code = state.pendingJoinCode;
-  state.pendingJoinCode = null;
-  const { error } = await state.client.rpc("join_league_by_code", {
-    p_code: code,
-    p_display_name: getCurrentUserDisplayName(),
-    p_country_code: getCurrentUserCountryCode()
-  });
-  if (!error) {
-    await reloadAuthedData();
-    const joined = state.leagues.find((league) => league.code === code);
-    if (joined) {
-      state.activeLeagueId = joined.id;
-    }
-    trackEvent("league_join", { league_code: code, via: "invite_link" });
-  }
-}
-
-function renderLeagueHome() {
-  if (!leagueMembersListEl || !leagueResultsListEl) {
-    return;
-  }
-  leagueMembersListEl.textContent = "";
-  leagueResultsListEl.textContent = "";
-  if (!state.session?.user) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "Log in to manage leagues.";
-    leagueMembersListEl.appendChild(li);
-    return;
-  }
-  const members = state.activeLeagueMembers.slice().sort((a, b) => a.display_name.localeCompare(b.display_name));
-  if (members.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "No members yet.";
-    leagueMembersListEl.appendChild(li);
-  } else {
-    members.forEach((member) => {
-      const li = document.createElement("li");
-      li.textContent = formatMemberName(member.display_name, member.country_code);
-      leagueMembersListEl.appendChild(li);
-    });
-  }
-
-  const recent = state.activeLeagueFixtures
-    .filter((fixture) => fixture.result)
-    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())
-    .slice(0, 3);
-  if (recent.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "No results yet.";
-    leagueResultsListEl.appendChild(li);
-  } else {
-    recent.forEach((fixture) => {
-      const li = document.createElement("li");
-      li.className = "past-game-item";
-      li.textContent = `${fixture.opponent}: ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals}`;
-      leagueResultsListEl.appendChild(li);
-    });
-  }
-}
-
-function renderDataSourceLine() {
-  if (!dataSourceLineEl) {
-    return;
-  }
-  const fixtureUpdated = state.fixturesLastUpdatedAt
-    ? new Date(state.fixturesLastUpdatedAt).toLocaleString()
-    : "unknown";
-  const scorersUpdated = state.scorerStatsLastUpdatedAt
-    ? new Date(state.scorerStatsLastUpdatedAt).toLocaleString()
-    : "unknown";
-  dataSourceLineEl.textContent = `Data source: Chelsea fixtures feed, ESPN stats. Last updated fixtures: ${fixtureUpdated}. Scorers: ${scorersUpdated}.`;
-}
-
-function trackEvent(name, payload = {}) {
-  const event = { name, payload, at: new Date().toISOString() };
-  const debugEnabled =
-    localStorage.getItem("sw6_debug_analytics") === "1" ||
-    new URLSearchParams(window.location.search).get("debugAnalytics") === "1";
-  if (debugEnabled) {
-    console.log("[analytics]", event);
-  }
-}
-
 function parseScorerSelections(rawValue) {
   const byName = new Map();
   String(rawValue || "")
@@ -2105,7 +1855,6 @@ function hydrateFixtureCache() {
     }
     state.upcomingFixtures = parsed.fixtures;
     state.upcomingSourceText = `Auto-updated from official fixtures feed (${new Date(parsed.syncedAt).toLocaleString()}).`;
-    state.fixturesLastUpdatedAt = parsed.syncedAt;
   } catch {
     // Ignore cache parse errors.
   }
@@ -2144,7 +1893,6 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
       state.upcomingFixtures = parsedFixtures;
       const syncedAt = new Date().toISOString();
       state.upcomingSourceText = `Auto-updated from official fixtures feed (${new Date(syncedAt).toLocaleString()}).`;
-      state.fixturesLastUpdatedAt = syncedAt;
       localStorage.setItem(
         FIXTURE_CACHE_KEY,
         JSON.stringify({
@@ -2339,108 +2087,12 @@ function getNextFixtureForPrediction() {
   );
 }
 
-function getRenderableNextFixture() {
-  const authedNext = getNextFixtureForPrediction();
-  if (authedNext) {
-    return authedNext;
-  }
-  const scheduleNext = getNextUpcomingFixtureFromSchedule();
-  if (!scheduleNext) {
-    return null;
-  }
-  return {
-    id: `public-${scheduleNext.date}-${scheduleNext.opponent}`,
-    kickoff: buildFixtureKickoffIso(scheduleNext.date, scheduleNext.kickoffUk),
-    opponent: scheduleNext.opponent,
-    competition: scheduleNext.competition,
-    predictions: [],
-    result: null
-  };
-}
-
 function canPredictFixture(fixture) {
   const nextFixture = getNextFixtureForPrediction();
   if (!nextFixture || nextFixture.id !== fixture.id) {
     return false;
   }
   return !isFixtureLockedForPrediction(fixture);
-}
-
-function getQuickPickPlayers() {
-  return TOP_SCORERS.slice(0, 6).map((row) => row.name);
-}
-
-function renderQuickPickChips(container, players, targetInput, selectedLabelEl, selectedListEl) {
-  if (!container) {
-    return;
-  }
-  container.textContent = "";
-  players.forEach((player) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "player-chip";
-    btn.textContent = player;
-    btn.addEventListener("click", () => {
-      incrementScorerSelection(
-        container.closest(".prediction-form"),
-        targetInput,
-        player,
-        selectedLabelEl,
-        selectedListEl
-      );
-    });
-    container.appendChild(btn);
-  });
-}
-
-function applyScorerSearchFilter(formEl, searchValue) {
-  const value = String(searchValue || "").trim().toLowerCase();
-  formEl.querySelectorAll(".player-chip").forEach((chip) => {
-    if (!value) {
-      chip.classList.remove("hidden");
-      return;
-    }
-    const match = chip.dataset.player?.toLowerCase().includes(value);
-    chip.classList.toggle("hidden", !match);
-  });
-}
-
-function persistLastPredictionTemplate(form) {
-  try {
-    const payload = {
-      opponentGoals: form.querySelector(".pred-opponent")?.value || "0",
-      scorerRaw: form.querySelector(".pred-scorer")?.value || "",
-      firstScorer: form.querySelector(".pred-first-scorer")?.value || ""
-    };
-    localStorage.setItem(LAST_PREDICTION_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore local write failures.
-  }
-}
-
-function applyLastPredictionTemplate(form) {
-  const raw = localStorage.getItem(LAST_PREDICTION_KEY);
-  if (!raw) {
-    return;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    form.querySelector(".pred-opponent").value = String(parsed.opponentGoals || "0");
-    form.querySelector(".pred-scorer").value = String(parsed.scorerRaw || "");
-    form.querySelector(".pred-first-scorer").dataset.initialValue = String(parsed.firstScorer || "");
-    refreshScorerState(
-      form,
-      form.querySelector(".pred-scorer").value,
-      form.querySelector(".selected-scorer-value"),
-      form.querySelector(".selected-scorer-list")
-    );
-    const opponentScoreValueEl = form.querySelector(".score-value-opponent");
-    if (opponentScoreValueEl) {
-      opponentScoreValueEl.textContent = String(parsed.opponentGoals || "0");
-    }
-  } catch {
-    // Ignore malformed template.
-  }
 }
 
 function isFixtureLockedForPrediction(fixture) {
