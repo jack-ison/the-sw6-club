@@ -5,10 +5,22 @@ const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
+const THE_SPORTS_DB_SCORERS_CACHE_KEY = "cfc-sportsdb-scorers-cache-v1";
+const THE_SPORTS_DB_SCORERS_CACHE_VERSION = 1;
+const THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PREDICTION_CUTOFF_MINUTES = 90;
+const CHELSEA_TEAM_ID = "133610";
+const THE_SPORTS_DB_BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
+const THE_SPORTS_DB_SCORER_COMPETITIONS = {
+  premier_league: { leagueId: "4328", label: "Premier League 2025/26" },
+  champions_league: { leagueId: "4480", label: "Champions League 2025/26" },
+  fa_cup: { leagueId: "4482", label: "FA Cup 2025/26" }
+};
+const SCORER_COMPETITION_KEYS = ["all", "premier_league", "champions_league", "fa_cup"];
+const THE_SPORTS_DB_SEASON = "2025-2026";
 const SCORING = {
   exactScore: 5,
   correctResult: 2,
@@ -51,28 +63,41 @@ const TOP_SCORERS = [
   { name: "Estevao", apps: 19, goals: 2 },
   { name: "Marc Cucurella", apps: 24, goals: 1 }
 ];
-const TOP_SCORERS_BY_COMPETITION = {
+const FALLBACK_TOP_SCORERS_BY_COMPETITION = {
   all: {
     label: "All Competitions 2025/26",
     players: [...TOP_SCORERS],
-    source: "Data snapshot: currently using latest available Chelsea scorer feed."
+    source: "Fallback snapshot while live TheSportsDB scorer data is unavailable."
   },
   premier_league: {
     label: "Premier League 2025/26",
     players: [...TOP_SCORERS],
-    source: "Data snapshot: ESPN Chelsea Premier League stats (captured Feb 14, 2026)."
+    source: "Fallback snapshot while live TheSportsDB scorer data is unavailable."
   },
   champions_league: {
     label: "Champions League 2025/26",
     players: [],
-    source: "No Champions League scorer snapshot loaded yet."
+    source: "No fallback scorer rows loaded for this competition."
   },
   fa_cup: {
     label: "FA Cup 2025/26",
     players: [],
-    source: "No FA Cup scorer snapshot loaded yet."
+    source: "No fallback scorer rows loaded for this competition."
   }
 };
+
+function cloneCompetitionDataMap(sourceMap) {
+  return Object.fromEntries(
+    Object.entries(sourceMap).map(([key, value]) => [
+      key,
+      {
+        label: value.label,
+        players: Array.isArray(value.players) ? value.players.map((player) => ({ ...player })) : [],
+        source: value.source
+      }
+    ])
+  );
+}
 const CHELSEA_REGISTERED_PLAYERS = [
   "Robert Sanchez", "Filip Jorgensen", "Teddy Sharman-Lowe", "Gaga Slonina",
   "Marc Cucurella", "Tosin Adarabioyo", "Benoit Badiashile", "Levi Colwill", "Mamadou Sarr",
@@ -146,6 +171,7 @@ const state = {
   topView: "predict",
   resultsTab: "fixtures",
   scorerCompetition: "all",
+  scorerDataByCompetition: cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION),
   leaderboardScope: "global",
   accountMenuOpen: false,
   loginPanelOpen: false,
@@ -277,12 +303,17 @@ initializeApp();
 async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
+  hydrateScorerStatsCache();
   onLeagueVisibilityChange();
   onJoinModeChange();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
   render();
 
-  const backgroundSync = Promise.allSettled([syncUpcomingFixturesFromChelsea(), maybeRefreshChelseaSquad()]);
+  const backgroundSync = Promise.allSettled([
+    syncUpcomingFixturesFromChelsea(),
+    maybeRefreshChelseaSquad(),
+    syncScorerStatsFromTheSportsDb()
+  ]);
 
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
@@ -357,7 +388,7 @@ function setResultsTab(tab) {
 }
 
 function setScorerCompetition(competition) {
-  state.scorerCompetition = TOP_SCORERS_BY_COMPETITION[competition] ? competition : "all";
+  state.scorerCompetition = SCORER_COMPETITION_KEYS.includes(competition) ? competition : "all";
   renderTopScorers();
   renderNavigation();
 }
@@ -609,6 +640,7 @@ async function onLogOut() {
 async function onRefreshAll() {
   await syncUpcomingFixturesFromChelsea(true);
   await maybeRefreshChelseaSquad(true);
+  await syncScorerStatsFromTheSportsDb(true);
   await ensureOverallLeaderboardLoaded(true);
   await reloadAuthedData();
   render();
@@ -1665,8 +1697,9 @@ function renderTopScorers() {
     return;
   }
 
-  const key = TOP_SCORERS_BY_COMPETITION[state.scorerCompetition] ? state.scorerCompetition : "all";
-  const competitionData = TOP_SCORERS_BY_COMPETITION[key];
+  const key = SCORER_COMPETITION_KEYS.includes(state.scorerCompetition) ? state.scorerCompetition : "all";
+  const competitionData =
+    state.scorerDataByCompetition[key] || FALLBACK_TOP_SCORERS_BY_COMPETITION[key] || FALLBACK_TOP_SCORERS_BY_COMPETITION.all;
   const players = competitionData.players || [];
 
   scorersTableBody.textContent = "";
@@ -1705,7 +1738,9 @@ function renderTopScorers() {
     row.appendChild(goalsCell);
 
     const gpgCell = document.createElement("td");
-    gpgCell.textContent = (player.goals / player.apps).toFixed(2);
+    const apps = Number(player.apps) || 0;
+    const goals = Number(player.goals) || 0;
+    gpgCell.textContent = apps > 0 ? (goals / apps).toFixed(2) : "0.00";
     row.appendChild(gpgCell);
 
     scorersTableBody.appendChild(row);
@@ -2848,6 +2883,241 @@ function persistSquadCache() {
   } catch {
     // Ignore localStorage write failures.
   }
+}
+
+function hydrateScorerStatsCache() {
+  const raw = localStorage.getItem(THE_SPORTS_DB_SCORERS_CACHE_KEY);
+  if (!raw) {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      parsed.version !== THE_SPORTS_DB_SCORERS_CACHE_VERSION ||
+      parsed.season !== THE_SPORTS_DB_SEASON ||
+      typeof parsed.syncedAt !== "string" ||
+      !parsed.data ||
+      typeof parsed.data !== "object"
+    ) {
+      return;
+    }
+    const nextData = cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION);
+    SCORER_COMPETITION_KEYS.forEach((key) => {
+      const row = parsed.data[key];
+      if (!row || typeof row !== "object") {
+        return;
+      }
+      const safePlayers = Array.isArray(row.players)
+        ? row.players
+            .map((player) => ({
+              name: String(player?.name || "").trim(),
+              apps: Number.parseInt(player?.apps, 10) || 0,
+              goals: Number.parseInt(player?.goals, 10) || 0
+            }))
+            .filter((player) => player.name)
+        : [];
+      nextData[key] = {
+        label: String(row.label || nextData[key].label),
+        players: safePlayers,
+        source: String(row.source || nextData[key].source)
+      };
+    });
+    state.scorerDataByCompetition = nextData;
+  } catch {
+    // Ignore malformed scorer cache.
+  }
+}
+
+function persistScorerStatsCache(dataByCompetition, syncedAtIso) {
+  try {
+    localStorage.setItem(
+      THE_SPORTS_DB_SCORERS_CACHE_KEY,
+      JSON.stringify({
+        version: THE_SPORTS_DB_SCORERS_CACHE_VERSION,
+        season: THE_SPORTS_DB_SEASON,
+        syncedAt: syncedAtIso,
+        data: dataByCompetition
+      })
+    );
+  } catch {
+    // Ignore localStorage write failures.
+  }
+}
+
+function getCachedScorerStatsSyncTime() {
+  const raw = localStorage.getItem(THE_SPORTS_DB_SCORERS_CACHE_KEY);
+  if (!raw) {
+    return 0;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed.version !== THE_SPORTS_DB_SCORERS_CACHE_VERSION ||
+      parsed.season !== THE_SPORTS_DB_SEASON ||
+      typeof parsed.syncedAt !== "string"
+    ) {
+      return 0;
+    }
+    const syncedAt = new Date(parsed.syncedAt).getTime();
+    return Number.isFinite(syncedAt) ? syncedAt : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function normalizeSportsDbScorerRow(row) {
+  if (!row || typeof row !== "object") {
+    return null;
+  }
+  const name = String(row.strPlayer || row.strPlayerName || row.strPlayerAlternate || "").trim();
+  if (!name) {
+    return null;
+  }
+  const goals = Number.parseInt(
+    row.intGoals || row.strGoals || row.intGoal || row.goals || "0",
+    10
+  );
+  const apps = Number.parseInt(
+    row.intApps || row.intAppearances || row.intGames || row.strAppearances || "0",
+    10
+  );
+  return {
+    name,
+    goals: Number.isFinite(goals) ? Math.max(0, goals) : 0,
+    apps: Number.isFinite(apps) ? Math.max(0, apps) : 0,
+    teamId: String(row.idTeam || "").trim(),
+    teamName: String(row.strTeam || "").trim()
+  };
+}
+
+function toSportsDbScorerRows(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const buckets = [
+    payload.topscorers,
+    payload.playerstats,
+    payload.player,
+    payload.players,
+    payload.table
+  ];
+  for (const bucket of buckets) {
+    if (!Array.isArray(bucket)) {
+      continue;
+    }
+    const rows = bucket
+      .map(normalizeSportsDbScorerRow)
+      .filter(Boolean)
+      .filter((row) => row.teamId === CHELSEA_TEAM_ID || row.teamName.toLowerCase() === "chelsea")
+      .map((row) => ({ name: row.name, apps: row.apps, goals: row.goals }))
+      .filter((row) => row.goals > 0 || row.apps > 0);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  return [];
+}
+
+function mergeScorerRows(rows) {
+  const byName = new Map();
+  rows.forEach((row) => {
+    const name = String(row?.name || "").trim();
+    if (!name) {
+      return;
+    }
+    const key = name.toLowerCase();
+    const current = byName.get(key) || { name, apps: 0, goals: 0 };
+    current.apps += Number.parseInt(row.apps, 10) || 0;
+    current.goals += Number.parseInt(row.goals, 10) || 0;
+    byName.set(key, current);
+  });
+  return [...byName.values()]
+    .sort((a, b) => {
+      if (b.goals !== a.goals) return b.goals - a.goals;
+      if (b.apps !== a.apps) return b.apps - a.apps;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 20);
+}
+
+async function fetchSportsDbTopScorersForLeague(leagueId) {
+  const url = new URL(`${THE_SPORTS_DB_BASE_URL}/lookuptopscorers.php`);
+  url.searchParams.set("l", leagueId);
+  url.searchParams.set("s", THE_SPORTS_DB_SEASON);
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  return mergeScorerRows(toSportsDbScorerRows(payload));
+}
+
+function getEmptyScorerCompetitionData() {
+  const blank = cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION);
+  blank.all.players = [];
+  blank.all.source = "Loading scorer data from TheSportsDB...";
+  blank.premier_league.players = [];
+  blank.champions_league.players = [];
+  blank.fa_cup.players = [];
+  return blank;
+}
+
+async function syncScorerStatsFromTheSportsDb(force = false) {
+  const cachedAt = getCachedScorerStatsSyncTime();
+  if (!force && cachedAt && Date.now() - cachedAt < THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS) {
+    return;
+  }
+
+  const nextData = getEmptyScorerCompetitionData();
+  const syncedAtIso = new Date().toISOString();
+  const syncedAtLabel = new Date(syncedAtIso).toLocaleString();
+  const sourcePrefix = "Data source: TheSportsDB official endpoint lookuptopscorers.php";
+  let liveRowsCount = 0;
+
+  await Promise.all(
+    Object.entries(THE_SPORTS_DB_SCORER_COMPETITIONS).map(async ([key, competition]) => {
+      try {
+        const rows = await fetchSportsDbTopScorersForLeague(competition.leagueId);
+        nextData[key] = {
+          label: competition.label,
+          players: rows,
+          source:
+            rows.length > 0
+              ? `${sourcePrefix} (league ${competition.leagueId}, season ${THE_SPORTS_DB_SEASON}). Last updated: ${syncedAtLabel}.`
+              : `${sourcePrefix} returned no Chelsea scorer rows for this competition (league ${competition.leagueId}, season ${THE_SPORTS_DB_SEASON}). Last checked: ${syncedAtLabel}.`
+        };
+        if (rows.length > 0) {
+          liveRowsCount += rows.length;
+        }
+      } catch (error) {
+        nextData[key] = {
+          label: competition.label,
+          players: [],
+          source: `${sourcePrefix} unavailable right now for this competition. Last checked: ${syncedAtLabel}.`
+        };
+      }
+    })
+  );
+
+  const aggregateRows = mergeScorerRows([
+    ...nextData.premier_league.players,
+    ...nextData.champions_league.players,
+    ...nextData.fa_cup.players
+  ]);
+  nextData.all = {
+    label: "All Competitions 2025/26",
+    players: aggregateRows.length > 0 ? aggregateRows : FALLBACK_TOP_SCORERS_BY_COMPETITION.all.players,
+    source:
+      aggregateRows.length > 0
+        ? `${sourcePrefix} aggregated across Premier League, Champions League, and FA Cup. Last updated: ${syncedAtLabel}.`
+        : liveRowsCount > 0
+          ? `${sourcePrefix} provided partial competition data only. Last checked: ${syncedAtLabel}.`
+          : FALLBACK_TOP_SCORERS_BY_COMPETITION.all.source
+  };
+
+  state.scorerDataByCompetition = nextData;
+  persistScorerStatsCache(nextData, syncedAtIso);
 }
 
 function hydrateFixtureCache() {
