@@ -715,46 +715,30 @@ button:disabled {
   gap: 0.35rem;
 }
 
+.position-groups-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.38rem;
+}
+
 .position-group + .position-group {
-  margin-top: 0.34rem;
+  margin-top: 0;
 }
 
 .position-group {
   border: 1px solid #d8e6ff;
   border-radius: 10px;
-  padding: 0.26rem 0.4rem;
+  padding: 0.3rem 0.42rem;
   background: rgb(255 255 255 / 74%);
 }
 
 .position-group-title {
-  margin: 0;
-  list-style: none;
-  cursor: pointer;
-  user-select: none;
+  margin: 0 0 0.28rem;
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #42679e;
-}
-
-.position-group-title::-webkit-details-marker {
-  display: none;
-}
-
-.position-group-title::after {
-  content: "+";
-  float: right;
-  font-size: 0.8rem;
-  color: #2f5489;
-}
-
-.position-group[open] .position-group-title::after {
-  content: "-";
-}
-
-.position-group .player-chip-wrap {
-  margin-top: 0.34rem;
 }
 
 .player-chip {
@@ -985,7 +969,8 @@ button:disabled {
   .two-col,
   .dashboard-grid,
   .fixture-body,
-  .scorer-groups {
+  .scorer-groups,
+  .position-groups-layout {
     grid-template-columns: 1fr;
   }
 

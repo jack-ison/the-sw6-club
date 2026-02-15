@@ -56,7 +56,7 @@ const CHELSEA_REGISTERED_PLAYERS = [
   "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
   "Joao Pedro", "Estevao", "Kendry Paez"
 ];
-const POSITION_GROUPS = ["Forwards", "Midfielders", "Defenders", "Goalkeepers", "Other"];
+const POSITION_GROUPS = ["Goalkeepers", "Defenders", "Midfielders", "Forwards", "Other"];
 const CHELSEA_PLAYER_POSITION_GROUP = {
   "Robert Sanchez": "Goalkeepers",
   "Filip Jorgensen": "Goalkeepers",
@@ -1311,6 +1311,7 @@ function renderFixtures() {
 
 function renderScorerButtons(container, players, targetInput, selectedLabelEl, selectedListEl) {
   container.textContent = "";
+  container.classList.add("position-groups-layout");
   const grouped = new Map(POSITION_GROUPS.map((group) => [group, []]));
   players.forEach((player) => {
     const group = getPositionGroupForPlayer(player);
@@ -1362,14 +1363,11 @@ function ensurePositionGroupChipWrap(container, groupName) {
   const groupKey = groupName.toLowerCase().replace(/\s+/g, "-");
   let groupEl = container.querySelector(`.position-group[data-group='${groupKey}']`);
   if (!groupEl) {
-    groupEl = document.createElement("details");
+    groupEl = document.createElement("div");
     groupEl.className = "position-group";
     groupEl.dataset.group = groupKey;
-    if (groupName === "Forwards") {
-      groupEl.open = true;
-    }
 
-    const title = document.createElement("summary");
+    const title = document.createElement("p");
     title.className = "position-group-title";
     title.textContent = groupName;
 
