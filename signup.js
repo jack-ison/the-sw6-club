@@ -98,10 +98,10 @@ async function onSignUp(event) {
     return;
   }
 
-  signupStatus.textContent = "Account created. Redirecting to log in...";
+  signupStatus.textContent = "Account created. Redirecting...";
   signupForm.reset();
   setTimeout(() => {
-    window.location.href = "login.html";
+    window.location.href = "index.html#predict";
   }, 900);
 }
 
