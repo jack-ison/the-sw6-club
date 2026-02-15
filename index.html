@@ -108,7 +108,6 @@
         <div class="overview-tabs" role="tablist" aria-label="Results views">
           <button id="results-fixtures-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">Fixtures</button>
           <button id="results-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Past Games</button>
-          <button id="results-leaderboards-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Leaderboards</button>
           <button id="results-stats-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Stats</button>
         </div>
 
@@ -138,20 +137,6 @@
             </table>
           </div>
           <p id="scorers-source" class="status"></p>
-        </div>
-
-        <div id="global-overview-panel" class="hidden">
-          <div class="leaderboards-head">
-            <h2>Leaderboards</h2>
-            <div class="overview-tabs mini-toggle" role="tablist" aria-label="Leaderboard scope">
-              <button id="leaderboard-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">Global</button>
-              <button id="leaderboard-league-tab" type="button" class="tab-btn" role="tab" aria-selected="false">League</button>
-            </div>
-          </div>
-          <ul id="overall-leaderboard" class="leaderboard"></ul>
-          <p id="overall-leaderboard-status" class="status no-margin"></p>
-          <ul id="results-league-leaderboard" class="leaderboard hidden"></ul>
-          <p id="results-league-status" class="status no-margin hidden"></p>
         </div>
 
         <div id="past-overview-panel" class="hidden">
@@ -195,8 +180,13 @@
 
           <div class="dashboard-grid">
             <article class="subpanel">
-              <h3>Leaderboard</h3>
+              <h3>League Leaderboard</h3>
               <ul id="leaderboard" class="leaderboard"></ul>
+            </article>
+            <article class="subpanel">
+              <h3>Global Leaderboard</h3>
+              <ul id="overall-leaderboard" class="leaderboard"></ul>
+              <p id="overall-leaderboard-status" class="status no-margin"></p>
             </article>
           </div>
       </section>

@@ -136,16 +136,10 @@ const topnavLeaguesBtn = document.getElementById("topnav-leagues");
 const topnavResultsBtn = document.getElementById("topnav-results");
 const resultsFixturesTabBtn = document.getElementById("results-fixtures-tab");
 const resultsPastTabBtn = document.getElementById("results-past-tab");
-const resultsLeaderboardsTabBtn = document.getElementById("results-leaderboards-tab");
 const resultsStatsTabBtn = document.getElementById("results-stats-tab");
-const leaderboardGlobalTabBtn = document.getElementById("leaderboard-global-tab");
-const leaderboardLeagueTabBtn = document.getElementById("leaderboard-league-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
-const globalOverviewPanel = document.getElementById("global-overview-panel");
 const pastOverviewPanel = document.getElementById("past-overview-panel");
-const resultsLeagueLeaderboardEl = document.getElementById("results-league-leaderboard");
-const resultsLeagueStatusEl = document.getElementById("results-league-status");
 const predictViewEl = document.getElementById("predict-view");
 const resultsViewEl = document.getElementById("results-view");
 const loginPanelEl = document.getElementById("login-panel");
@@ -206,10 +200,7 @@ if (topnavLeaguesBtn) topnavLeaguesBtn.addEventListener("click", () => setTopVie
 if (topnavResultsBtn) topnavResultsBtn.addEventListener("click", () => setTopView("results"));
 if (resultsFixturesTabBtn) resultsFixturesTabBtn.addEventListener("click", () => setResultsTab("fixtures"));
 if (resultsPastTabBtn) resultsPastTabBtn.addEventListener("click", () => setResultsTab("past"));
-if (resultsLeaderboardsTabBtn) resultsLeaderboardsTabBtn.addEventListener("click", () => setResultsTab("leaderboards"));
 if (resultsStatsTabBtn) resultsStatsTabBtn.addEventListener("click", () => setResultsTab("stats"));
-if (leaderboardGlobalTabBtn) leaderboardGlobalTabBtn.addEventListener("click", () => setLeaderboardScope("global"));
-if (leaderboardLeagueTabBtn) leaderboardLeagueTabBtn.addEventListener("click", () => setLeaderboardScope("league"));
 if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
@@ -307,9 +298,9 @@ function setResultsTab(tab) {
 }
 
 function setLeaderboardScope(scope) {
-  state.topView = "results";
-  state.resultsTab = "leaderboards";
-  state.leaderboardScope = scope;
+  state.topView = "leagues";
+  state.resultsTab = "fixtures";
+  state.leaderboardScope = scope === "league" ? "league" : "global";
   syncRouteHash();
   render();
 }
@@ -414,7 +405,7 @@ function getRouteIntentFromUrl() {
     token === "global" ||
     token === "globaloverviewpanel"
   ) {
-    return { topView: "results", resultsTab: "leaderboards", leaderboardScope: "global" };
+    return { topView: "leagues", leaderboardScope: "global" };
   }
   if (token === "rules" || token === "gamerules" || token === "rulesoverviewpanel") {
     return { topView: "predict", showRulesModal: true };
@@ -437,7 +428,7 @@ function normalizeRouteToken(value) {
 function applyRouteIntent(intent, options = {}) {
   const nextTop = ["predict", "leagues", "results"].includes(intent.topView) ? intent.topView : state.topView;
   state.topView = nextTop || "predict";
-  state.resultsTab = ["fixtures", "past", "leaderboards", "stats"].includes(intent.resultsTab)
+  state.resultsTab = ["fixtures", "past", "stats"].includes(intent.resultsTab)
     ? intent.resultsTab
     : state.resultsTab || "fixtures";
   state.leaderboardScope = intent.leaderboardScope === "league" ? "league" : state.leaderboardScope || "global";
@@ -1238,7 +1229,6 @@ function render() {
     renderLeaderboard();
   } else {
     leaderboardEl.textContent = "";
-    if (resultsLeagueLeaderboardEl) resultsLeagueLeaderboardEl.textContent = "";
   }
   renderFixtures();
   renderDeadlineCountdown();
@@ -1320,7 +1310,6 @@ function renderNavigation() {
 
   const showFixtures = state.resultsTab === "fixtures";
   const showPast = state.resultsTab === "past";
-  const showLeaderboards = state.resultsTab === "leaderboards";
   const showStats = state.resultsTab === "stats";
   if (resultsFixturesTabBtn) {
     resultsFixturesTabBtn.classList.toggle("active", showFixtures);
@@ -1330,10 +1319,6 @@ function renderNavigation() {
     resultsPastTabBtn.classList.toggle("active", showPast);
     resultsPastTabBtn.setAttribute("aria-selected", String(showPast));
   }
-  if (resultsLeaderboardsTabBtn) {
-    resultsLeaderboardsTabBtn.classList.toggle("active", showLeaderboards);
-    resultsLeaderboardsTabBtn.setAttribute("aria-selected", String(showLeaderboards));
-  }
   if (resultsStatsTabBtn) {
     resultsStatsTabBtn.classList.toggle("active", showStats);
     resultsStatsTabBtn.setAttribute("aria-selected", String(showStats));
@@ -1341,25 +1326,7 @@ function renderNavigation() {
 
   if (fixturesOverviewPanel) fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
   if (pastOverviewPanel) pastOverviewPanel.classList.toggle("hidden", !showPast);
-  if (globalOverviewPanel) globalOverviewPanel.classList.toggle("hidden", !showLeaderboards);
   if (scorersOverviewPanel) scorersOverviewPanel.classList.toggle("hidden", !showStats);
-
-  const showGlobalScope = state.leaderboardScope !== "league";
-  if (leaderboardGlobalTabBtn) {
-    leaderboardGlobalTabBtn.classList.toggle("active", showGlobalScope);
-    leaderboardGlobalTabBtn.setAttribute("aria-selected", String(showGlobalScope));
-  }
-  if (leaderboardLeagueTabBtn) {
-    leaderboardLeagueTabBtn.classList.toggle("active", !showGlobalScope);
-    leaderboardLeagueTabBtn.setAttribute("aria-selected", String(!showGlobalScope));
-  }
-  if (overallLeaderboardEl) overallLeaderboardEl.classList.toggle("hidden", !showGlobalScope);
-  if (overallLeaderboardStatusEl) overallLeaderboardStatusEl.classList.toggle("hidden", !showGlobalScope);
-  if (resultsLeagueLeaderboardEl) resultsLeagueLeaderboardEl.classList.toggle("hidden", showGlobalScope);
-  if (resultsLeagueStatusEl) resultsLeagueStatusEl.classList.toggle("hidden", showGlobalScope);
-  if (!showGlobalScope) {
-    renderLeagueLeaderboardInResults();
-  }
   if (rulesModalEl) rulesModalEl.classList.toggle("hidden", !state.showRulesModal);
 }
 
@@ -1531,43 +1498,6 @@ function renderLeaderboard() {
     li.appendChild(right);
     leaderboardEl.appendChild(li);
   });
-}
-
-function renderLeagueLeaderboardInResults() {
-  if (!resultsLeagueLeaderboardEl || !resultsLeagueStatusEl) {
-    return;
-  }
-  resultsLeagueLeaderboardEl.textContent = "";
-  if (!state.session?.user) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "Log in to view league leaderboard.";
-    resultsLeagueLeaderboardEl.appendChild(li);
-    resultsLeagueStatusEl.textContent = "Join or create a league to compete with friends.";
-    return;
-  }
-  if (!state.activeLeagueId || state.activeLeagueLeaderboard.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "No league rankings yet.";
-    resultsLeagueLeaderboardEl.appendChild(li);
-    resultsLeagueStatusEl.textContent = "Rankings appear after predictions and completed matches.";
-    return;
-  }
-  state.activeLeagueLeaderboard.forEach((row, index) => {
-    const li = document.createElement("li");
-    const safeName = row.display_name || "Player";
-    const suffix = row.role === "owner" ? " (Owner)" : "";
-    const left = createLeaderboardIdentity(index, `${safeName}${suffix}`.trim(), row.country_code, row.avatar_url);
-    li.appendChild(left);
-    const pts = document.createElement("span");
-    pts.className = "leader-points";
-    pts.textContent = `${row.points || 0} pts`;
-    li.appendChild(pts);
-    resultsLeagueLeaderboardEl.appendChild(li);
-  });
-  const active = getActiveLeague();
-  resultsLeagueStatusEl.textContent = active ? `Showing league: ${active.name}` : "League leaderboard";
 }
 
 function renderFixtures() {
