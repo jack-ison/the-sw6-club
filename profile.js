@@ -13,6 +13,8 @@ const avatarInput = document.getElementById("profile-avatar-input");
 const displayModeInput = document.getElementById("profile-display-mode-input");
 const statusEl = document.getElementById("profile-status");
 const saveBtn = document.getElementById("profile-save-btn");
+const deleteConfirmInput = document.getElementById("profile-delete-confirm-input");
+const deleteBtn = document.getElementById("profile-delete-btn");
 
 initialize();
 
@@ -35,6 +37,9 @@ function hydrate(user) {
 
 if (profileForm) {
   profileForm.addEventListener("submit", onSave);
+}
+if (deleteBtn) {
+  deleteBtn.addEventListener("click", onDeleteAccount);
 }
 
 async function onSave(event) {
@@ -102,6 +107,37 @@ async function onSave(event) {
 
   statusEl.textContent = "Profile updated.";
   saveBtn.disabled = false;
+}
+
+async function onDeleteAccount() {
+  const confirmationText = String(deleteConfirmInput?.value || "").trim().toUpperCase();
+  if (confirmationText !== "DELETE") {
+    statusEl.textContent = "Type DELETE in the confirmation box to continue.";
+    return;
+  }
+
+  const isConfirmed = window.confirm(
+    "Delete your account and all associated data permanently? This cannot be undone."
+  );
+  if (!isConfirmed) {
+    return;
+  }
+
+  saveBtn.disabled = true;
+  if (deleteBtn) deleteBtn.disabled = true;
+  statusEl.textContent = "Deleting account...";
+
+  const { error } = await client.rpc("delete_my_account");
+  if (error) {
+    statusEl.textContent =
+      "Unable to delete account right now. If this persists, run the latest supabase-schema.sql migration.";
+    saveBtn.disabled = false;
+    if (deleteBtn) deleteBtn.disabled = false;
+    return;
+  }
+
+  await client.auth.signOut();
+  window.location.href = "signup.html";
 }
 
 function containsBlockedUsernameLanguage(value) {

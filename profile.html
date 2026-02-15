@@ -46,6 +46,17 @@
           </label>
           <button id="profile-save-btn" type="submit">Save profile</button>
         </form>
+        <div class="danger-zone">
+          <h3>Delete Account</h3>
+          <p class="status no-margin">
+            This permanently deletes your account, leagues you own, predictions, and related data.
+          </p>
+          <label>
+            Type DELETE to confirm
+            <input id="profile-delete-confirm-input" type="text" placeholder="DELETE" />
+          </label>
+          <button id="profile-delete-btn" type="button" class="danger-btn">Delete account and data</button>
+        </div>
         <p id="profile-status" class="status" aria-live="polite"></p>
         <p class="status no-margin"><a href="index.html#predict">Back to app</a></p>
       </section>

@@ -666,3 +666,26 @@ with check (
       and public.is_league_owner(f.league_id)
   )
 );
+
+drop function if exists public.delete_my_account();
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_user_id uuid;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  -- Deleting auth.users cascades into league_members, leagues (as owner), fixtures, predictions, and results.
+  delete from auth.users
+  where id = v_user_id;
+end;
+$$;
+
+grant execute on function public.delete_my_account() to authenticated;
