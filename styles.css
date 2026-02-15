@@ -788,6 +788,43 @@ button:disabled {
   z-index: 1;
 }
 
+.admin-score-panel {
+  margin-top: 0.68rem;
+  border: 1px solid #bfd5fa;
+  border-radius: 14px;
+  padding: 0.7rem;
+  background: linear-gradient(180deg, #fafdff, #ecf4ff);
+  display: grid;
+  gap: 0.48rem;
+}
+
+.admin-score-panel h3 {
+  margin: 0;
+}
+
+.admin-score-meta {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.82rem;
+}
+
+.admin-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.admin-score-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-score-form button {
+  width: 100%;
+  background: linear-gradient(140deg, #0f7d4a, #0b6439);
+  color: #fff;
+}
+
 .fixtures-list {
   gap: 0.64rem;
 }
@@ -1300,7 +1337,8 @@ button:disabled {
   .dashboard-grid,
   .fixture-body,
   .scorer-groups,
-  .position-groups-layout {
+  .position-groups-layout,
+  .admin-score-grid {
     grid-template-columns: 1fr;
   }
 

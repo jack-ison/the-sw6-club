@@ -272,6 +272,7 @@ const adminLeagueListEl = document.getElementById("admin-league-list");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const predictSigninPromptEl = document.getElementById("predict-signin-prompt");
+const adminScorePanelEl = document.getElementById("admin-score-panel");
 
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
@@ -1213,12 +1214,24 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
 }
 
 async function onSaveResult(fixture, form) {
-  const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
-  const opponentGoals = parseGoals(form.querySelector(".result-opponent").value);
-  const firstScorer = form.querySelector(".result-scorer").value.trim();
-  if (chelseaGoals === null || opponentGoals === null || !firstScorer) {
+  if (!state.session?.user || !isAdminUser()) {
     return;
   }
+  const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
+  const opponentGoals = parseGoals(form.querySelector(".result-opponent").value);
+  let firstScorer = form.querySelector(".result-scorer").value.trim();
+  if (chelseaGoals === null || opponentGoals === null) {
+    return;
+  }
+  if (chelseaGoals === 0) {
+    firstScorer = "None";
+  } else if (!firstScorer) {
+    firstScorer = "Unknown";
+  }
+  const scorerStorageValue =
+    firstScorer && !["none", "unknown"].includes(firstScorer.toLowerCase())
+      ? expandScorerSelectionsForStorage(firstScorer)
+      : "";
 
   const { error } = await state.client.from("results").upsert(
     {
@@ -1226,7 +1239,7 @@ async function onSaveResult(fixture, form) {
       chelsea_goals: chelseaGoals,
       opponent_goals: opponentGoals,
       first_scorer: firstScorer,
-      chelsea_scorers: expandScorerSelectionsForStorage(firstScorer),
+      chelsea_scorers: scorerStorageValue,
       saved_by: state.session.user.id,
       saved_at: new Date().toISOString()
     },
@@ -1239,6 +1252,7 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData();
+  alert("Result saved. Leaderboards updated.");
   render();
 }
 
@@ -1588,6 +1602,7 @@ function renderNow() {
   }
   if (showPredict) {
     renderFixtures();
+    renderAdminScorePanel();
   }
   renderDeadlineCountdown();
   renderMatchdayAttendance();
@@ -1915,6 +1930,99 @@ function renderAdminConsole() {
     li.appendChild(btn);
     adminLeagueListEl.appendChild(li);
   });
+}
+
+function getNextPendingResultFixture() {
+  return state.activeLeagueFixtures
+    .filter((fixture) => !fixture.result && new Date(fixture.kickoff).getTime() <= Date.now())
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())[0] || null;
+}
+
+function renderAdminScorePanel() {
+  if (!adminScorePanelEl) {
+    return;
+  }
+  const visible = Boolean(state.session?.user) && isAdminUser() && state.topView === "predict";
+  adminScorePanelEl.classList.toggle("hidden", !visible);
+  if (!visible) {
+    adminScorePanelEl.textContent = "";
+    return;
+  }
+
+  const targetFixture = getNextPendingResultFixture();
+  adminScorePanelEl.textContent = "";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Admin Score Input";
+  adminScorePanelEl.appendChild(heading);
+
+  if (!targetFixture) {
+    const status = document.createElement("p");
+    status.className = "admin-score-meta";
+    status.textContent = "No completed fixtures awaiting score input.";
+    adminScorePanelEl.appendChild(status);
+    return;
+  }
+
+  const meta = document.createElement("p");
+  meta.className = "admin-score-meta";
+  meta.textContent = `${formatKickoff(targetFixture.kickoff)} | Chelsea vs ${targetFixture.opponent} (${targetFixture.competition})`;
+  adminScorePanelEl.appendChild(meta);
+
+  const form = document.createElement("form");
+  form.className = "admin-score-form";
+
+  const grid = document.createElement("div");
+  grid.className = "admin-score-grid";
+
+  const chelseaLabel = document.createElement("label");
+  chelseaLabel.textContent = "Chelsea goals";
+  const chelseaInput = document.createElement("input");
+  chelseaInput.type = "number";
+  chelseaInput.className = "result-chelsea";
+  chelseaInput.min = "0";
+  chelseaInput.required = true;
+  chelseaInput.value = "0";
+  chelseaLabel.appendChild(chelseaInput);
+
+  const oppLabel = document.createElement("label");
+  oppLabel.textContent = `${targetFixture.opponent} goals`;
+  const oppInput = document.createElement("input");
+  oppInput.type = "number";
+  oppInput.className = "result-opponent";
+  oppInput.min = "0";
+  oppInput.required = true;
+  oppInput.value = "0";
+  oppLabel.appendChild(oppInput);
+
+  const scorerLabel = document.createElement("label");
+  scorerLabel.textContent = "First Chelsea scorer";
+  const scorerInput = document.createElement("input");
+  scorerInput.type = "text";
+  scorerInput.className = "result-scorer";
+  scorerInput.placeholder = "Optional (Unknown if blank)";
+  scorerLabel.appendChild(scorerInput);
+
+  grid.appendChild(chelseaLabel);
+  grid.appendChild(oppLabel);
+  grid.appendChild(scorerLabel);
+  form.appendChild(grid);
+
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Save Final Score";
+  form.appendChild(submit);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    submit.disabled = true;
+    submit.textContent = "Saving...";
+    await onSaveResult(targetFixture, form);
+    submit.disabled = false;
+    submit.textContent = "Save Final Score";
+  });
+
+  adminScorePanelEl.appendChild(form);
 }
 
 async function onAdminLeagueListClick(event) {
