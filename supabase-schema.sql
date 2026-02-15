@@ -525,6 +525,41 @@ $$;
 
 grant execute on function public.log_site_visit(text) to anon, authenticated;
 
+create table if not exists public.app_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  granted_at timestamptz not null default now()
+);
+
+-- Seed the configured bootstrap admin by email if that account already exists.
+insert into public.app_admins (user_id)
+select u.id
+from auth.users u
+where lower(coalesce(u.email, '')) = lower('jackwilliamison@gmail.com')
+on conflict (user_id) do nothing;
+
+drop function if exists public.is_configured_admin();
+create or replace function public.is_configured_admin()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from public.app_admins a
+    where a.user_id = auth.uid()
+  );
+end;
+$$;
+
+grant execute on function public.is_configured_admin() to authenticated;
+
 drop function if exists public.get_site_visitor_count();
 create or replace function public.get_site_visitor_count()
 returns integer
@@ -533,27 +568,8 @@ stable
 security definer
 set search_path = public
 as $$
-declare
-  v_email text;
-  v_email_local text;
-  v_email_domain text;
-  v_admin_local text;
-  v_admin_domain text;
 begin
-  v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
-  v_email_local := split_part(v_email, '@', 1);
-  v_email_domain := split_part(v_email, '@', 2);
-  if v_email_domain = 'gmail.com' then
-    v_email_local := replace(split_part(v_email_local, '+', 1), '.', '');
-  end if;
-
-  v_admin_local := split_part(lower('jackwilliamison@gmail.com'), '@', 1);
-  v_admin_domain := split_part(lower('jackwilliamison@gmail.com'), '@', 2);
-  if v_admin_domain = 'gmail.com' then
-    v_admin_local := replace(split_part(v_admin_local, '+', 1), '.', '');
-  end if;
-
-  if v_email_local <> v_admin_local or v_email_domain <> v_admin_domain then
+  if not public.is_configured_admin() then
     return 0;
   end if;
 
@@ -565,40 +581,6 @@ end;
 $$;
 
 grant execute on function public.get_site_visitor_count() to authenticated;
-
-drop function if exists public.is_configured_admin();
-create or replace function public.is_configured_admin()
-returns boolean
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-declare
-  v_email text;
-  v_email_local text;
-  v_email_domain text;
-  v_admin_local text;
-  v_admin_domain text;
-begin
-  v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
-  v_email_local := split_part(v_email, '@', 1);
-  v_email_domain := split_part(v_email, '@', 2);
-  if v_email_domain = 'gmail.com' then
-    v_email_local := replace(split_part(v_email_local, '+', 1), '.', '');
-  end if;
-
-  v_admin_local := split_part(lower('jackwilliamison@gmail.com'), '@', 1);
-  v_admin_domain := split_part(lower('jackwilliamison@gmail.com'), '@', 2);
-  if v_admin_domain = 'gmail.com' then
-    v_admin_local := replace(split_part(v_admin_local, '+', 1), '.', '');
-  end if;
-
-  return v_email_local = v_admin_local and v_email_domain = v_admin_domain;
-end;
-$$;
-
-grant execute on function public.is_configured_admin() to authenticated;
 
 create table if not exists public.forum_threads (
   id uuid primary key default extensions.gen_random_uuid(),
@@ -628,7 +610,7 @@ drop policy if exists forum_threads_select on public.forum_threads;
 create policy forum_threads_select
 on public.forum_threads
 for select
-to anon, authenticated
+to authenticated
 using (true);
 
 drop policy if exists forum_threads_insert on public.forum_threads;
@@ -646,7 +628,7 @@ drop policy if exists forum_replies_select on public.forum_replies;
 create policy forum_replies_select
 on public.forum_replies
 for select
-to anon, authenticated
+to authenticated
 using (true);
 
 drop policy if exists forum_replies_insert on public.forum_replies;
@@ -669,10 +651,148 @@ using (
   or public.is_configured_admin()
 );
 
-grant select on public.forum_threads to anon, authenticated;
+create table if not exists public.forum_post_actions (
+  id bigserial primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  action text not null check (action in ('thread', 'reply')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists forum_post_actions_user_action_created_idx
+  on public.forum_post_actions (user_id, action, created_at desc);
+
+drop function if exists public.can_create_forum_post(text);
+create or replace function public.can_create_forum_post(p_action text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_last_at timestamptz;
+  v_window interval;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    return false;
+  end if;
+
+  if p_action = 'thread' then
+    v_window := interval '20 seconds';
+  elsif p_action = 'reply' then
+    v_window := interval '8 seconds';
+  else
+    return false;
+  end if;
+
+  select a.created_at
+  into v_last_at
+  from public.forum_post_actions a
+  where a.user_id = v_user_id
+    and a.action = p_action
+  order by a.created_at desc
+  limit 1;
+
+  if v_last_at is null then
+    return true;
+  end if;
+
+  return now() - v_last_at >= v_window;
+end;
+$$;
+
+grant execute on function public.can_create_forum_post(text) to authenticated;
+
+drop function if exists public.create_forum_thread(text, text, text);
+create or replace function public.create_forum_thread(
+  p_title text,
+  p_body text,
+  p_author_display_name text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_thread_id uuid;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.can_create_forum_post('thread') then
+    raise exception 'Rate limit exceeded. Please wait before creating another thread.';
+  end if;
+
+  insert into public.forum_threads (user_id, author_display_name, title, body)
+  values (
+    v_user_id,
+    trim(coalesce(nullif(p_author_display_name, ''), split_part(coalesce(auth.jwt() ->> 'email', 'player'), '@', 1))),
+    trim(coalesce(p_title, '')),
+    trim(coalesce(p_body, ''))
+  )
+  returning id into v_thread_id;
+
+  insert into public.forum_post_actions (user_id, action)
+  values (v_user_id, 'thread');
+
+  return v_thread_id;
+end;
+$$;
+
+grant execute on function public.create_forum_thread(text, text, text) to authenticated;
+
+drop function if exists public.create_forum_reply(uuid, text, text);
+create or replace function public.create_forum_reply(
+  p_thread_id uuid,
+  p_body text,
+  p_author_display_name text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_reply_id uuid;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not public.can_create_forum_post('reply') then
+    raise exception 'Rate limit exceeded. Please wait before posting another reply.';
+  end if;
+
+  insert into public.forum_replies (thread_id, user_id, author_display_name, body)
+  values (
+    p_thread_id,
+    v_user_id,
+    trim(coalesce(nullif(p_author_display_name, ''), split_part(coalesce(auth.jwt() ->> 'email', 'player'), '@', 1))),
+    trim(coalesce(p_body, ''))
+  )
+  returning id into v_reply_id;
+
+  insert into public.forum_post_actions (user_id, action)
+  values (v_user_id, 'reply');
+
+  return v_reply_id;
+end;
+$$;
+
+grant execute on function public.create_forum_reply(uuid, text, text) to authenticated;
+
+grant select on public.forum_threads to authenticated;
 grant insert on public.forum_threads to authenticated;
 grant delete on public.forum_threads to authenticated;
-grant select on public.forum_replies to anon, authenticated;
+grant select on public.forum_replies to authenticated;
 grant insert on public.forum_replies to authenticated;
 
 drop function if exists public.get_overall_leaderboard(integer);
@@ -1121,7 +1241,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if lower(coalesce(auth.jwt() ->> 'email', '')) <> 'jackwilliamison@gmail.com' then
+  if not public.is_configured_admin() then
     raise exception 'Forbidden';
   end if;
 
@@ -1142,7 +1262,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if lower(coalesce(auth.jwt() ->> 'email', '')) <> 'jackwilliamison@gmail.com' then
+  if not public.is_configured_admin() then
     raise exception 'Forbidden';
   end if;
 

@@ -161,16 +161,29 @@ async function onCreateForumThread(ctx, event) {
     els.forumThreadSubmitBtnEl.disabled = true;
     els.forumThreadSubmitBtnEl.textContent = "Posting...";
   }
-  const { data, error } = await state.client
-    .from("forum_threads")
-    .insert({
-      user_id: state.session.user.id,
-      author_display_name: ctx.getCurrentUserDisplayName(),
-      title,
-      body
-    })
-    .select("id")
-    .single();
+  let threadId = null;
+  let error = null;
+  const rpcResult = await state.client.rpc("create_forum_thread", {
+    p_title: title,
+    p_body: body,
+    p_author_display_name: ctx.getCurrentUserDisplayName()
+  });
+  if (!rpcResult.error) {
+    threadId = rpcResult.data || null;
+  } else {
+    const fallback = await state.client
+      .from("forum_threads")
+      .insert({
+        user_id: state.session.user.id,
+        author_display_name: ctx.getCurrentUserDisplayName(),
+        title,
+        body
+      })
+      .select("id")
+      .single();
+    error = fallback.error;
+    threadId = fallback.data?.id || null;
+  }
   if (els.forumThreadSubmitBtnEl) {
     els.forumThreadSubmitBtnEl.disabled = false;
     els.forumThreadSubmitBtnEl.textContent = "Post Thread";
@@ -183,7 +196,7 @@ async function onCreateForumThread(ctx, event) {
   state.forumStatus = "Thread posted.";
   if (els.forumThreadFormEl) els.forumThreadFormEl.reset();
   await loadForumThreads(ctx, { force: true });
-  state.activeForumThreadId = data?.id || null;
+  state.activeForumThreadId = threadId;
   ctx.syncRouteHash();
   await loadForumReplies(ctx, state.activeForumThreadId);
   ctx.render();
@@ -203,12 +216,21 @@ async function onCreateForumReply(ctx, event) {
     els.forumReplySubmitBtnEl.disabled = true;
     els.forumReplySubmitBtnEl.textContent = "Posting...";
   }
-  const { error } = await state.client.from("forum_replies").insert({
-    thread_id: state.activeForumThreadId,
-    user_id: state.session.user.id,
-    author_display_name: ctx.getCurrentUserDisplayName(),
-    body
+  let error = null;
+  const rpcResult = await state.client.rpc("create_forum_reply", {
+    p_thread_id: state.activeForumThreadId,
+    p_body: body,
+    p_author_display_name: ctx.getCurrentUserDisplayName()
   });
+  if (rpcResult.error) {
+    const fallback = await state.client.from("forum_replies").insert({
+      thread_id: state.activeForumThreadId,
+      user_id: state.session.user.id,
+      author_display_name: ctx.getCurrentUserDisplayName(),
+      body
+    });
+    error = fallback.error;
+  }
   if (els.forumReplySubmitBtnEl) {
     els.forumReplySubmitBtnEl.disabled = false;
     els.forumReplySubmitBtnEl.textContent = "Post Reply";

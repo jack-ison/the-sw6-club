@@ -1,6 +1,5 @@
 const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
-const ADMIN_EMAILS = ["jackwilliamison@gmail.com"];
 const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
@@ -172,6 +171,7 @@ let upcomingFixturesSyncPromise = null;
 let scorerStatsSyncPromise = null;
 let registeredUserCountPromise = null;
 let visitorCountPromise = null;
+let adminAccessPromise = null;
 let authWarmupRunId = 0;
 let authedDataInitialized = false;
 let ensureAuthedDataLoadedPromise = null;
@@ -193,6 +193,7 @@ const state = {
   client: null,
   session: null,
   authResolved: false,
+  isAdmin: false,
   leagues: [],
   activeLeagueId: null,
   activeLeagueMembers: [],
@@ -400,6 +401,7 @@ async function initializeApp() {
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
     state.authResolved = true;
+    state.isAdmin = false;
     authedDataInitialized = false;
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
@@ -434,6 +436,7 @@ function setupTopNavPreload() {
 function runPostAuthWarmup() {
   const runId = ++authWarmupRunId;
   Promise.allSettled([
+    loadAdminAccess(),
     trackSiteVisit(),
     loadRegisteredUserCount(),
     loadVisitorCount(),
@@ -857,6 +860,7 @@ async function onLogOut() {
   }
   state.accountMenuOpen = false;
   state.loginPanelOpen = false;
+  state.isAdmin = false;
   authedDataInitialized = false;
   if (profileEditForm) profileEditForm.classList.add("hidden");
   syncRouteHash();
@@ -1020,6 +1024,30 @@ async function loadRegisteredUserCount(force = false) {
     await registeredUserCountPromise;
   } finally {
     registeredUserCountPromise = null;
+  }
+}
+
+async function loadAdminAccess(force = false) {
+  if (!state.client || !state.session?.user) {
+    state.isAdmin = false;
+    return;
+  }
+  if (!force && adminAccessPromise) {
+    await adminAccessPromise;
+    return;
+  }
+  adminAccessPromise = (async () => {
+    const { data, error } = await state.client.rpc("is_configured_admin");
+    if (error) {
+      state.isAdmin = false;
+      return;
+    }
+    state.isAdmin = Boolean(data);
+  })();
+  try {
+    await adminAccessPromise;
+  } finally {
+    adminAccessPromise = null;
   }
 }
 
@@ -3385,28 +3413,7 @@ function getCurrentUserAvatarUrl() {
 }
 
 function isAdminUser() {
-  const email = normalizeEmailForAdminMatch(state.session?.user?.email || "");
-  if (!email) {
-    return false;
-  }
-  return ADMIN_EMAILS
-    .map((entry) => normalizeEmailForAdminMatch(entry))
-    .includes(email);
-}
-
-function normalizeEmailForAdminMatch(value) {
-  const email = String(value || "").trim().toLowerCase();
-  const atIndex = email.indexOf("@");
-  if (atIndex <= 0) {
-    return email;
-  }
-  const local = email.slice(0, atIndex);
-  const domain = email.slice(atIndex + 1);
-  if (domain !== "gmail.com") {
-    return `${local}@${domain}`;
-  }
-  const canonicalLocal = local.split("+")[0].replace(/\./g, "");
-  return `${canonicalLocal}@gmail.com`;
+  return Boolean(state.session?.user) && Boolean(state.isAdmin);
 }
 
 function countryCodeToFlag(code) {
