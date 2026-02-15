@@ -51,6 +51,28 @@ const TOP_SCORERS = [
   { name: "Estevao", apps: 19, goals: 2 },
   { name: "Marc Cucurella", apps: 24, goals: 1 }
 ];
+const TOP_SCORERS_BY_COMPETITION = {
+  all: {
+    label: "All Competitions 2025/26",
+    players: [...TOP_SCORERS],
+    source: "Data snapshot: currently using latest available Chelsea scorer feed."
+  },
+  premier_league: {
+    label: "Premier League 2025/26",
+    players: [...TOP_SCORERS],
+    source: "Data snapshot: ESPN Chelsea Premier League stats (captured Feb 14, 2026)."
+  },
+  champions_league: {
+    label: "Champions League 2025/26",
+    players: [],
+    source: "No Champions League scorer snapshot loaded yet."
+  },
+  fa_cup: {
+    label: "FA Cup 2025/26",
+    players: [],
+    source: "No FA Cup scorer snapshot loaded yet."
+  }
+};
 const CHELSEA_REGISTERED_PLAYERS = [
   "Robert Sanchez", "Filip Jorgensen", "Teddy Sharman-Lowe", "Gaga Slonina",
   "Marc Cucurella", "Tosin Adarabioyo", "Benoit Badiashile", "Levi Colwill", "Mamadou Sarr",
@@ -123,6 +145,7 @@ const state = {
   showAllUpcoming: false,
   topView: "predict",
   resultsTab: "fixtures",
+  scorerCompetition: "all",
   leaderboardScope: "global",
   accountMenuOpen: false,
   loginPanelOpen: false,
@@ -154,6 +177,11 @@ const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
 const scorersTableBody = document.getElementById("scorers-table-body");
 const scorersSourceEl = document.getElementById("scorers-source");
+const scorersTitleEl = document.getElementById("scorers-title");
+const statsAllTabBtn = document.getElementById("stats-all-tab");
+const statsPlTabBtn = document.getElementById("stats-pl-tab");
+const statsUclTabBtn = document.getElementById("stats-ucl-tab");
+const statsFaTabBtn = document.getElementById("stats-fa-tab");
 const overallLeaderboardEl = document.getElementById("overall-leaderboard");
 const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
 const pastGamesListEl = document.getElementById("past-games-list");
@@ -216,6 +244,10 @@ if (topnavResultsBtn) topnavResultsBtn.addEventListener("click", () => setTopVie
 if (resultsFixturesTabBtn) resultsFixturesTabBtn.addEventListener("click", () => setResultsTab("fixtures"));
 if (resultsPastTabBtn) resultsPastTabBtn.addEventListener("click", () => setResultsTab("past"));
 if (resultsStatsTabBtn) resultsStatsTabBtn.addEventListener("click", () => setResultsTab("stats"));
+if (statsAllTabBtn) statsAllTabBtn.addEventListener("click", () => setScorerCompetition("all"));
+if (statsPlTabBtn) statsPlTabBtn.addEventListener("click", () => setScorerCompetition("premier_league"));
+if (statsUclTabBtn) statsUclTabBtn.addEventListener("click", () => setScorerCompetition("champions_league"));
+if (statsFaTabBtn) statsFaTabBtn.addEventListener("click", () => setScorerCompetition("fa_cup"));
 if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
@@ -322,6 +354,12 @@ function setResultsTab(tab) {
   state.showRulesModal = false;
   syncRouteHash();
   render();
+}
+
+function setScorerCompetition(competition) {
+  state.scorerCompetition = TOP_SCORERS_BY_COMPETITION[competition] ? competition : "all";
+  renderTopScorers();
+  renderNavigation();
 }
 
 function setLeaderboardScope(scope) {
@@ -1508,6 +1546,26 @@ function renderNavigation() {
   if (fixturesOverviewPanel) fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
   if (pastOverviewPanel) pastOverviewPanel.classList.toggle("hidden", !showPast);
   if (scorersOverviewPanel) scorersOverviewPanel.classList.toggle("hidden", !showStats);
+  if (statsAllTabBtn) {
+    const active = state.scorerCompetition === "all";
+    statsAllTabBtn.classList.toggle("active", active);
+    statsAllTabBtn.setAttribute("aria-selected", String(active));
+  }
+  if (statsPlTabBtn) {
+    const active = state.scorerCompetition === "premier_league";
+    statsPlTabBtn.classList.toggle("active", active);
+    statsPlTabBtn.setAttribute("aria-selected", String(active));
+  }
+  if (statsUclTabBtn) {
+    const active = state.scorerCompetition === "champions_league";
+    statsUclTabBtn.classList.toggle("active", active);
+    statsUclTabBtn.setAttribute("aria-selected", String(active));
+  }
+  if (statsFaTabBtn) {
+    const active = state.scorerCompetition === "fa_cup";
+    statsFaTabBtn.classList.toggle("active", active);
+    statsFaTabBtn.setAttribute("aria-selected", String(active));
+  }
   if (rulesModalEl) rulesModalEl.classList.toggle("hidden", !state.showRulesModal);
 }
 
@@ -1603,8 +1661,31 @@ function renderUpcomingFixtures() {
 }
 
 function renderTopScorers() {
+  if (!scorersTableBody || !scorersSourceEl) {
+    return;
+  }
+
+  const key = TOP_SCORERS_BY_COMPETITION[state.scorerCompetition] ? state.scorerCompetition : "all";
+  const competitionData = TOP_SCORERS_BY_COMPETITION[key];
+  const players = competitionData.players || [];
+
   scorersTableBody.textContent = "";
-  TOP_SCORERS.forEach((player, index) => {
+  if (scorersTitleEl) {
+    scorersTitleEl.textContent = `Top Chelsea Scorers (${competitionData.label})`;
+  }
+
+  if (players.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = "No scorer data available yet for this competition.";
+    row.appendChild(cell);
+    scorersTableBody.appendChild(row);
+    scorersSourceEl.textContent = competitionData.source;
+    return;
+  }
+
+  players.forEach((player, index) => {
     const row = document.createElement("tr");
 
     const rankCell = document.createElement("td");
@@ -1630,7 +1711,7 @@ function renderTopScorers() {
     scorersTableBody.appendChild(row);
   });
 
-  scorersSourceEl.textContent = "Data snapshot: ESPN Chelsea Premier League stats (captured Feb 14, 2026).";
+  scorersSourceEl.textContent = competitionData.source;
 }
 
 function renderLeagueSelect() {

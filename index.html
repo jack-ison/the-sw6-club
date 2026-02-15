@@ -72,7 +72,15 @@
         </div>
 
         <div id="scorers-overview-panel" class="hidden">
-          <h2>Top Chelsea Scorers (Premier League 2025/26)</h2>
+          <div class="leaderboards-head">
+            <h2 id="scorers-title">Top Chelsea Scorers (All Competitions 2025/26)</h2>
+            <div class="overview-tabs mini-toggle" role="tablist" aria-label="Scorer competition">
+              <button id="stats-all-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">All Competitions</button>
+              <button id="stats-pl-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Premier League</button>
+              <button id="stats-ucl-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Champions League</button>
+              <button id="stats-fa-tab" type="button" class="tab-btn" role="tab" aria-selected="false">FA Cup</button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table class="scorers-table">
               <thead>
