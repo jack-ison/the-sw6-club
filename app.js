@@ -436,7 +436,7 @@ function onCloseRulesModal() {
 
 function onLeagueVisibilityChange() {
   const isPrivate = (leagueVisibilityInput?.value || "public") === "private";
-  if (leaguePasswordWrap) leaguePasswordWrap.classList.toggle("hidden", !isPrivate);
+  if (leaguePasswordWrap) leaguePasswordWrap.classList.toggle("inactive", !isPrivate);
   if (leaguePasswordInput) {
     leaguePasswordInput.required = isPrivate;
     if (!isPrivate) leaguePasswordInput.value = "";
@@ -446,9 +446,9 @@ function onLeagueVisibilityChange() {
 function onJoinModeChange() {
   const mode = joinModeInput?.value || "public";
   const isPrivate = mode === "private";
-  if (joinCodeWrap) joinCodeWrap.classList.toggle("hidden", isPrivate);
-  if (joinPrivateNameWrap) joinPrivateNameWrap.classList.toggle("hidden", !isPrivate);
-  if (joinPrivatePasswordWrap) joinPrivatePasswordWrap.classList.toggle("hidden", !isPrivate);
+  if (joinCodeWrap) joinCodeWrap.classList.toggle("inactive", isPrivate);
+  if (joinPrivateNameWrap) joinPrivateNameWrap.classList.toggle("inactive", !isPrivate);
+  if (joinPrivatePasswordWrap) joinPrivatePasswordWrap.classList.toggle("inactive", !isPrivate);
   if (joinCodeInput) {
     joinCodeInput.required = !isPrivate;
     if (isPrivate) joinCodeInput.value = "";

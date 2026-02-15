@@ -113,17 +113,17 @@
             <form id="create-league-form" class="mini-form">
               <h3>Create League</h3>
               <label>
-                League name
-                <input id="league-name-input" type="text" required />
-              </label>
-              <label>
-                League visibility
+                League type
                 <select id="league-visibility-input" required>
                   <option value="public">Public</option>
                   <option value="private">Private</option>
                 </select>
               </label>
-              <label id="league-password-wrap" class="hidden">
+              <label>
+                League name
+                <input id="league-name-input" type="text" required />
+              </label>
+              <label id="league-password-wrap" class="field-slot inactive">
                 Private league password
                 <input id="league-password-input" type="password" minlength="6" placeholder="Minimum 6 characters" />
               </label>
@@ -139,15 +139,15 @@
                   <option value="private">Private (Name + Password)</option>
                 </select>
               </label>
-              <label id="join-code-wrap">
+              <label id="join-code-wrap" class="field-slot">
                 League code
                 <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" />
               </label>
-              <label id="join-private-name-wrap" class="hidden">
+              <label id="join-private-name-wrap" class="field-slot inactive">
                 Private league name
                 <input id="join-private-name-input" type="text" placeholder="Exact league name" />
               </label>
-              <label id="join-private-password-wrap" class="hidden">
+              <label id="join-private-password-wrap" class="field-slot inactive">
                 Private league password
                 <input id="join-private-password-input" type="password" placeholder="Password" />
               </label>
