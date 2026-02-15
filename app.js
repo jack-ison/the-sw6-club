@@ -13,6 +13,12 @@ const REGISTERED_USER_COUNT_CACHE_KEY = "cfc-registered-user-count-cache-v1";
 const REGISTERED_USER_COUNT_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const VISITOR_COUNT_CACHE_KEY = "cfc-visitor-count-cache-v1";
 const VISITOR_COUNT_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const FORUM_THREADS_CACHE_KEY = "cfc-forum-threads-cache-v1";
+const FORUM_THREADS_CACHE_VERSION = 1;
+const FORUM_THREADS_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const LEAGUE_LEADERBOARD_CACHE_KEY = "cfc-league-leaderboard-cache-v1";
+const LEAGUE_LEADERBOARD_CACHE_VERSION = 1;
+const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -164,6 +170,10 @@ let scorerStatsSyncPromise = null;
 let registeredUserCountPromise = null;
 let visitorCountPromise = null;
 let authWarmupRunId = 0;
+let authedDataInitialized = false;
+let ensureAuthedDataLoadedPromise = null;
+let forumThreadsRefreshPromise = null;
+const leagueLeaderboardRefreshPromises = new Map();
 let renderScheduled = false;
 const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
@@ -385,6 +395,7 @@ async function initializeApp() {
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
+    authedDataInitialized = false;
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
     runPostAuthWarmup();
@@ -399,7 +410,6 @@ function runPostAuthWarmup() {
     trackSiteVisit(),
     loadRegisteredUserCount(),
     loadVisitorCount(),
-    reloadAuthedData(),
     runTopViewEnterEffects()
   ]).then(() => {
     if (runId !== authWarmupRunId) {
@@ -450,6 +460,8 @@ async function runTopViewEnterEffects() {
     await onEnter({
       state,
       isAdminUser,
+      render,
+      ensureAuthedDataLoaded,
       ensureOverallLeaderboardLoaded,
       loadAdminLeagues,
       loadForumThreads,
@@ -782,6 +794,7 @@ async function onLogOut() {
   }
   state.accountMenuOpen = false;
   state.loginPanelOpen = false;
+  authedDataInitialized = false;
   if (profileEditForm) profileEditForm.classList.add("hidden");
   syncRouteHash();
 }
@@ -863,6 +876,44 @@ function writeNumericCache(cacheKey, value) {
       JSON.stringify({
         value: Math.max(0, Math.floor(Number(value) || 0)),
         syncedAt: new Date().toISOString()
+      })
+    );
+  } catch {
+    // Ignore local cache failures.
+  }
+}
+
+function readObjectCache(cacheKey, version, maxAgeMs) {
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    const syncedAt = new Date(parsed?.syncedAt || "").getTime();
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      parsed.version !== version ||
+      !Number.isFinite(syncedAt) ||
+      Date.now() - syncedAt > maxAgeMs
+    ) {
+      return null;
+    }
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeObjectCache(cacheKey, version, data) {
+  try {
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({
+        version,
+        syncedAt: new Date().toISOString(),
+        data
       })
     );
   } catch {
@@ -982,6 +1033,7 @@ async function reloadAuthedData() {
 
   if (!state.client || !state.session?.user) {
     state.activeLeagueId = null;
+    authedDataInitialized = false;
     return;
   }
 
@@ -1010,12 +1062,36 @@ async function reloadAuthedData() {
       await loadAdminLeagues();
     }
   }
+  authedDataInitialized = true;
   })();
 
   try {
     await reloadAuthedDataPromise;
   } finally {
     reloadAuthedDataPromise = null;
+  }
+}
+
+async function ensureAuthedDataLoaded(force = false) {
+  if (!state.client || !state.session?.user) {
+    authedDataInitialized = false;
+    return;
+  }
+  if (!force && authedDataInitialized) {
+    return;
+  }
+  if (!force && ensureAuthedDataLoadedPromise) {
+    await ensureAuthedDataLoadedPromise;
+    return;
+  }
+  ensureAuthedDataLoadedPromise = (async () => {
+    await reloadAuthedData();
+    authedDataInitialized = true;
+  })();
+  try {
+    await ensureAuthedDataLoadedPromise;
+  } finally {
+    ensureAuthedDataLoadedPromise = null;
   }
 }
 
@@ -1410,6 +1486,10 @@ function hydrateProfileEditorFields() {
 }
 
 async function onSavePrediction(fixture, form, submitBtn = null) {
+  if (state.session?.user && (!state.activeLeagueId || String(fixture?.id || "").startsWith("fallback-"))) {
+    await ensureAuthedDataLoaded();
+  }
+
   if (!state.session?.user || !canPredictFixture(fixture)) {
     alert("Only the next fixture can be predicted, and it locks 90 minutes before kickoff.");
     return;
@@ -1606,7 +1686,8 @@ async function loadActiveLeagueData() {
 
   await ensureUpcomingFixturesImported();
   await syncCompletedResultsFromChelsea();
-  await Promise.all([loadMyPredictionsForActiveFixtures(), loadLeagueLeaderboard()]);
+  await loadMyPredictionsForActiveFixtures();
+  await loadLeagueLeaderboard({ background: true });
   })();
 
   try {
@@ -1768,18 +1849,72 @@ async function loadMyPredictionsForActiveFixtures() {
   });
 }
 
-async function loadLeagueLeaderboard() {
+function getLeagueLeaderboardCacheKey(leagueId) {
+  return `${LEAGUE_LEADERBOARD_CACHE_KEY}:${leagueId}`;
+}
+
+function readLeagueLeaderboardCache(leagueId) {
+  const cached = readObjectCache(
+    getLeagueLeaderboardCacheKey(leagueId),
+    LEAGUE_LEADERBOARD_CACHE_VERSION,
+    LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS
+  );
+  return Array.isArray(cached) ? cached : [];
+}
+
+function writeLeagueLeaderboardCache(leagueId, rows) {
+  writeObjectCache(
+    getLeagueLeaderboardCacheKey(leagueId),
+    LEAGUE_LEADERBOARD_CACHE_VERSION,
+    Array.isArray(rows) ? rows : []
+  );
+}
+
+async function refreshLeagueLeaderboardFromServer(leagueId) {
+  const { data, error } = await state.client.rpc("get_league_leaderboard", { p_league_id: leagueId });
+  if (error) {
+    return;
+  }
+  const rows = Array.isArray(data) ? data : [];
+  writeLeagueLeaderboardCache(leagueId, rows);
+  if (state.activeLeagueId === leagueId) {
+    state.activeLeagueLeaderboard = rows;
+    render();
+  }
+}
+
+async function loadLeagueLeaderboard(options = {}) {
   const league = getActiveLeague();
   if (!league) {
     state.activeLeagueLeaderboard = [];
     return;
   }
-  const { data, error } = await state.client.rpc("get_league_leaderboard", { p_league_id: league.id });
-  if (error) {
-    state.activeLeagueLeaderboard = [];
+  const background = Boolean(options.background);
+  const cachedRows = readLeagueLeaderboardCache(league.id);
+  if (cachedRows.length > 0) {
+    state.activeLeagueLeaderboard = cachedRows;
+  }
+
+  if (background) {
+    if (!leagueLeaderboardRefreshPromises.has(league.id)) {
+      const promise = refreshLeagueLeaderboardFromServer(league.id).finally(() => {
+        leagueLeaderboardRefreshPromises.delete(league.id);
+      });
+      leagueLeaderboardRefreshPromises.set(league.id, promise);
+    }
     return;
   }
-  state.activeLeagueLeaderboard = Array.isArray(data) ? data : [];
+
+  if (leagueLeaderboardRefreshPromises.has(league.id)) {
+    await leagueLeaderboardRefreshPromises.get(league.id);
+    return;
+  }
+
+  const promise = refreshLeagueLeaderboardFromServer(league.id).finally(() => {
+    leagueLeaderboardRefreshPromises.delete(league.id);
+  });
+  leagueLeaderboardRefreshPromises.set(league.id, promise);
+  await promise;
 }
 
 function render() {
@@ -2215,10 +2350,18 @@ function renderAdminConsole() {
   });
 }
 
-async function loadForumThreads() {
+function getForumThreadsCache() {
+  const cached = readObjectCache(FORUM_THREADS_CACHE_KEY, FORUM_THREADS_CACHE_VERSION, FORUM_THREADS_CACHE_MAX_AGE_MS);
+  return Array.isArray(cached) ? cached : [];
+}
+
+function setForumThreadsCache(threads) {
+  writeObjectCache(FORUM_THREADS_CACHE_KEY, FORUM_THREADS_CACHE_VERSION, threads);
+}
+
+async function refreshForumThreadsFromServer() {
   if (!state.client) {
-    state.forumThreads = [];
-    return;
+    return false;
   }
   const { data, error } = await state.client
     .from("forum_threads")
@@ -2226,11 +2369,11 @@ async function loadForumThreads() {
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) {
-    state.forumThreads = [];
     state.forumStatus = "The Concourse is unavailable right now.";
-    return;
+    return false;
   }
   state.forumThreads = Array.isArray(data) ? data : [];
+  setForumThreadsCache(state.forumThreads);
   if (state.activeForumThreadId && !state.forumThreads.some((thread) => thread.id === state.activeForumThreadId)) {
     const deepLinkedThread = await loadForumThreadById(state.activeForumThreadId);
     if (deepLinkedThread) {
@@ -2241,6 +2384,43 @@ async function loadForumThreads() {
       state.forumStatus = "Thread not found.";
     }
   }
+  return true;
+}
+
+async function loadForumThreads(options = {}) {
+  const force = Boolean(options.force);
+  const background = Boolean(options.background);
+  if (!state.client) {
+    state.forumThreads = [];
+    return;
+  }
+
+  if (!force && state.forumThreads.length === 0) {
+    const cachedThreads = getForumThreadsCache();
+    if (cachedThreads.length > 0) {
+      state.forumThreads = cachedThreads;
+    }
+  }
+
+  if (!force && background) {
+    if (!forumThreadsRefreshPromise) {
+      forumThreadsRefreshPromise = refreshForumThreadsFromServer().finally(() => {
+        forumThreadsRefreshPromise = null;
+        render();
+      });
+    }
+    return;
+  }
+
+  if (!force && forumThreadsRefreshPromise) {
+    await forumThreadsRefreshPromise;
+    return;
+  }
+
+  forumThreadsRefreshPromise = refreshForumThreadsFromServer().finally(() => {
+    forumThreadsRefreshPromise = null;
+  });
+  await forumThreadsRefreshPromise;
 }
 
 async function loadForumThreadById(threadId) {
@@ -2316,7 +2496,7 @@ async function onCreateForumThread(event) {
 
   state.forumStatus = "Thread posted.";
   if (forumThreadFormEl) forumThreadFormEl.reset();
-  await loadForumThreads();
+  await loadForumThreads({ force: true });
   state.activeForumThreadId = data?.id || null;
   syncRouteHash();
   await loadForumReplies(state.activeForumThreadId);
@@ -2418,7 +2598,7 @@ async function onDeleteForumThread() {
   state.forumStatus = "Thread deleted.";
   state.activeForumThreadId = null;
   state.forumReplies = [];
-  await loadForumThreads();
+  await loadForumThreads({ force: true });
   syncRouteHash();
   render();
 }

@@ -3,4 +3,9 @@ export async function onEnter(ctx) {
     ctx.syncUpcomingFixturesFromChelsea(),
     ctx.maybeRefreshChelseaSquad()
   ]);
+  if (ctx.state.session?.user) {
+    ctx.ensureAuthedDataLoaded().then(() => {
+      ctx.render();
+    });
+  }
 }
