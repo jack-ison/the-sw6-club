@@ -2,6 +2,7 @@ const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
+const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 2;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -429,9 +430,17 @@ async function onSavePrediction(fixture, form) {
   syncChelseaGoalsToScorerSelection(form);
   const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".pred-opponent").value);
-  const firstScorer = form.querySelector(".pred-scorer").value.trim();
-  if (chelseaGoals === null || opponentGoals === null || !firstScorer) {
+  const selectedScorers = form.querySelector(".pred-scorer").value.trim();
+  const firstScorerSelect = form.querySelector(".pred-first-scorer");
+  let firstScorer = firstScorerSelect?.value?.trim() || "";
+  if (chelseaGoals === null || opponentGoals === null) {
     return;
+  }
+  if (chelseaGoals > 0 && (!selectedScorers || !firstScorer)) {
+    return;
+  }
+  if (chelseaGoals === 0) {
+    firstScorer = "None";
   }
 
   const { error } = await state.client.from("predictions").upsert(
@@ -451,6 +460,7 @@ async function onSavePrediction(fixture, form) {
     return;
   }
 
+  cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
   await loadActiveLeagueData();
   render();
 }
@@ -911,6 +921,7 @@ function renderFixtures() {
     const predChelseaInput = predictionForm.querySelector(".pred-chelsea");
     const predOpponentInput = predictionForm.querySelector(".pred-opponent");
     const predScorerInput = predictionForm.querySelector(".pred-scorer");
+    const predFirstScorerSelect = predictionForm.querySelector(".pred-first-scorer");
     const opponentNameEl = predictionForm.querySelector(".pred-opponent-name");
     const opponentScoreValueEl = predictionForm.querySelector(".score-value-opponent");
     const chelseaScoreValueEl = predictionForm.querySelector(".score-value-chelsea");
@@ -943,11 +954,22 @@ function renderFixtures() {
     predChelseaInput.value = "0";
     predOpponentInput.value = "0";
     predScorerInput.value = "";
+    let initialFirstScorer = "";
     if (myPrediction) {
       predChelseaInput.value = String(myPrediction.chelsea_goals);
       predOpponentInput.value = String(myPrediction.opponent_goals);
-      predScorerInput.value = myPrediction.first_scorer;
+      initialFirstScorer = normalizeFirstScorerValue(myPrediction.first_scorer);
+      const cachedSelections = readCachedPredictionScorers(fixture.id, state.session.user.id);
+      if (cachedSelections) {
+        predScorerInput.value = cachedSelections;
+      } else if (looksLikeScorerSelections(myPrediction.first_scorer)) {
+        predScorerInput.value = myPrediction.first_scorer;
+        if (!initialFirstScorer) {
+          initialFirstScorer = parseScorerSelections(myPrediction.first_scorer)[0]?.name || "";
+        }
+      }
     }
+    predFirstScorerSelect.dataset.initialValue = initialFirstScorer;
 
     opponentNameEl.textContent = fixture.opponent;
     const chelseaPlayers = getChelseaRegisteredPlayers();
@@ -987,7 +1009,7 @@ function renderFixtures() {
     chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
 
     if (!predictionEnabled) {
-      predictionForm.querySelectorAll("input, button").forEach((node) => {
+      predictionForm.querySelectorAll("input, button, select").forEach((node) => {
         node.disabled = true;
       });
     }
@@ -1075,7 +1097,36 @@ function refreshScorerState(formEl, selectedRaw, selectedLabelEl, selectedListEl
       ? selectedPlayers.map((entry) => (entry.count > 1 ? `${entry.name} x${entry.count}` : entry.name)).join(", ")
       : "None";
   renderSelectedScorerList(formEl, selectedPlayers, selectedListEl);
+  syncFirstScorerControl(formEl, selectedPlayers);
   syncChelseaGoalsToScorerSelection(formEl, selectedPlayers);
+}
+
+function syncFirstScorerControl(formEl, selectedPlayers) {
+  const selectEl = formEl.querySelector(".pred-first-scorer");
+  if (!selectEl) {
+    return;
+  }
+  const previousValue = (selectEl.value || selectEl.dataset.initialValue || "").trim();
+  selectEl.textContent = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent =
+    selectedPlayers.length > 0 ? "Select from chosen scorers" : "No scorer if Chelsea score 0";
+  selectEl.appendChild(placeholder);
+
+  selectedPlayers.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.name;
+    option.textContent = entry.name;
+    selectEl.appendChild(option);
+  });
+
+  const matched = selectedPlayers.find((entry) => entry.name.toLowerCase() === previousValue.toLowerCase());
+  selectEl.value = matched ? matched.name : "";
+  selectEl.disabled = selectedPlayers.length === 0;
+  selectEl.required = selectedPlayers.length > 0;
+  delete selectEl.dataset.initialValue;
 }
 
 function syncChelseaGoalsToScorerSelection(formEl, selectedPlayers) {
@@ -1245,14 +1296,12 @@ function scorePrediction(prediction, result) {
   const correctResult =
     getOutcome(prediction.chelsea_goals, prediction.opponent_goals) ===
     getOutcome(result.chelsea_goals, result.opponent_goals);
-  const predictedScorers = parseScorerList(prediction.first_scorer);
-  const resultScorers = parseScorerList(result.first_scorer);
+  const predictedFirstScorer = normalizeFirstScorerValue(prediction.first_scorer);
+  const resultFirstScorer = normalizeFirstScorerValue(result.first_scorer);
   const correctScorer =
-    predictedScorers.length > 0 &&
-    resultScorers.length > 0 &&
-    predictedScorers.some((name) =>
-      resultScorers.some((resultName) => resultName.toLowerCase() === name.toLowerCase())
-    );
+    Boolean(predictedFirstScorer) &&
+    Boolean(resultFirstScorer) &&
+    predictedFirstScorer.toLowerCase() === resultFirstScorer.toLowerCase();
 
   let points = 0;
   if (exact) {
@@ -1369,6 +1418,59 @@ function parseGoals(value) {
 
 function parseScorerList(rawValue) {
   return parseScorerSelections(rawValue).map((entry) => entry.name);
+}
+
+function looksLikeScorerSelections(rawValue) {
+  const value = String(rawValue || "").trim();
+  return value.includes(",") || /\sx\d+\b/i.test(value);
+}
+
+function normalizeFirstScorerValue(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value || /^none$/i.test(value) || /^unknown$/i.test(value)) {
+    return "";
+  }
+  if (!looksLikeScorerSelections(value)) {
+    return value;
+  }
+  return parseScorerSelections(value)[0]?.name || "";
+}
+
+function readCachedPredictionScorers(fixtureId, userId) {
+  const cache = getPredictionScorersCache();
+  return cache[`${fixtureId}:${userId}`] || "";
+}
+
+function cachePredictionScorers(fixtureId, userId, scorerValue) {
+  const cache = getPredictionScorersCache();
+  const key = `${fixtureId}:${userId}`;
+  const value = String(scorerValue || "").trim();
+  if (!value) {
+    delete cache[key];
+  } else {
+    cache[key] = value;
+  }
+  try {
+    localStorage.setItem(PREDICTION_SCORERS_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore cache write failures.
+  }
+}
+
+function getPredictionScorersCache() {
+  const raw = localStorage.getItem(PREDICTION_SCORERS_CACHE_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
 }
 
 function parseScorerSelections(rawValue) {
