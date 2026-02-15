@@ -46,8 +46,31 @@
 
       <section class="panel overview-panel">
         <p class="section-kicker">Track</p>
+        <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
+          <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Fixtures
+          </button>
+          <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Scorers
+          </button>
+          <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
+            Global Leaderboard
+          </button>
+          <button id="overview-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Past Games
+          </button>
+          <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            My Leagues
+          </button>
+          <button id="overview-rules-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Game Rules
+          </button>
+          <button id="edit-profile-btn" type="button" class="tab-btn profile-tab-btn">
+            Edit Profile
+          </button>
+        </div>
+
         <div id="profile-edit-shell" class="profile-edit-shell">
-          <button id="edit-profile-btn" type="button" class="ghost-btn">Edit Profile</button>
           <form id="profile-edit-form" class="mini-form hidden">
             <label>
               Username
@@ -70,27 +93,6 @@
             </div>
           </form>
           <p id="profile-edit-status" class="status no-margin hidden"></p>
-        </div>
-
-        <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
-          <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Fixtures
-          </button>
-          <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Scorers
-          </button>
-          <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
-            Global Leaderboard
-          </button>
-          <button id="overview-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Past Games
-          </button>
-          <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            My Leagues
-          </button>
-          <button id="overview-rules-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Game Rules
-          </button>
         </div>
 
         <div id="fixtures-overview-panel">

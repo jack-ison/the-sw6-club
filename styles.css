@@ -895,7 +895,7 @@ button:disabled {
 }
 
 .profile-edit-shell {
-  margin-bottom: 0.62rem;
+  margin: 0.2rem 0 0.62rem;
   display: grid;
   gap: 0.45rem;
 }
@@ -918,6 +918,10 @@ button:disabled {
 
 .error-text {
   color: #a12626;
+}
+
+.success-text {
+  color: #17623d;
 }
 
 .site-footer p {

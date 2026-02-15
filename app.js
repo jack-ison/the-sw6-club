@@ -104,7 +104,8 @@ const state = {
   overviewTab: "global",
   upcomingFixtures: [...FALLBACK_FIXTURES],
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
-  lastPredictionAck: null
+  lastPredictionAck: null,
+  profileAck: null
 };
 
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
@@ -520,11 +521,11 @@ async function onSaveProfileSettings(event) {
   const preferredName = displayMode === "actual" ? actualName : username;
 
   if (!preferredName) {
-    setProfileStatus("Please choose a display name.", true);
+    showProfileAck("Please choose a display name.", true);
     return;
   }
   if (username && containsBlockedUsernameLanguage(username)) {
-    setProfileStatus("That username is not allowed. Please choose another.", true);
+    showProfileAck("That username is not allowed. Please choose another.", true);
     return;
   }
 
@@ -541,7 +542,7 @@ async function onSaveProfileSettings(event) {
     data: nextMeta
   });
   if (updateError) {
-    setProfileStatus(updateError.message, true);
+    showProfileAck(updateError.message, true);
     return;
   }
 
@@ -550,26 +551,26 @@ async function onSaveProfileSettings(event) {
     .update({ display_name: preferredName })
     .eq("user_id", state.session.user.id);
   if (memberError) {
-    setProfileStatus(memberError.message, true);
+    showProfileAck(memberError.message, true);
     return;
   }
 
   if (updateData?.user && state.session) {
     state.session = { ...state.session, user: updateData.user };
   }
-  setProfileStatus("Profile updated.", false);
+  showProfileAck("Profile updated successfully.", false);
   if (profileEditForm) profileEditForm.classList.add("hidden");
   await reloadAuthedData();
   render();
 }
 
-function setProfileStatus(message, isError) {
-  if (!profileEditStatus) {
-    return;
-  }
-  profileEditStatus.textContent = message;
-  profileEditStatus.classList.remove("hidden");
-  profileEditStatus.classList.toggle("error-text", Boolean(isError));
+function showProfileAck(message, isError) {
+  state.profileAck = {
+    message,
+    isError: Boolean(isError),
+    at: Date.now()
+  };
+  renderProfileEditor();
 }
 
 function hydrateProfileEditorFields() {
@@ -930,13 +931,22 @@ function render() {
 }
 
 function renderProfileEditor() {
-  if (!profileEditShellEl) {
+  if (!profileEditShellEl || !editProfileBtn) {
     return;
   }
   const isAuthed = Boolean(state.session?.user);
   profileEditShellEl.classList.toggle("hidden", !isAuthed);
+  editProfileBtn.classList.toggle("hidden", !isAuthed);
   if (isAuthed && profileEditForm && !profileEditForm.classList.contains("hidden")) {
     hydrateProfileEditorFields();
+  }
+  if (profileEditStatus) {
+    const ack = state.profileAck;
+    const isFresh = Boolean(ack) && Date.now() - ack.at < 7000;
+    profileEditStatus.classList.toggle("hidden", !isFresh);
+    profileEditStatus.classList.toggle("error-text", Boolean(ack?.isError));
+    profileEditStatus.classList.toggle("success-text", Boolean(ack && !ack.isError));
+    profileEditStatus.textContent = isFresh ? ack.message : "";
   }
 }
 
