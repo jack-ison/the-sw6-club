@@ -157,6 +157,13 @@ let loadActiveLeagueDataLeagueId = null;
 let upcomingFixturesSyncPromise = null;
 let scorerStatsSyncPromise = null;
 let renderScheduled = false;
+const TOP_VIEW_MODULE_URLS = {
+  predict: "./view-predict.js",
+  leagues: "./view-leagues.js",
+  results: "./view-results.js"
+};
+const topViewModuleCache = new Map();
+const topViewModuleLoadPromises = new Map();
 
 const state = {
   client: null,
@@ -315,15 +322,12 @@ async function initializeApp() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
   render();
 
-  const backgroundSync = Promise.allSettled([
-    syncUpcomingFixturesFromChelsea(),
-    maybeRefreshChelseaSquad(),
-    syncScorerStatsFromTheSportsDb()
-  ]);
+  const backgroundSync = Promise.allSettled([syncUpcomingFixturesFromChelsea()]);
 
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     await backgroundSync;
+    await runTopViewEnterEffects();
     render();
     return;
   }
@@ -335,9 +339,7 @@ async function initializeApp() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   await loadRegisteredUserCount();
   await reloadAuthedData();
-  if (state.topView === "leagues") {
-    await ensureOverallLeaderboardLoaded();
-  }
+  await runTopViewEnterEffects();
   render();
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
@@ -346,25 +348,65 @@ async function initializeApp() {
     render();
     await loadRegisteredUserCount();
     await reloadAuthedData();
-    if (state.topView === "leagues") {
-      await ensureOverallLeaderboardLoaded();
-    }
+    await runTopViewEnterEffects();
     render();
   });
 
   await backgroundSync;
+  await runTopViewEnterEffects();
   render();
 }
 
 function onRouteChange() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
-  if (state.topView === "leagues") {
-    ensureOverallLeaderboardLoaded().then(render);
-    if (isAdminUser()) {
-      loadAdminLeagues().then(render);
-    }
-  }
+  runTopViewEnterEffects().then(render);
   render();
+}
+
+async function ensureTopViewModule(topView) {
+  const key = ["predict", "leagues", "results"].includes(topView) ? topView : "predict";
+  if (topViewModuleCache.has(key)) {
+    return topViewModuleCache.get(key);
+  }
+  if (topViewModuleLoadPromises.has(key)) {
+    return topViewModuleLoadPromises.get(key);
+  }
+
+  const moduleUrl = TOP_VIEW_MODULE_URLS[key];
+  const loadPromise = import(moduleUrl)
+    .then((moduleNs) => {
+      topViewModuleCache.set(key, moduleNs);
+      topViewModuleLoadPromises.delete(key);
+      return moduleNs;
+    })
+    .catch((error) => {
+      topViewModuleLoadPromises.delete(key);
+      throw error;
+    });
+
+  topViewModuleLoadPromises.set(key, loadPromise);
+  return loadPromise;
+}
+
+async function runTopViewEnterEffects() {
+  try {
+    const moduleNs = await ensureTopViewModule(state.topView);
+    const onEnter = moduleNs && typeof moduleNs.onEnter === "function" ? moduleNs.onEnter : null;
+    if (!onEnter) {
+      return;
+    }
+    await onEnter({
+      state,
+      isAdminUser,
+      ensureOverallLeaderboardLoaded,
+      loadAdminLeagues,
+      syncUpcomingFixturesFromChelsea,
+      maybeRefreshChelseaSquad,
+      syncScorerStatsFromTheSportsDb
+    });
+  } catch {
+    // If a lazy view module fails to load, keep core app usable.
+  }
 }
 
 function setTopView(view) {
@@ -376,12 +418,7 @@ function setTopView(view) {
     state.loginPanelOpen = false;
   }
   syncRouteHash();
-  if (view === "leagues") {
-    ensureOverallLeaderboardLoaded().then(render);
-    if (isAdminUser()) {
-      loadAdminLeagues().then(render);
-    }
-  }
+  runTopViewEnterEffects().then(render);
   render();
 }
 
