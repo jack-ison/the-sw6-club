@@ -37,7 +37,6 @@
           <div class="account-actions">
             <a id="account-signin-link" class="account-auth-btn" href="login.html">Sign in</a>
             <a id="account-signup-link" class="account-auth-btn" href="signup.html">Sign up</a>
-            <button id="account-edit-profile-top-btn" type="button" class="ghost-btn hidden">Edit Profile</button>
             <button id="account-signout-quick-btn" type="button" class="ghost-btn hidden">Sign out</button>
           </div>
         </div>
@@ -51,37 +50,6 @@
           <button id="open-rules-inline" type="button" class="inline-rules-link">Rules</button>
         </div>
         <ul id="fixtures-list" class="fixtures-list"></ul>
-      </section>
-
-      <section class="panel profile-edit-shell hidden" id="profile-edit-shell">
-        <p class="section-kicker">Account</p>
-        <h2>Edit Profile</h2>
-        <form id="profile-edit-form" class="mini-form hidden">
-          <label>
-            Username
-            <input id="profile-username-input" type="text" maxlength="24" placeholder="e.g. SW6Jack" />
-          </label>
-          <label>
-            Actual name
-            <input id="profile-actual-name-input" type="text" maxlength="40" placeholder="Optional" />
-          </label>
-          <label>
-            Profile picture
-            <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" />
-          </label>
-          <label>
-            Display name preference
-            <select id="profile-display-mode-input">
-              <option value="username">Use username</option>
-              <option value="actual">Use actual name</option>
-            </select>
-          </label>
-          <div class="profile-actions">
-            <button id="save-profile-btn" type="submit">Save profile</button>
-            <button id="cancel-profile-btn" type="button" class="ghost-btn">Cancel</button>
-          </div>
-        </form>
-        <p id="profile-edit-status" class="status no-margin hidden"></p>
       </section>
 
       <section class="panel overview-panel hidden" id="results-view" data-view="results">
