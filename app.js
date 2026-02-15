@@ -19,6 +19,9 @@ const FORUM_THREADS_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const LEAGUE_LEADERBOARD_CACHE_KEY = "cfc-league-leaderboard-cache-v1";
 const LEAGUE_LEADERBOARD_CACHE_VERSION = 1;
 const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const LEAGUE_PAYLOAD_CACHE_KEY = "cfc-league-payload-cache-v1";
+const LEAGUE_PAYLOAD_CACHE_VERSION = 1;
+const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -174,6 +177,8 @@ let authedDataInitialized = false;
 let ensureAuthedDataLoadedPromise = null;
 let forumThreadsRefreshPromise = null;
 const leagueLeaderboardRefreshPromises = new Map();
+let upcomingFixturesAbortController = null;
+let scorerStatsAbortController = null;
 let renderScheduled = false;
 const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
@@ -365,6 +370,7 @@ document.addEventListener("keydown", onDocumentKeydown);
 initializeApp();
 
 async function initializeApp() {
+  setupTopNavPreload();
   hydrateSquadCache();
   hydrateFixtureCache();
   hydrateScorerStatsCache();
@@ -402,6 +408,28 @@ async function initializeApp() {
   });
 
   await backgroundSync;
+}
+
+function setupTopNavPreload() {
+  const entries = [
+    [topnavPredictBtn, "predict"],
+    [topnavLeaguesBtn, "leagues"],
+    [topnavResultsBtn, "results"],
+    [topnavForumBtn, "forum"]
+  ];
+  entries.forEach(([btn, view]) => {
+    if (!btn) {
+      return;
+    }
+    const preload = () => {
+      ensureTopViewModule(view).catch(() => {
+        // Keep interaction robust even if prefetch fails.
+      });
+    };
+    btn.addEventListener("mouseenter", preload, { passive: true, once: true });
+    btn.addEventListener("touchstart", preload, { passive: true, once: true });
+    btn.addEventListener("focus", preload, { once: true });
+  });
 }
 
 function runPostAuthWarmup() {
@@ -1654,6 +1682,14 @@ async function loadActiveLeagueData() {
     return;
   }
 
+  const userId = state.session?.user?.id || "";
+  const cachedPayload = readLeaguePayloadCache(league.id, userId);
+  if (cachedPayload) {
+    state.activeLeagueMembers = cachedPayload.members;
+    state.activeLeagueFixtures = cachedPayload.fixtures;
+    render();
+  }
+
   const [memberResult, fixtureResult] = await Promise.all([
     state.client
       .from("league_members")
@@ -1688,6 +1724,10 @@ async function loadActiveLeagueData() {
   await syncCompletedResultsFromChelsea();
   await loadMyPredictionsForActiveFixtures();
   await loadLeagueLeaderboard({ background: true });
+  writeLeaguePayloadCache(league.id, userId, {
+    members: state.activeLeagueMembers,
+    fixtures: state.activeLeagueFixtures
+  });
   })();
 
   try {
@@ -1867,6 +1907,35 @@ function writeLeagueLeaderboardCache(leagueId, rows) {
     getLeagueLeaderboardCacheKey(leagueId),
     LEAGUE_LEADERBOARD_CACHE_VERSION,
     Array.isArray(rows) ? rows : []
+  );
+}
+
+function getLeaguePayloadCacheKey(leagueId, userId) {
+  return `${LEAGUE_PAYLOAD_CACHE_KEY}:${leagueId}:${userId}`;
+}
+
+function readLeaguePayloadCache(leagueId, userId) {
+  const cached = readObjectCache(
+    getLeaguePayloadCacheKey(leagueId, userId),
+    LEAGUE_PAYLOAD_CACHE_VERSION,
+    LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS
+  );
+  if (!cached || typeof cached !== "object") {
+    return null;
+  }
+  const members = Array.isArray(cached.members) ? cached.members : [];
+  const fixtures = Array.isArray(cached.fixtures) ? cached.fixtures : [];
+  return { members, fixtures };
+}
+
+function writeLeaguePayloadCache(leagueId, userId, payload) {
+  writeObjectCache(
+    getLeaguePayloadCacheKey(leagueId, userId),
+    LEAGUE_PAYLOAD_CACHE_VERSION,
+    {
+      members: Array.isArray(payload?.members) ? payload.members : [],
+      fixtures: Array.isArray(payload?.fixtures) ? payload.fixtures : []
+    }
   );
 }
 
@@ -4037,11 +4106,11 @@ function mergeScorerRows(rows) {
     .slice(0, 20);
 }
 
-async function fetchSportsDbTopScorersForLeague(leagueId) {
+async function fetchSportsDbTopScorersForLeague(leagueId, signal) {
   const url = new URL(`${THE_SPORTS_DB_BASE_URL}/lookuptopscorers.php`);
   url.searchParams.set("l", leagueId);
   url.searchParams.set("s", THE_SPORTS_DB_SEASON);
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -4064,6 +4133,12 @@ async function syncScorerStatsFromTheSportsDb(force = false) {
     return scorerStatsSyncPromise;
   }
 
+  if (scorerStatsAbortController) {
+    scorerStatsAbortController.abort();
+  }
+  scorerStatsAbortController = new AbortController();
+  const scorerSignal = scorerStatsAbortController.signal;
+
   scorerStatsSyncPromise = (async () => {
   const cachedAt = getCachedScorerStatsSyncTime();
   if (!force && cachedAt && Date.now() - cachedAt < THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS) {
@@ -4079,7 +4154,7 @@ async function syncScorerStatsFromTheSportsDb(force = false) {
   await Promise.all(
     Object.entries(THE_SPORTS_DB_SCORER_COMPETITIONS).map(async ([key, competition]) => {
       try {
-        const rows = await fetchSportsDbTopScorersForLeague(competition.leagueId);
+        const rows = await fetchSportsDbTopScorersForLeague(competition.leagueId, scorerSignal);
         nextData[key] = {
           label: competition.label,
           players: rows,
@@ -4092,6 +4167,9 @@ async function syncScorerStatsFromTheSportsDb(force = false) {
           liveRowsCount += rows.length;
         }
       } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
         nextData[key] = {
           label: competition.label,
           players: [],
@@ -4125,6 +4203,7 @@ async function syncScorerStatsFromTheSportsDb(force = false) {
     await scorerStatsSyncPromise;
   } finally {
     scorerStatsSyncPromise = null;
+    scorerStatsAbortController = null;
   }
 }
 
@@ -4158,6 +4237,12 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     return upcomingFixturesSyncPromise;
   }
 
+  if (upcomingFixturesAbortController) {
+    upcomingFixturesAbortController.abort();
+  }
+  upcomingFixturesAbortController = new AbortController();
+  const fixturesSignal = upcomingFixturesAbortController.signal;
+
   upcomingFixturesSyncPromise = (async () => {
   const raw = localStorage.getItem(FIXTURE_CACHE_KEY);
   if (!force && raw) {
@@ -4181,7 +4266,7 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
   }
 
   try {
-    const response = await fetch(CHELSEA_FIXTURES_PROXY_URL);
+    const response = await fetch(CHELSEA_FIXTURES_PROXY_URL, { signal: fixturesSignal });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -4203,7 +4288,10 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
       return;
     }
     throw new Error("Could not parse sufficient fixtures");
-  } catch {
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return;
+    }
     state.upcomingSourceText = "Live fixture sync unavailable. Showing fallback fixture list.";
   }
   })();
@@ -4212,6 +4300,7 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     await upcomingFixturesSyncPromise;
   } finally {
     upcomingFixturesSyncPromise = null;
+    upcomingFixturesAbortController = null;
   }
 }
 
