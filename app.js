@@ -527,11 +527,88 @@ async function loadActiveLeagueData() {
     result: (fixture.results && fixture.results[0]) || null
   }));
 
-  await loadMyPredictionsForActiveFixtures();
-  await loadLeagueLeaderboard();
   await ensureUpcomingFixturesImported();
+  await syncCompletedResultsFromChelsea();
   await loadMyPredictionsForActiveFixtures();
   await loadLeagueLeaderboard();
+}
+
+async function syncCompletedResultsFromChelsea() {
+  const league = getActiveLeague();
+  const member = getCurrentMember();
+  if (!league || !member || member.role !== "owner" || !state.session?.user) {
+    return;
+  }
+
+  const pending = state.activeLeagueFixtures.filter(
+    (fixture) => !fixture.result && new Date(fixture.kickoff).getTime() < Date.now()
+  );
+  if (pending.length === 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch(CHELSEA_FIXTURES_PROXY_URL);
+    if (!response.ok) {
+      return;
+    }
+    const text = await response.text();
+    const parsed = parseChelseaFixturesPage(text).filter(
+      (fixture) => Number.isInteger(fixture.resultChelsea) && Number.isInteger(fixture.resultOpponent)
+    );
+    if (parsed.length === 0) {
+      return;
+    }
+
+    const byKey = new Map();
+    parsed.forEach((fixture) => {
+      byKey.set(
+        `${fixture.date}::${normalizeOpponentName(fixture.opponent)}`,
+        fixture
+      );
+    });
+
+    const upserts = [];
+    pending.forEach((fixture) => {
+      const date = new Date(fixture.kickoff).toISOString().slice(0, 10);
+      const key = `${date}::${normalizeOpponentName(fixture.opponent)}`;
+      const match = byKey.get(key);
+      if (!match) {
+        return;
+      }
+      upserts.push({
+        fixture_id: fixture.id,
+        chelsea_goals: match.resultChelsea,
+        opponent_goals: match.resultOpponent,
+        first_scorer: "Unknown",
+        saved_by: state.session.user.id,
+        saved_at: new Date().toISOString()
+      });
+    });
+
+    if (upserts.length === 0) {
+      return;
+    }
+
+    const { error } = await state.client.from("results").upsert(upserts, { onConflict: "fixture_id" });
+    if (error) {
+      return;
+    }
+
+    const scoreByFixture = new Map(upserts.map((row) => [row.fixture_id, row]));
+    state.activeLeagueFixtures = state.activeLeagueFixtures.map((fixture) => ({
+      ...fixture,
+      result: scoreByFixture.has(fixture.id)
+        ? {
+            chelsea_goals: scoreByFixture.get(fixture.id).chelsea_goals,
+            opponent_goals: scoreByFixture.get(fixture.id).opponent_goals,
+            first_scorer: scoreByFixture.get(fixture.id).first_scorer
+          }
+        : fixture.result
+    }));
+  } catch {
+    // Keep manual results flow if sync fails.
+  }
 }
 
 async function ensureUpcomingFixturesImported() {
@@ -1356,13 +1433,17 @@ function parseChelseaFixturesPage(text) {
     }
 
     const timeIndex = block.findIndex((line) => /^\d{1,2}:\d{2}$/.test(line) || line === "TBC");
-    if (timeIndex < 1) {
+    const scoreIndex = block.findIndex(
+      (line, idx) => /^\d{1,2}$/.test(line) && /^\d{1,2}$/.test(block[idx + 1] || "")
+    );
+    if (timeIndex < 1 && scoreIndex < 0) {
       continue;
     }
-    const kickoffUk = block[timeIndex];
+    const kickoffUk = timeIndex >= 1 ? block[timeIndex] : "TBC";
+    const anchorIndex = timeIndex >= 1 ? timeIndex : scoreIndex;
 
-    const team1 = findNearestTeam(block, timeIndex, -1);
-    const team2 = findNearestTeam(block, timeIndex, 1);
+    const team1 = findNearestTeam(block, anchorIndex, -1);
+    const team2 = findNearestTeam(block, anchorIndex + (scoreIndex >= 0 ? 1 : 0), 1);
     if (!team1 || !team2 || (team1 !== "Chelsea" && team2 !== "Chelsea")) {
       continue;
     }
@@ -1377,16 +1458,43 @@ function parseChelseaFixturesPage(text) {
     }
 
     seen.add(key);
+    let resultChelsea = null;
+    let resultOpponent = null;
+    if (scoreIndex >= 0) {
+      const scoreA = Number.parseInt(block[scoreIndex], 10);
+      const scoreB = Number.parseInt(block[scoreIndex + 1], 10);
+      if (Number.isInteger(scoreA) && Number.isInteger(scoreB)) {
+        if (team1 === "Chelsea") {
+          resultChelsea = scoreA;
+          resultOpponent = scoreB;
+        } else {
+          resultChelsea = scoreB;
+          resultOpponent = scoreA;
+        }
+      }
+    }
     fixtures.push({
       date,
       opponent,
       competition,
-      kickoffUk
+      kickoffUk,
+      resultChelsea,
+      resultOpponent
     });
   }
 
   fixtures.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return fixtures;
+}
+
+function normalizeOpponentName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/football club/g, "")
+    .replace(/united/g, "")
+    .replace(/hotspur/g, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function findNearestTeam(block, startIndex, direction) {
