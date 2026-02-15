@@ -862,9 +862,11 @@ function renderFixtures() {
       predScorerInput,
       scorerSelectedEl
     );
-    if (predScorerInput.value && !chelseaPlayers.includes(predScorerInput.value)) {
-      appendCustomScorerButton(chelseaChipWrap, predScorerInput.value, predScorerInput, scorerSelectedEl);
-    }
+    parseScorerList(predScorerInput.value).forEach((name) => {
+      if (!chelseaPlayers.some((player) => player.toLowerCase() === name.toLowerCase())) {
+        appendCustomScorerButton(chelseaChipWrap, name, predScorerInput, scorerSelectedEl);
+      }
+    });
     refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl);
 
     const syncScoreDisplay = () => {
@@ -927,8 +929,7 @@ function renderScorerButtons(container, players, targetInput, selectedLabelEl) {
     button.dataset.player = player;
     button.textContent = player;
     button.addEventListener("click", () => {
-      targetInput.value = player;
-      refreshScorerState(container.closest(".prediction-form"), player, selectedLabelEl);
+      toggleScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
     });
     container.appendChild(button);
   });
@@ -941,17 +942,30 @@ function appendCustomScorerButton(container, player, targetInput, selectedLabelE
   button.dataset.player = player;
   button.textContent = player;
   button.addEventListener("click", () => {
-    targetInput.value = player;
-    refreshScorerState(container.closest(".prediction-form"), player, selectedLabelEl);
+    toggleScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
   });
   container.appendChild(button);
 }
 
-function refreshScorerState(formEl, selectedPlayer, selectedLabelEl) {
+function toggleScorerSelection(formEl, targetInput, player, selectedLabelEl) {
+  const current = parseScorerList(targetInput.value);
+  const hasPlayer = current.some((name) => name.toLowerCase() === player.toLowerCase());
+  const next = hasPlayer
+    ? current.filter((name) => name.toLowerCase() !== player.toLowerCase())
+    : [...current, player];
+  targetInput.value = next.join(", ");
+  refreshScorerState(formEl, targetInput.value, selectedLabelEl);
+}
+
+function refreshScorerState(formEl, selectedRaw, selectedLabelEl) {
+  const selectedPlayers = parseScorerList(selectedRaw);
   formEl.querySelectorAll(".player-chip").forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.player === selectedPlayer);
+    chip.classList.toggle(
+      "active",
+      selectedPlayers.some((name) => name.toLowerCase() === chip.dataset.player.toLowerCase())
+    );
   });
-  selectedLabelEl.textContent = selectedPlayer || "None";
+  selectedLabelEl.textContent = selectedPlayers.length > 0 ? selectedPlayers.join(", ") : "None";
 }
 
 function getChelseaRegisteredPlayers() {
@@ -1035,8 +1049,14 @@ function scorePrediction(prediction, result) {
   const correctResult =
     getOutcome(prediction.chelsea_goals, prediction.opponent_goals) ===
     getOutcome(result.chelsea_goals, result.opponent_goals);
+  const predictedScorers = parseScorerList(prediction.first_scorer);
+  const resultScorers = parseScorerList(result.first_scorer);
   const correctScorer =
-    prediction.first_scorer.trim().toLowerCase() === result.first_scorer.trim().toLowerCase();
+    predictedScorers.length > 0 &&
+    resultScorers.length > 0 &&
+    predictedScorers.some((name) =>
+      resultScorers.some((resultName) => resultName.toLowerCase() === name.toLowerCase())
+    );
 
   let points = 0;
   if (exact) {
@@ -1149,6 +1169,13 @@ function parseGoals(value) {
     return null;
   }
   return number;
+}
+
+function parseScorerList(rawValue) {
+  return String(rawValue || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function getUpcomingFixturesForDisplay() {
