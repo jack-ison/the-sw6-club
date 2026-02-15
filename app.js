@@ -1636,6 +1636,14 @@ function renderFixtures() {
       savePredictionBtn.textContent = ack.updated ? "Prediction updated" : "Prediction saved";
     }
     if (predictionAckEl && myPrediction) {
+      // Button-level feedback now handles update confirmation; keep the banner for first-time saves only.
+      const shouldShowAck = !(isRecentAck && ack?.updated);
+      if (!shouldShowAck) {
+        predictionAckEl.classList.add("hidden");
+        predictionAckEl.classList.remove("fresh");
+        predictionForm.classList.remove("saved-state");
+        predictionAckEl.textContent = "";
+      } else {
       predictionAckEl.classList.remove("hidden");
       predictionAckEl.classList.toggle("fresh", isRecentAck);
       predictionForm.classList.toggle("saved-state", isRecentAck);
@@ -1644,6 +1652,7 @@ function renderFixtures() {
           ? "Prediction updated. Nice one."
           : "Prediction saved. Nice one."
         : "Prediction saved. You can edit it until lock time.";
+      }
     } else if (predictionAckEl) {
       predictionAckEl.classList.add("hidden");
       predictionAckEl.classList.remove("fresh");
