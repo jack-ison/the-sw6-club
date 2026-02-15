@@ -5,6 +5,7 @@ const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
+const VISITOR_TOKEN_KEY = "cfc-visitor-token-v1";
 const THE_SPORTS_DB_SCORERS_CACHE_KEY = "cfc-sportsdb-scorers-cache-v1";
 const THE_SPORTS_DB_SCORERS_CACHE_VERSION = 1;
 const THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
@@ -195,6 +196,7 @@ const state = {
   profileAck: null,
   predictionButtonFlashTimeoutId: null,
   registeredUserCount: undefined,
+  visitorCount: null,
   adminLeagues: []
 };
 
@@ -271,6 +273,7 @@ const adminConsoleEl = document.getElementById("admin-console");
 const adminLeagueListEl = document.getElementById("admin-league-list");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
+const visitorCountEl = document.getElementById("visitor-count");
 const predictSigninPromptEl = document.getElementById("predict-signin-prompt");
 const adminScorePanelEl = document.getElementById("admin-score-panel");
 
@@ -337,8 +340,10 @@ async function initializeApp() {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
+  await trackSiteVisit();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   await loadRegisteredUserCount();
+  await loadVisitorCount();
   await reloadAuthedData();
   await runTopViewEnterEffects();
   render();
@@ -348,6 +353,7 @@ async function initializeApp() {
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
     await loadRegisteredUserCount();
+    await loadVisitorCount();
     await reloadAuthedData();
     await runTopViewEnterEffects();
     render();
@@ -744,6 +750,42 @@ async function loadRegisteredUserCount() {
 
   const count = Number(data);
   state.registeredUserCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+}
+
+function getVisitorToken() {
+  try {
+    const existing = String(localStorage.getItem(VISITOR_TOKEN_KEY) || "").trim();
+    if (existing) {
+      return existing;
+    }
+    const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    localStorage.setItem(VISITOR_TOKEN_KEY, token);
+    return token;
+  } catch {
+    return `ephemeral-${Math.random().toString(36).slice(2, 12)}`;
+  }
+}
+
+async function trackSiteVisit() {
+  if (!state.client) {
+    return;
+  }
+  const token = getVisitorToken();
+  await state.client.rpc("log_site_visit", { p_visitor_token: token });
+}
+
+async function loadVisitorCount() {
+  if (!state.client || !state.session?.user || !isAdminUser()) {
+    state.visitorCount = null;
+    return;
+  }
+  const { data, error } = await state.client.rpc("get_site_visitor_count");
+  if (error) {
+    state.visitorCount = null;
+    return;
+  }
+  const count = Number(data);
+  state.visitorCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
 }
 
 async function reloadAuthedData() {
@@ -1613,6 +1655,7 @@ function renderNow() {
       sessionStatus.classList.add("hidden");
     }
     renderMatchdayAttendance();
+    renderVisitorCount();
     return;
   }
 
@@ -1648,6 +1691,7 @@ function renderNow() {
   }
   renderDeadlineCountdown();
   renderMatchdayAttendance();
+  renderVisitorCount();
 }
 
 function renderProfileEditor() {
@@ -3731,6 +3775,23 @@ function renderMatchdayAttendance() {
     return;
   }
   matchdayAttendanceEl.textContent = `Matchday attendance: ${count} registered users`;
+}
+
+function renderVisitorCount() {
+  if (!visitorCountEl) {
+    return;
+  }
+  const show = Boolean(state.session?.user) && isAdminUser();
+  visitorCountEl.classList.toggle("hidden", !show);
+  if (!show) {
+    visitorCountEl.textContent = "";
+    return;
+  }
+  if (!Number.isFinite(state.visitorCount)) {
+    visitorCountEl.textContent = "Visitor count: loading...";
+    return;
+  }
+  visitorCountEl.textContent = `Total visitors tracked: ${state.visitorCount}`;
 }
 
 function formatDuration(ms) {

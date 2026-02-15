@@ -480,6 +480,76 @@ $$;
 
 grant execute on function public.get_registered_user_count() to anon, authenticated;
 
+create table if not exists public.site_visits (
+  id bigserial primary key,
+  visitor_token text not null,
+  visited_on date not null default current_date,
+  visited_at timestamptz not null default now(),
+  unique (visitor_token, visited_on)
+);
+
+alter table public.site_visits enable row level security;
+
+drop policy if exists site_visits_no_direct_select on public.site_visits;
+create policy site_visits_no_direct_select
+on public.site_visits
+for select
+using (false);
+
+drop policy if exists site_visits_insert_all on public.site_visits;
+create policy site_visits_insert_all
+on public.site_visits
+for insert
+to anon, authenticated
+with check (
+  length(trim(coalesce(visitor_token, ''))) >= 8
+);
+
+drop function if exists public.log_site_visit(text);
+create or replace function public.log_site_visit(p_visitor_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if length(trim(coalesce(p_visitor_token, ''))) < 8 then
+    return;
+  end if;
+
+  insert into public.site_visits (visitor_token, visited_on)
+  values (trim(p_visitor_token), current_date)
+  on conflict (visitor_token, visited_on) do nothing;
+end;
+$$;
+
+grant execute on function public.log_site_visit(text) to anon, authenticated;
+
+drop function if exists public.get_site_visitor_count();
+create or replace function public.get_site_visitor_count()
+returns integer
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+begin
+  v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+  if v_email <> lower('jackwilliamison@gmail.com') then
+    return 0;
+  end if;
+
+  return (
+    select count(distinct visitor_token)::integer
+    from public.site_visits
+  );
+end;
+$$;
+
+grant execute on function public.get_site_visitor_count() to authenticated;
+
 drop function if exists public.get_overall_leaderboard(integer);
 
 create or replace function public.get_overall_leaderboard(p_limit integer default 10)
