@@ -1096,9 +1096,13 @@ async function onJoinLeague(event) {
   render();
 }
 
-function onSwitchLeague(event) {
+async function onSwitchLeague(event) {
   state.activeLeagueId = event.target.value || null;
-  loadActiveLeagueData().then(render);
+  await loadActiveLeagueData();
+  if (isGlobalLeague(getActiveLeague())) {
+    await ensureOverallLeaderboardLoaded();
+  }
+  render();
 }
 
 async function onCopyLeagueCode() {
@@ -1634,6 +1638,9 @@ function renderNow() {
     renderTopScorers();
   }
   if (showLeagues) {
+    if (!state.overallLeaderboardLoaded) {
+      ensureOverallLeaderboardLoaded().then(render);
+    }
     renderOverallLeaderboard();
     renderAdminConsole();
   }
@@ -2142,7 +2149,9 @@ function renderLeaderboard() {
   leaderboardEl.textContent = "";
   const activeLeague = getActiveLeague();
   const useGlobalTopTen = isGlobalLeague(activeLeague);
-  const rows = useGlobalTopTen ? state.overallLeaderboard.slice(0, 10) : state.activeLeagueLeaderboard;
+  const rows = useGlobalTopTen
+    ? (state.overallLeaderboard.length > 0 ? state.overallLeaderboard.slice(0, 10) : state.activeLeagueLeaderboard)
+    : state.activeLeagueLeaderboard;
 
   if (!state.activeLeagueId || rows.length === 0) {
     const li = document.createElement("li");
