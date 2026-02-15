@@ -1235,6 +1235,26 @@ button:disabled {
   margin-top: 0.58rem;
 }
 
+.auth-gate-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 88%);
+  padding: 0.85rem;
+  color: #294a79;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.auth-gate-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.auth-gate-card-inline {
+  margin-top: 0.55rem;
+}
+
 .hidden {
   display: none;
 }

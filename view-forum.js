@@ -281,7 +281,7 @@ export function render(ctx) {
   const activeThread = state.forumThreads.find((thread) => thread.id === state.activeForumThreadId) || null;
   const isThreadView = Boolean(activeThread);
 
-  if (els.forumLoginPromptEl) els.forumLoginPromptEl.classList.toggle("hidden", isAuthed);
+  if (els.forumAuthGateEl) els.forumAuthGateEl.classList.toggle("hidden", isAuthed);
   if (els.forumThreadFormEl) els.forumThreadFormEl.classList.toggle("hidden", !isAuthed || isThreadView);
   if (els.forumStatusEl) els.forumStatusEl.textContent = state.forumStatus || "";
   els.forumThreadListEl.classList.toggle("hidden", isThreadView);

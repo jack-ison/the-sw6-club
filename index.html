@@ -55,7 +55,13 @@
           <h2 class="fixtures-title">Next Game</h2>
           <button id="open-rules-inline" type="button" class="inline-rules-link">Rules</button>
         </div>
-        <p id="predict-signin-prompt" class="status no-margin hidden">Sign in to start predicting.</p>
+        <div id="predict-auth-gate" class="auth-gate-card hidden">
+          <p class="no-margin"><strong>Sign in to use this.</strong></p>
+          <div class="auth-gate-actions">
+            <a href="login.html" class="account-auth-btn">Sign in</a>
+            <a href="signup.html" class="account-auth-btn">Sign up</a>
+          </div>
+        </div>
         <ul id="fixtures-list" class="fixtures-list"></ul>
         <section id="admin-score-panel" class="admin-score-panel hidden"></section>
       </section>
@@ -114,7 +120,14 @@
 
       <section class="panel hidden" id="league-panel" data-view="leagues">
           <h2>My Leagues</h2>
-          <p id="league-login-prompt" class="status no-margin hidden">Log in to create or join leagues.</p>
+          <div id="league-auth-gate" class="auth-gate-card hidden">
+            <p class="no-margin"><strong>Sign in to use this.</strong></p>
+            <div class="auth-gate-actions">
+              <a href="login.html" class="account-auth-btn">Sign in</a>
+              <a href="signup.html" class="account-auth-btn">Sign up</a>
+            </div>
+          </div>
+          <div id="league-auth-content">
           <div class="league-forms">
             <form id="create-league-form" class="mini-form">
               <h3>Create League</h3>
@@ -172,12 +185,6 @@
             </div>
           </div>
 
-          <section id="admin-console" class="subpanel hidden">
-            <h3>Admin Console</h3>
-            <p class="status no-margin">Visible only to the configured admin account.</p>
-            <ul id="admin-league-list" class="prediction-list"></ul>
-          </section>
-
           <div class="dashboard-grid">
             <article class="subpanel">
               <h3>League Leaderboard</h3>
@@ -189,11 +196,18 @@
               <p id="overall-leaderboard-status" class="status no-margin"></p>
             </article>
           </div>
+          </div>
       </section>
 
       <section class="panel hidden" id="forum-panel" data-view="forum">
           <h2>The Concourse</h2>
-          <p id="forum-login-prompt" class="status no-margin hidden">Log in to post threads and replies in The Concourse.</p>
+          <div id="forum-auth-gate" class="auth-gate-card hidden">
+            <p class="no-margin"><strong>Sign in to use this.</strong></p>
+            <div class="auth-gate-actions">
+              <a href="login.html" class="account-auth-btn">Sign in</a>
+              <a href="signup.html" class="account-auth-btn">Sign up</a>
+            </div>
+          </div>
           <form id="forum-thread-form" class="mini-form">
             <label>
               New thread title

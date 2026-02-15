@@ -1,6 +1,6 @@
 const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
-const ADMIN_EMAIL = "jackwilliamison@gmail.com";
+const ADMIN_EMAILS = ["jackwilliamison@gmail.com"];
 const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
@@ -192,6 +192,7 @@ const topViewModuleLoadPromises = new Map();
 const state = {
   client: null,
   session: null,
+  authResolved: false,
   leagues: [],
   activeLeagueId: null,
   activeLeagueMembers: [],
@@ -241,7 +242,10 @@ const predictViewEl = document.getElementById("predict-view");
 const forumPanelEl = document.getElementById("forum-panel");
 const resultsViewEl = document.getElementById("results-view");
 const loginPanelEl = document.getElementById("login-panel");
-const leagueLoginPromptEl = document.getElementById("league-login-prompt");
+const predictAuthGateEl = document.getElementById("predict-auth-gate");
+const leagueAuthGateEl = document.getElementById("league-auth-gate");
+const leagueAuthContentEl = document.getElementById("league-auth-content");
+const forumAuthGateEl = document.getElementById("forum-auth-gate");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -298,18 +302,16 @@ const joinPrivatePasswordInput = document.getElementById("join-private-password-
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
 const leagueMetaNoteEl = document.getElementById("league-meta-note");
-const adminConsoleEl = document.getElementById("admin-console");
-const adminLeagueListEl = document.getElementById("admin-league-list");
+let adminConsoleEl = null;
+let adminLeagueListEl = null;
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const visitorCountEl = document.getElementById("visitor-count");
-const predictSigninPromptEl = document.getElementById("predict-signin-prompt");
 const adminScorePanelEl = document.getElementById("admin-score-panel");
 
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
-const forumLoginPromptEl = document.getElementById("forum-login-prompt");
 const forumThreadFormEl = document.getElementById("forum-thread-form");
 const forumThreadTitleInputEl = document.getElementById("forum-thread-title-input");
 const forumThreadBodyInputEl = document.getElementById("forum-thread-body-input");
@@ -353,7 +355,6 @@ if (leagueVisibilityInput) leagueVisibilityInput.addEventListener("change", onLe
 if (joinModeInput) joinModeInput.addEventListener("change", onJoinModeChange);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
-if (adminLeagueListEl) adminLeagueListEl.addEventListener("click", onAdminLeagueListClick);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
 
@@ -379,6 +380,7 @@ async function initializeApp() {
   });
 
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
+    state.authResolved = true;
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     await backgroundSync;
     await runTopViewEnterEffects();
@@ -390,12 +392,14 @@ async function initializeApp() {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
+  state.authResolved = true;
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   render();
   runPostAuthWarmup();
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
+    state.authResolved = true;
     authedDataInitialized = false;
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
@@ -513,7 +517,7 @@ function getForumViewContext() {
       }
     },
     els: {
-      forumLoginPromptEl,
+      forumAuthGateEl,
       forumThreadFormEl,
       forumThreadTitleInputEl,
       forumThreadBodyInputEl,
@@ -2058,7 +2062,6 @@ function renderNow() {
       ensureOverallLeaderboardLoaded().then(render);
     }
     renderOverallLeaderboard();
-    renderAdminConsole();
   }
   if (showForum) {
     renderForumPanel();
@@ -2066,23 +2069,13 @@ function renderNow() {
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
-  if (authLoginFields) authLoginFields.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
-  if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
-  if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
-  if (accountSignInLink) accountSignInLink.classList.toggle("hidden", isAuthed || !isConnected);
-  if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", isAuthed || !isConnected);
-  if (accountEditProfileTopLink) accountEditProfileTopLink.classList.toggle("hidden", !isAuthed || !isConnected);
-  if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
-  if (predictSigninPromptEl) predictSigninPromptEl.classList.toggle("hidden", isAuthed);
-
-  if (!isConnected) {
-    if (sessionStatus) {
-      sessionStatus.textContent = "";
-      sessionStatus.classList.add("hidden");
-    }
-    renderMatchdayAttendance();
-    renderVisitorCount();
-    return;
+  const signedIn = isConnected && isAuthed;
+  renderHeaderAuthState({ signedIn, isConnected });
+  renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected });
+  if (!signedIn || !isAdminUser()) {
+    removeAdminConsole();
+  } else if (showLeagues) {
+    renderAdminConsole();
   }
 
   if (sessionStatus) {
@@ -2090,18 +2083,15 @@ function renderNow() {
     sessionStatus.classList.add("hidden");
   }
 
-  if (leagueLoginPromptEl) leagueLoginPromptEl.classList.toggle("hidden", isAuthed);
-  if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !isAuthed);
-  if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !isAuthed);
   if (leagueSelect?.closest("label")) {
-    leagueSelect.closest("label").classList.toggle("hidden", !isAuthed);
+    leagueSelect.closest("label").classList.toggle("hidden", !signedIn);
   }
   const activeLeague = getActiveLeague();
   const isGlobalActive = isGlobalLeague(activeLeague);
-  if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !isAuthed || isGlobalActive);
-  if (leagueMetaNoteEl) leagueMetaNoteEl.classList.toggle("hidden", !isAuthed || !isGlobalActive);
+  if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !signedIn || isGlobalActive);
+  if (leagueMetaNoteEl) leagueMetaNoteEl.classList.toggle("hidden", !signedIn || !isGlobalActive);
 
-  if (isAuthed) {
+  if (signedIn) {
     if (showLeagues) {
       renderLeagueSelect();
       renderLeaderboard();
@@ -2118,6 +2108,27 @@ function renderNow() {
   renderDeadlineCountdown();
   renderMatchdayAttendance();
   renderVisitorCount();
+}
+
+function renderHeaderAuthState({ signedIn, isConnected }) {
+  if (authLoginFields) authLoginFields.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
+  if (loginBtn) loginBtn.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
+  if (loginPanelEl) loginPanelEl.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
+
+  if (accountSignInLink) accountSignInLink.classList.toggle("hidden", signedIn);
+  if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", signedIn);
+  if (accountEditProfileTopLink) accountEditProfileTopLink.classList.toggle("hidden", !signedIn || !isConnected);
+  if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !signedIn || !isConnected);
+}
+
+function renderAuthGatedSections({ signedIn, authResolved }) {
+  const showGate = !signedIn && authResolved;
+  if (predictAuthGateEl) predictAuthGateEl.classList.toggle("hidden", !showGate);
+  if (leagueAuthGateEl) leagueAuthGateEl.classList.toggle("hidden", !showGate);
+  if (forumAuthGateEl) forumAuthGateEl.classList.toggle("hidden", !showGate);
+  if (leagueAuthContentEl) leagueAuthContentEl.classList.toggle("hidden", !signedIn);
+  if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !signedIn);
+  if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !signedIn);
 }
 
 function renderProfileEditor() {
@@ -2413,13 +2424,13 @@ function renderLeagueSelect() {
 }
 
 function renderAdminConsole() {
-  if (!adminConsoleEl || !adminLeagueListEl) {
+  const show = Boolean(state.session?.user) && isAdminUser();
+  if (!show) {
+    removeAdminConsole();
     return;
   }
-  const show = Boolean(state.session?.user) && isAdminUser();
-  adminConsoleEl.classList.toggle("hidden", !show);
-  if (!show) {
-    adminLeagueListEl.textContent = "";
+  ensureAdminConsoleMounted();
+  if (!adminConsoleEl || !adminLeagueListEl) {
     return;
   }
 
@@ -2448,6 +2459,60 @@ function renderAdminConsole() {
     li.appendChild(btn);
     adminLeagueListEl.appendChild(li);
   });
+}
+
+function ensureAdminConsoleMounted() {
+  if (adminConsoleEl && adminLeagueListEl) {
+    return;
+  }
+  const parent = leagueAuthContentEl || leaguePanel;
+  if (!parent) {
+    return;
+  }
+  const existing = parent.querySelector("#admin-console");
+  if (existing) {
+    adminConsoleEl = existing;
+    adminLeagueListEl = existing.querySelector("#admin-league-list");
+    if (adminLeagueListEl) {
+      adminLeagueListEl.addEventListener("click", onAdminLeagueListClick);
+    }
+    return;
+  }
+
+  const section = document.createElement("section");
+  section.id = "admin-console";
+  section.className = "subpanel";
+
+  const h3 = document.createElement("h3");
+  h3.textContent = "Admin Console";
+  const note = document.createElement("p");
+  note.className = "status no-margin";
+  note.textContent = "Visible only to the configured admin account.";
+  const list = document.createElement("ul");
+  list.id = "admin-league-list";
+  list.className = "prediction-list";
+  list.addEventListener("click", onAdminLeagueListClick);
+
+  section.appendChild(h3);
+  section.appendChild(note);
+  section.appendChild(list);
+
+  const dashboard = parent.querySelector(".dashboard-grid");
+  if (dashboard) {
+    parent.insertBefore(section, dashboard);
+  } else {
+    parent.appendChild(section);
+  }
+  adminConsoleEl = section;
+  adminLeagueListEl = list;
+}
+
+function removeAdminConsole() {
+  if (adminConsoleEl && adminConsoleEl.parentNode) {
+    adminConsoleEl.parentNode.removeChild(adminConsoleEl);
+  }
+  adminConsoleEl = null;
+  adminLeagueListEl = null;
 }
 
 function getForumThreadsCache() {
@@ -2715,6 +2780,14 @@ function renderFixtures() {
       badgeEl.textContent = "Saved (editable)";
     } else {
       badgeEl.textContent = "Open";
+    }
+
+    if (!isAuthed) {
+      if (predictionForm) {
+        predictionForm.remove();
+      }
+      fixturesListEl.appendChild(fragment);
+      return;
     }
 
     predChelseaInput.value = "0";
@@ -3312,9 +3385,13 @@ function getCurrentUserAvatarUrl() {
 }
 
 function isAdminUser() {
-  const adminEmail = normalizeEmailForAdminMatch(ADMIN_EMAIL);
   const email = normalizeEmailForAdminMatch(state.session?.user?.email || "");
-  return Boolean(email) && email === adminEmail;
+  if (!email) {
+    return false;
+  }
+  return ADMIN_EMAILS
+    .map((entry) => normalizeEmailForAdminMatch(entry))
+    .includes(email);
 }
 
 function normalizeEmailForAdminMatch(value) {
