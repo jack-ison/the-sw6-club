@@ -108,7 +108,8 @@ const state = {
   upcomingFixtures: [...FALLBACK_FIXTURES],
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
   lastPredictionAck: null,
-  profileAck: null
+  profileAck: null,
+  registeredUserCount: undefined
 };
 
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
@@ -157,6 +158,7 @@ const joinCodeInput = document.getElementById("join-code-input");
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
+const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
@@ -210,6 +212,8 @@ async function initializeApp() {
     return;
   }
 
+  loadRegisteredUserCount().then(render);
+
   const {
     data: { session }
   } = await state.client.auth.getSession();
@@ -221,6 +225,7 @@ async function initializeApp() {
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
     render();
+    await loadRegisteredUserCount();
     await reloadAuthedData();
     render();
   });
@@ -297,6 +302,22 @@ async function loadOverallLeaderboard() {
   state.overallLeaderboard = Array.isArray(data) ? data : [];
   state.overallLeaderboardStatus =
     state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players across all leagues.";
+}
+
+async function loadRegisteredUserCount() {
+  if (!state.client) {
+    state.registeredUserCount = null;
+    return;
+  }
+
+  const { data, error } = await state.client.rpc("get_registered_user_count");
+  if (error) {
+    state.registeredUserCount = null;
+    return;
+  }
+
+  const count = Number(data);
+  state.registeredUserCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
 }
 
 async function reloadAuthedData() {
@@ -903,6 +924,7 @@ function render() {
 
   if (!isConnected) {
     if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
+    renderMatchdayAttendance();
     return;
   }
 
@@ -911,6 +933,7 @@ function render() {
   }
   if (!isAuthed) {
     renderDeadlineCountdown();
+    renderMatchdayAttendance();
     return;
   }
 
@@ -918,6 +941,7 @@ function render() {
   renderLeaderboard();
   renderFixtures();
   renderDeadlineCountdown();
+  renderMatchdayAttendance();
 }
 
 function renderProfileEditor() {
@@ -2320,6 +2344,22 @@ function renderDeadlineCountdown() {
   }
 
   deadlineCountdownEl.textContent = `Next deadline (${fixtureLabel}): ${formatDuration(remainingMs)} remaining`;
+}
+
+function renderMatchdayAttendance() {
+  if (!matchdayAttendanceEl) {
+    return;
+  }
+  const count = state.registeredUserCount;
+  if (typeof count === "undefined") {
+    matchdayAttendanceEl.textContent = "Matchday attendance: ...";
+    return;
+  }
+  if (!Number.isFinite(count)) {
+    matchdayAttendanceEl.textContent = "Matchday attendance: unavailable";
+    return;
+  }
+  matchdayAttendanceEl.textContent = `Matchday attendance: ${count} registered users`;
 }
 
 function formatDuration(ms) {

@@ -242,6 +242,19 @@ as $$
   join actual a on a.name = p.name;
 $$;
 
+create or replace function public.get_registered_user_count()
+returns integer
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select count(distinct m.user_id)::integer
+  from public.league_members m;
+$$;
+
+grant execute on function public.get_registered_user_count() to anon, authenticated;
+
 create or replace function public.get_overall_leaderboard(p_limit integer default 10)
 returns table (
   user_id uuid,

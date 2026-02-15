@@ -111,6 +111,21 @@ body {
   text-align: right;
 }
 
+.hero-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.42rem;
+}
+
+.hero-attendance {
+  margin: 0;
+  padding: 0 0.18rem;
+  color: rgb(255 255 255 / 84%);
+  font-size: 0.79rem;
+  font-weight: 600;
+  text-align: right;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid rgb(255 255 255 / 70%);
@@ -1018,6 +1033,15 @@ button:disabled {
     margin-top: 0.75rem;
     max-width: none;
     text-align: left;
+  }
+
+  .hero-meta {
+    justify-items: stretch;
+  }
+
+  .hero-attendance {
+    text-align: left;
+    padding-left: 0.04rem;
   }
 }
 
