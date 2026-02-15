@@ -487,12 +487,11 @@ button:disabled {
 .fixture-body {
   margin-top: 0.72rem;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.66rem;
 }
 
-.prediction-form,
-.result-form {
+.prediction-form {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.62rem;
@@ -687,14 +686,12 @@ button:disabled {
   text-align: center;
 }
 
-.prediction-form button,
-.result-form button {
+.prediction-form button {
   background: var(--success);
   color: #fff;
 }
 
-.prediction-form button:hover,
-.result-form button:hover {
+.prediction-form button:hover {
   background: #0d5a37;
 }
 

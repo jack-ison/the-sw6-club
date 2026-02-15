@@ -889,8 +889,6 @@ function renderLeaderboard() {
 function renderFixtures() {
   fixturesListEl.textContent = "";
 
-  const member = getCurrentMember();
-  const isOwner = member?.role === "owner";
   const nextFixture = getNextFixtureForPrediction();
   const fixturesToRender = nextFixture ? [nextFixture] : [];
 
@@ -909,7 +907,6 @@ function renderFixtures() {
     const badgeEl = fragment.querySelector(".status-badge");
     const metaEl = fragment.querySelector(".fixture-meta");
     const predictionForm = fragment.querySelector(".prediction-form");
-    const resultForm = fragment.querySelector(".result-form");
     const predChelseaInput = predictionForm.querySelector(".pred-chelsea");
     const predOpponentInput = predictionForm.querySelector(".pred-opponent");
     const predScorerInput = predictionForm.querySelector(".pred-scorer");
@@ -986,20 +983,8 @@ function renderFixtures() {
     chelseaMinusBtn.addEventListener("click", () => stepScore(predChelseaInput, -1));
     chelseaPlusBtn.addEventListener("click", () => stepScore(predChelseaInput, 1));
 
-    if (fixture.result) {
-      resultForm.querySelector(".result-chelsea").value = fixture.result.chelsea_goals;
-      resultForm.querySelector(".result-opponent").value = fixture.result.opponent_goals;
-      resultForm.querySelector(".result-scorer").value = fixture.result.first_scorer;
-    }
-
     if (!predictionEnabled) {
       predictionForm.querySelectorAll("input, button").forEach((node) => {
-        node.disabled = true;
-      });
-    }
-
-    if (!isOwner) {
-      resultForm.querySelectorAll("input, button").forEach((node) => {
         node.disabled = true;
       });
     }
@@ -1007,11 +992,6 @@ function renderFixtures() {
     predictionForm.addEventListener("submit", (event) => {
       event.preventDefault();
       onSavePrediction(fixture, predictionForm);
-    });
-
-    resultForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      onSaveResult(fixture, resultForm);
     });
 
     fixturesListEl.appendChild(fragment);
