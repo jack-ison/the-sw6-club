@@ -337,6 +337,61 @@ $$;
 
 grant execute on function public.join_private_league_by_name(text, text, text, text) to authenticated;
 
+drop function if exists public.ensure_global_league_membership(text, text);
+create or replace function public.ensure_global_league_membership(
+  p_display_name text,
+  p_country_code text default 'GB'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_league_id uuid;
+  v_owner_id uuid;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select l.id, l.owner_id
+  into v_league_id, v_owner_id
+  from public.leagues l
+  where lower(trim(l.name)) = lower('Global League')
+  order by l.created_at asc
+  limit 1;
+
+  if v_league_id is null then
+    insert into public.leagues (name, code, owner_id, is_public, join_password_hash)
+    values ('Global League', upper(substring(md5(random()::text || clock_timestamp()::text || v_user_id::text), 1, 8)), v_user_id, true, null)
+    returning id, owner_id into v_league_id, v_owner_id;
+  end if;
+
+  insert into public.league_members (league_id, user_id, display_name, country_code, role)
+  values (
+    v_league_id,
+    v_user_id,
+    trim(coalesce(nullif(p_display_name, ''), split_part(coalesce(auth.jwt() ->> 'email', 'player'), '@', 1))),
+    case
+      when upper(trim(coalesce(p_country_code, ''))) ~ '^[A-Z]{2}$' then upper(trim(p_country_code))
+      else 'GB'
+    end,
+    case when v_owner_id = v_user_id then 'owner' else 'member' end
+  )
+  on conflict (league_id, user_id)
+  do update set
+    display_name = excluded.display_name,
+    country_code = excluded.country_code;
+
+  return v_league_id;
+end;
+$$;
+
+grant execute on function public.ensure_global_league_membership(text, text) to authenticated;
+
 create or replace function public.can_submit_prediction(p_fixture_id uuid)
 returns boolean
 language plpgsql
@@ -894,6 +949,15 @@ as $$
 begin
   if lower(coalesce(auth.jwt() ->> 'email', '')) <> 'jackwilliamison@gmail.com' then
     raise exception 'Forbidden';
+  end if;
+
+  if exists (
+    select 1
+    from public.leagues l
+    where l.id = p_league_id
+      and lower(trim(l.name)) = lower('Global League')
+  ) then
+    raise exception 'Global League cannot be deleted';
   end if;
 
   delete from public.leagues

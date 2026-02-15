@@ -1,6 +1,7 @@
 const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const ADMIN_EMAIL = "jackwilliamison@gmail.com";
+const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
@@ -609,17 +610,19 @@ async function reloadAuthedData() {
     return;
   }
 
+  await ensureGlobalLeagueMembership();
   await loadLeaguesForUser();
   if (state.leagues.length === 0) {
     await ensureDefaultLeagueForUser();
     await loadLeaguesForUser();
   }
+  const globalLeague = getGlobalLeagueFromState();
   if (!state.activeLeagueId && state.leagues[0]) {
-    state.activeLeagueId = state.leagues[0].id;
+    state.activeLeagueId = globalLeague?.id || state.leagues[0].id;
   }
 
   if (!state.leagues.some((league) => league.id === state.activeLeagueId)) {
-    state.activeLeagueId = state.leagues[0]?.id || null;
+    state.activeLeagueId = globalLeague?.id || state.leagues[0]?.id || null;
   }
 
   if (state.activeLeagueId) {
@@ -665,6 +668,47 @@ async function ensureDefaultLeagueForUser() {
       return;
     }
   }
+}
+
+async function ensureGlobalLeagueMembership() {
+  if (!state.client || !state.session?.user) {
+    return;
+  }
+
+  const { error } = await state.client.rpc("ensure_global_league_membership", {
+    p_display_name: getCurrentUserDisplayName(),
+    p_country_code: getCurrentUserCountryCode()
+  });
+  if (!error) {
+    return;
+  }
+
+  // Fallback for projects where migration hasn't been run yet.
+  const ownerId = state.session.user.id;
+  const existingLeagueResult = await state.client
+    .from("leagues")
+    .select("id, name, code, owner_id, created_at")
+    .ilike("name", GLOBAL_LEAGUE_NAME)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const existingLeague = existingLeagueResult.data || null;
+  const leagueId = existingLeague?.id || (await createLeagueLegacyPublic(GLOBAL_LEAGUE_NAME, ownerId))?.id;
+  if (!leagueId) {
+    return;
+  }
+
+  await state.client.from("league_members").upsert(
+    {
+      league_id: leagueId,
+      user_id: ownerId,
+      display_name: getCurrentUserDisplayName(),
+      country_code: getCurrentUserCountryCode(),
+      role: existingLeague?.owner_id === ownerId ? "owner" : "member"
+    },
+    { onConflict: "league_id,user_id" }
+  );
 }
 
 async function onCreateLeague(event) {
@@ -1119,7 +1163,7 @@ async function loadActiveLeagueData() {
 async function syncCompletedResultsFromChelsea() {
   const league = getActiveLeague();
   const member = getCurrentMember();
-  if (!league || !member || member.role !== "owner" || !state.session?.user) {
+  if (!league || !member || (!isAdminUser() && member.role !== "owner") || !state.session?.user) {
     return;
   }
 
@@ -1199,7 +1243,7 @@ async function syncCompletedResultsFromChelsea() {
 async function ensureUpcomingFixturesImported() {
   const league = getActiveLeague();
   const member = getCurrentMember();
-  if (!league || !member || member.role !== "owner") {
+  if (!league || !member || (!isAdminUser() && member.role !== "owner")) {
     return;
   }
 
@@ -2285,6 +2329,11 @@ function getOutcome(chelsea, opponent) {
 
 function getActiveLeague() {
   return state.leagues.find((league) => league.id === state.activeLeagueId) || null;
+}
+
+function getGlobalLeagueFromState() {
+  return state.leagues.find((league) => String(league.name || "").trim().toLowerCase() === GLOBAL_LEAGUE_NAME.toLowerCase())
+    || null;
 }
 
 function getCurrentMember() {
