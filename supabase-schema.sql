@@ -416,10 +416,11 @@ returns integer
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
-  select count(distinct m.user_id)::integer
-  from public.league_members m;
+  select count(*)::integer
+  from auth.users u
+  where coalesce(u.email, '') <> '';
 $$;
 
 grant execute on function public.get_registered_user_count() to anon, authenticated;
