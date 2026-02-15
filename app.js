@@ -3,6 +3,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
+const SQUAD_CACHE_VERSION = 2;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PREDICTION_CUTOFF_MINUTES = 90;
 const SCORING = { exactScore: 3, correctResult: 1, correctFirstScorer: 2 };
@@ -63,6 +64,12 @@ const OPPONENT_REGISTERED_PLAYERS = {
   Sunderland: ["Anthony Patterson", "Luke O'Nien", "Daniel Ballard", "Dennis Cirkin", "Dan Neil", "Jobe Bellingham", "Pierre Ekwah", "Patrick Roberts", "Jack Clarke", "Ross Stewart"],
   Tottenham: ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"],
   "Tottenham Hotspur": ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"]
+};
+const TEAM_NAME_ALIASES = {
+  "Brighton & Hove Albion": "Brighton",
+  "Leeds United": "Leeds",
+  "Newcastle United": "Newcastle",
+  "Tottenham Hotspur": "Tottenham"
 };
 
 const state = {
@@ -1007,6 +1014,10 @@ function maybeRefreshTeamSquad(teamName, force = false) {
   if (!teamName || typeof teamName !== "string") {
     return;
   }
+  if (teamName === "Chelsea") {
+    state.teamSquads.Chelsea = [...CHELSEA_REGISTERED_PLAYERS];
+    return;
+  }
   const fetchedAt = state.teamSquadFetchedAt[teamName] || 0;
   if (!force && fetchedAt && Date.now() - fetchedAt < SQUAD_CACHE_MAX_AGE_MS) {
     return;
@@ -1035,7 +1046,8 @@ function maybeRefreshTeamSquad(teamName, force = false) {
 }
 
 async function fetchTeamSquad(teamName) {
-  const searchResponse = await fetch(`${SPORTSDB_SEARCH_TEAMS_URL}${encodeURIComponent(teamName)}`);
+  const searchName = TEAM_NAME_ALIASES[teamName] || teamName;
+  const searchResponse = await fetch(`${SPORTSDB_SEARCH_TEAMS_URL}${encodeURIComponent(searchName)}`);
   if (!searchResponse.ok) {
     throw new Error(`Search failed: ${searchResponse.status}`);
   }
@@ -1264,7 +1276,7 @@ function hydrateSquadCache() {
   }
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== "object" || parsed.version !== SQUAD_CACHE_VERSION) {
       return;
     }
     const squads = parsed.squads && typeof parsed.squads === "object" ? parsed.squads : {};
@@ -1290,6 +1302,7 @@ function persistSquadCache() {
     localStorage.setItem(
       SQUAD_CACHE_KEY,
       JSON.stringify({
+        version: SQUAD_CACHE_VERSION,
         squads: state.teamSquads,
         fetchedAt: state.teamSquadFetchedAt
       })
