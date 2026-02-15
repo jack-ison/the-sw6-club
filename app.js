@@ -103,6 +103,7 @@ const BANNED_USERNAME_TOKENS = [
   "fuck", "shit", "bitch", "cunt", "nigger", "nigga", "fag", "faggot", "wank", "twat",
   "prick", "dick", "cock", "pussy", "asshole", "arsehole", "whore", "slut"
 ];
+let overallLeaderboardLoadPromise = null;
 
 const state = {
   client: null,
@@ -114,6 +115,7 @@ const state = {
   activeLeagueLeaderboard: [],
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
+  overallLeaderboardLoaded: false,
   teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS] },
   teamSquadPositionGroup: { Chelsea: { ...CHELSEA_PLAYER_POSITION_GROUP } },
   teamSquadFetchedAt: {},
@@ -245,32 +247,28 @@ async function initializeApp() {
   onLeagueVisibilityChange();
   onJoinModeChange();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
-  renderNavigation();
-  renderUpcomingFixtures();
-  renderTopScorers();
+  render();
 
-  const backgroundSync = Promise.allSettled([
-    syncUpcomingFixturesFromChelsea().then(() => render()),
-    maybeRefreshChelseaSquad().then(() => render())
-  ]);
+  const backgroundSync = Promise.allSettled([syncUpcomingFixturesFromChelsea(), maybeRefreshChelseaSquad()]);
 
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
-    render();
     await backgroundSync;
+    render();
     return;
   }
-
-  loadRegisteredUserCount().then(render);
 
   const {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
+  await loadRegisteredUserCount();
+  await reloadAuthedData();
+  if (state.topView === "leagues") {
+    await ensureOverallLeaderboardLoaded();
+  }
   render();
-
-  loadOverallLeaderboard().then(render);
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
@@ -278,16 +276,24 @@ async function initializeApp() {
     render();
     await loadRegisteredUserCount();
     await reloadAuthedData();
+    if (state.topView === "leagues") {
+      await ensureOverallLeaderboardLoaded();
+    }
     render();
   });
 
-  reloadAuthedData().then(render);
   await backgroundSync;
   render();
 }
 
 function onRouteChange() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
+  if (state.topView === "leagues") {
+    ensureOverallLeaderboardLoaded().then(render);
+    if (isAdminUser()) {
+      loadAdminLeagues().then(render);
+    }
+  }
   render();
 }
 
@@ -300,6 +306,12 @@ function setTopView(view) {
     state.loginPanelOpen = false;
   }
   syncRouteHash();
+  if (view === "leagues") {
+    ensureOverallLeaderboardLoaded().then(render);
+    if (isAdminUser()) {
+      loadAdminLeagues().then(render);
+    }
+  }
   render();
 }
 
@@ -558,7 +570,7 @@ async function onLogOut() {
 async function onRefreshAll() {
   await syncUpcomingFixturesFromChelsea(true);
   await maybeRefreshChelseaSquad(true);
-  await loadOverallLeaderboard();
+  await ensureOverallLeaderboardLoaded(true);
   await reloadAuthedData();
   render();
 }
@@ -567,6 +579,7 @@ async function loadOverallLeaderboard() {
   if (!state.client) {
     state.overallLeaderboard = [];
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
+    state.overallLeaderboardLoaded = true;
     return;
   }
 
@@ -574,12 +587,32 @@ async function loadOverallLeaderboard() {
   if (error) {
     state.overallLeaderboard = [];
     state.overallLeaderboardStatus = "No global points data yet.";
+    state.overallLeaderboardLoaded = true;
     return;
   }
 
   state.overallLeaderboard = Array.isArray(data) ? data : [];
   state.overallLeaderboardStatus =
     state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players across all leagues.";
+  state.overallLeaderboardLoaded = true;
+}
+
+async function ensureOverallLeaderboardLoaded(force = false) {
+  if (!state.client) {
+    return;
+  }
+  if (!force && state.overallLeaderboardLoaded) {
+    return;
+  }
+  if (!force && overallLeaderboardLoadPromise) {
+    await overallLeaderboardLoadPromise;
+    return;
+  }
+  state.overallLeaderboardLoaded = false;
+  overallLeaderboardLoadPromise = loadOverallLeaderboard().finally(() => {
+    overallLeaderboardLoadPromise = null;
+  });
+  await overallLeaderboardLoadPromise;
 }
 
 async function loadRegisteredUserCount() {
@@ -631,7 +664,9 @@ async function reloadAuthedData() {
   }
 
   if (isAdminUser()) {
-    await loadAdminLeagues();
+    if (state.topView === "leagues") {
+      await loadAdminLeagues();
+    }
   }
 }
 
@@ -1156,8 +1191,7 @@ async function loadActiveLeagueData() {
 
   await ensureUpcomingFixturesImported();
   await syncCompletedResultsFromChelsea();
-  await loadMyPredictionsForActiveFixtures();
-  await loadLeagueLeaderboard();
+  await Promise.all([loadMyPredictionsForActiveFixtures(), loadLeagueLeaderboard()]);
 }
 
 async function syncCompletedResultsFromChelsea() {
