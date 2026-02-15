@@ -1004,9 +1004,10 @@ function renderScorerButtons(container, players, targetInput, selectedLabelEl) {
     button.type = "button";
     button.className = "player-chip";
     button.dataset.player = player;
+    button.dataset.baseLabel = player;
     button.textContent = player;
     button.addEventListener("click", () => {
-      toggleScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
+      incrementScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
     });
     container.appendChild(button);
   });
@@ -1017,32 +1018,46 @@ function appendCustomScorerButton(container, player, targetInput, selectedLabelE
   button.type = "button";
   button.className = "player-chip";
   button.dataset.player = player;
+  button.dataset.baseLabel = player;
   button.textContent = player;
   button.addEventListener("click", () => {
-    toggleScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
+    incrementScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
   });
   container.appendChild(button);
 }
 
-function toggleScorerSelection(formEl, targetInput, player, selectedLabelEl) {
-  const current = parseScorerList(targetInput.value);
-  const hasPlayer = current.some((name) => name.toLowerCase() === player.toLowerCase());
-  const next = hasPlayer
-    ? current.filter((name) => name.toLowerCase() !== player.toLowerCase())
-    : [...current, player];
-  targetInput.value = next.join(", ");
+function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl) {
+  const current = parseScorerSelections(targetInput.value);
+  const index = current.findIndex((entry) => entry.name.toLowerCase() === player.toLowerCase());
+  const maxGoalsPerPlayer = 5;
+
+  if (index === -1) {
+    current.push({ name: player, count: 1 });
+  } else {
+    const nextCount = current[index].count + 1;
+    if (nextCount > maxGoalsPerPlayer) {
+      current.splice(index, 1);
+    } else {
+      current[index].count = nextCount;
+    }
+  }
+
+  targetInput.value = serializeScorerSelections(current);
   refreshScorerState(formEl, targetInput.value, selectedLabelEl);
 }
 
 function refreshScorerState(formEl, selectedRaw, selectedLabelEl) {
-  const selectedPlayers = parseScorerList(selectedRaw);
+  const selectedPlayers = parseScorerSelections(selectedRaw);
   formEl.querySelectorAll(".player-chip").forEach((chip) => {
-    chip.classList.toggle(
-      "active",
-      selectedPlayers.some((name) => name.toLowerCase() === chip.dataset.player.toLowerCase())
-    );
+    const match = selectedPlayers.find((entry) => entry.name.toLowerCase() === chip.dataset.player.toLowerCase());
+    chip.classList.toggle("active", Boolean(match));
+    const baseLabel = chip.dataset.baseLabel || chip.dataset.player;
+    chip.textContent = match && match.count > 1 ? `${baseLabel} x${match.count}` : baseLabel;
   });
-  selectedLabelEl.textContent = selectedPlayers.length > 0 ? selectedPlayers.join(", ") : "None";
+  selectedLabelEl.textContent =
+    selectedPlayers.length > 0
+      ? selectedPlayers.map((entry) => (entry.count > 1 ? `${entry.name} x${entry.count}` : entry.name)).join(", ")
+      : "None";
 }
 
 function getChelseaRegisteredPlayers() {
@@ -1249,10 +1264,38 @@ function parseGoals(value) {
 }
 
 function parseScorerList(rawValue) {
-  return String(rawValue || "")
+  return parseScorerSelections(rawValue).map((entry) => entry.name);
+}
+
+function parseScorerSelections(rawValue) {
+  const byName = new Map();
+  String(rawValue || "")
     .split(",")
     .map((value) => value.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .forEach((part) => {
+      const match = part.match(/^(.+?)(?:\s*x(\d+))?$/i);
+      const name = (match?.[1] || "").trim();
+      const parsedCount = Number.parseInt(match?.[2] || "1", 10);
+      const count = Number.isInteger(parsedCount) && parsedCount > 0 ? parsedCount : 1;
+      if (!name) {
+        return;
+      }
+      const key = name.toLowerCase();
+      const existing = byName.get(key);
+      if (existing) {
+        existing.count += count;
+      } else {
+        byName.set(key, { name, count });
+      }
+    });
+  return [...byName.values()];
+}
+
+function serializeScorerSelections(selections) {
+  return selections
+    .map((entry) => (entry.count > 1 ? `${entry.name} x${entry.count}` : entry.name))
+    .join(", ");
 }
 
 function getUpcomingFixturesForDisplay() {
