@@ -295,8 +295,11 @@ const forumThreadSubmitBtnEl = document.getElementById("forum-thread-submit-btn"
 const forumStatusEl = document.getElementById("forum-status");
 const forumThreadListEl = document.getElementById("forum-thread-list");
 const forumThreadDetailEl = document.getElementById("forum-thread-detail");
+const forumBackBtnEl = document.getElementById("forum-back-btn");
+const forumDeleteThreadBtnEl = document.getElementById("forum-delete-thread-btn");
 const forumThreadDetailTitleEl = document.getElementById("forum-thread-detail-title");
 const forumThreadDetailMetaEl = document.getElementById("forum-thread-detail-meta");
+const forumThreadDetailBodyEl = document.getElementById("forum-thread-detail-body");
 const forumReplyListEl = document.getElementById("forum-reply-list");
 const forumReplyFormEl = document.getElementById("forum-reply-form");
 const forumReplyBodyInputEl = document.getElementById("forum-reply-body-input");
@@ -334,6 +337,8 @@ if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSet
 if (forumThreadFormEl) forumThreadFormEl.addEventListener("submit", onCreateForumThread);
 if (forumReplyFormEl) forumReplyFormEl.addEventListener("submit", onCreateForumReply);
 if (forumThreadListEl) forumThreadListEl.addEventListener("click", onForumThreadListClick);
+if (forumBackBtnEl) forumBackBtnEl.addEventListener("click", onForumBackToList);
+if (forumDeleteThreadBtnEl) forumDeleteThreadBtnEl.addEventListener("click", onDeleteForumThread);
 
 setInterval(renderDeadlineCountdown, 1000);
 window.addEventListener("hashchange", onRouteChange);
@@ -433,6 +438,7 @@ async function runTopViewEnterEffects() {
       ensureOverallLeaderboardLoaded,
       loadAdminLeagues,
       loadForumThreads,
+      loadForumReplies,
       syncUpcomingFixturesFromChelsea,
       maybeRefreshChelseaSquad,
       syncScorerStatsFromTheSportsDb
@@ -443,6 +449,10 @@ async function runTopViewEnterEffects() {
 }
 
 function setTopView(view) {
+  if (view === "forum") {
+    state.activeForumThreadId = null;
+    state.forumReplies = [];
+  }
   state.topView = view;
   if (view !== "results") {
     state.showRulesModal = false;
@@ -571,9 +581,21 @@ function onJoinModeChange() {
 }
 
 function getRouteIntentFromUrl() {
-  const hashToken = normalizeRouteToken(window.location.hash.replace(/^#/, ""));
+  const rawHash = String(window.location.hash || "").replace(/^#/, "").trim();
+  const hashThreadId = extractForumThreadIdFromRoute(rawHash);
+  if (hashThreadId) {
+    return { topView: "forum", forumThreadId: hashThreadId };
+  }
+
+  const hashToken = normalizeRouteToken(rawHash);
   const search = new URLSearchParams(window.location.search);
-  const queryToken = normalizeRouteToken(search.get("tab") || search.get("view") || search.get("section") || "");
+  const queryRaw = String(search.get("tab") || search.get("view") || search.get("section") || "").trim();
+  const queryThreadId = extractForumThreadIdFromRoute(queryRaw) || parseUuidLike(search.get("thread"));
+  if (queryThreadId) {
+    return { topView: "forum", forumThreadId: queryThreadId };
+  }
+
+  const queryToken = normalizeRouteToken(queryRaw);
   const token = hashToken || queryToken;
   if (!token) {
     return { topView: "predict" };
@@ -629,6 +651,32 @@ function normalizeRouteToken(value) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function extractForumThreadIdFromRoute(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const patterns = [
+    /^forum-thread\/([0-9a-f-]{36})$/i,
+    /^forumthread\/([0-9a-f-]{36})$/i,
+    /^forum-thread-([0-9a-f-]{36})$/i,
+    /^thread\/([0-9a-f-]{36})$/i,
+    /^forum\/([0-9a-f-]{36})$/i
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match && match[1]) {
+      return parseUuidLike(match[1]);
+    }
+  }
+  return "";
+}
+
+function parseUuidLike(value) {
+  const parsed = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed) ? parsed : "";
+}
+
 function applyRouteIntent(intent, options = {}) {
   const nextTop = ["predict", "leagues", "forum", "results"].includes(intent.topView) ? intent.topView : state.topView;
   state.topView = nextTop || "predict";
@@ -637,6 +685,11 @@ function applyRouteIntent(intent, options = {}) {
     : state.resultsTab || "fixtures";
   state.leaderboardScope = intent.leaderboardScope === "league" ? "league" : state.leaderboardScope || "global";
   state.showRulesModal = Boolean(intent.showRulesModal);
+  if (nextTop === "forum") {
+    state.activeForumThreadId = parseUuidLike(intent.forumThreadId) || state.activeForumThreadId;
+  } else if (intent.forumThreadId) {
+    state.activeForumThreadId = parseUuidLike(intent.forumThreadId);
+  }
   if (intent.openProfileEditor && state.session?.user && profileEditForm) {
     state.accountMenuOpen = true;
     profileEditForm.classList.remove("hidden");
@@ -657,7 +710,7 @@ function syncRouteHash(forcedToken = "") {
     } else if (state.topView === "leagues") {
       token = "leagues";
     } else if (state.topView === "forum") {
-      token = "forum";
+      token = state.activeForumThreadId ? `forum-thread/${state.activeForumThreadId}` : "forum";
     } else if (state.topView === "results") {
       token = `results-${state.resultsTab}`;
     }
@@ -2082,10 +2135,31 @@ async function loadForumThreads() {
     return;
   }
   state.forumThreads = Array.isArray(data) ? data : [];
-  if (!state.forumThreads.some((thread) => thread.id === state.activeForumThreadId)) {
-    state.activeForumThreadId = null;
-    state.forumReplies = [];
+  if (state.activeForumThreadId && !state.forumThreads.some((thread) => thread.id === state.activeForumThreadId)) {
+    const deepLinkedThread = await loadForumThreadById(state.activeForumThreadId);
+    if (deepLinkedThread) {
+      state.forumThreads = [deepLinkedThread, ...state.forumThreads];
+    } else {
+      state.activeForumThreadId = null;
+      state.forumReplies = [];
+      state.forumStatus = "Thread not found.";
+    }
   }
+}
+
+async function loadForumThreadById(threadId) {
+  if (!state.client || !threadId) {
+    return null;
+  }
+  const { data, error } = await state.client
+    .from("forum_threads")
+    .select("id, title, body, user_id, author_display_name, created_at")
+    .eq("id", threadId)
+    .maybeSingle();
+  if (error) {
+    return null;
+  }
+  return data || null;
 }
 
 async function loadForumReplies(threadId) {
@@ -2148,6 +2222,7 @@ async function onCreateForumThread(event) {
   if (forumThreadFormEl) forumThreadFormEl.reset();
   await loadForumThreads();
   state.activeForumThreadId = data?.id || null;
+  syncRouteHash();
   await loadForumReplies(state.activeForumThreadId);
   render();
 }
@@ -2195,8 +2270,60 @@ async function onForumThreadListClick(event) {
   if (!threadId) {
     return;
   }
+  await openForumThreadById(threadId);
+}
+
+async function openForumThreadById(threadId) {
   state.activeForumThreadId = threadId;
+  syncRouteHash();
   await loadForumReplies(threadId);
+  render();
+}
+
+function onForumBackToList() {
+  state.activeForumThreadId = null;
+  state.forumReplies = [];
+  syncRouteHash();
+  render();
+}
+
+async function onDeleteForumThread() {
+  const activeThread = state.forumThreads.find((thread) => thread.id === state.activeForumThreadId) || null;
+  if (!state.client || !state.session?.user || !activeThread) {
+    return;
+  }
+  const canDelete = isAdminUser() || activeThread.user_id === state.session.user.id;
+  if (!canDelete) {
+    return;
+  }
+  const confirmed = window.confirm("Delete this thread and all replies? This cannot be undone.");
+  if (!confirmed) {
+    return;
+  }
+
+  if (forumDeleteThreadBtnEl) {
+    forumDeleteThreadBtnEl.disabled = true;
+    forumDeleteThreadBtnEl.textContent = "Deleting...";
+  }
+
+  const { error } = await state.client.from("forum_threads").delete().eq("id", activeThread.id);
+
+  if (forumDeleteThreadBtnEl) {
+    forumDeleteThreadBtnEl.disabled = false;
+    forumDeleteThreadBtnEl.textContent = "Delete Thread";
+  }
+
+  if (error) {
+    state.forumStatus = error.message || "Could not delete thread.";
+    render();
+    return;
+  }
+
+  state.forumStatus = "Thread deleted.";
+  state.activeForumThreadId = null;
+  state.forumReplies = [];
+  await loadForumThreads();
+  syncRouteHash();
   render();
 }
 
@@ -2205,9 +2332,13 @@ function renderForum() {
     return;
   }
   const isAuthed = Boolean(state.session?.user);
+  const activeThread = state.forumThreads.find((thread) => thread.id === state.activeForumThreadId) || null;
+  const isThreadView = Boolean(activeThread);
+
   if (forumLoginPromptEl) forumLoginPromptEl.classList.toggle("hidden", isAuthed);
-  if (forumThreadFormEl) forumThreadFormEl.classList.toggle("hidden", !isAuthed);
+  if (forumThreadFormEl) forumThreadFormEl.classList.toggle("hidden", !isAuthed || isThreadView);
   if (forumStatusEl) forumStatusEl.textContent = state.forumStatus || "";
+  forumThreadListEl.classList.toggle("hidden", isThreadView);
 
   forumThreadListEl.textContent = "";
   if (state.forumThreads.length === 0) {
@@ -2241,7 +2372,6 @@ function renderForum() {
     });
   }
 
-  const activeThread = state.forumThreads.find((thread) => thread.id === state.activeForumThreadId) || null;
   forumThreadDetailEl.classList.toggle("hidden", !activeThread);
   if (!activeThread) {
     return;
@@ -2250,6 +2380,13 @@ function renderForum() {
   if (forumThreadDetailTitleEl) forumThreadDetailTitleEl.textContent = activeThread.title || "Thread";
   if (forumThreadDetailMetaEl) {
     forumThreadDetailMetaEl.textContent = `${activeThread.author_display_name || "Player"} • ${formatKickoff(activeThread.created_at)}`;
+  }
+  if (forumThreadDetailBodyEl) {
+    forumThreadDetailBodyEl.textContent = activeThread.body || "";
+  }
+  if (forumDeleteThreadBtnEl) {
+    const canDelete = isAuthed && (isAdminUser() || activeThread.user_id === state.session?.user?.id);
+    forumDeleteThreadBtnEl.classList.toggle("hidden", !canDelete);
   }
 
   if (forumReplyListEl) {

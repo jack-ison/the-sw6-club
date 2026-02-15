@@ -1285,6 +1285,20 @@ button:disabled {
   flex: 1;
 }
 
+.forum-thread-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+#forum-thread-detail-body {
+  white-space: pre-wrap;
+  color: #294a79;
+  margin: 0.45rem 0 0.65rem;
+}
+
 .error-text {
   color: #a12626;
 }

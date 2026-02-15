@@ -566,6 +566,40 @@ $$;
 
 grant execute on function public.get_site_visitor_count() to authenticated;
 
+drop function if exists public.is_configured_admin();
+create or replace function public.is_configured_admin()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+  v_email_local text;
+  v_email_domain text;
+  v_admin_local text;
+  v_admin_domain text;
+begin
+  v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_email_local := split_part(v_email, '@', 1);
+  v_email_domain := split_part(v_email, '@', 2);
+  if v_email_domain = 'gmail.com' then
+    v_email_local := replace(split_part(v_email_local, '+', 1), '.', '');
+  end if;
+
+  v_admin_local := split_part(lower('jackwilliamison@gmail.com'), '@', 1);
+  v_admin_domain := split_part(lower('jackwilliamison@gmail.com'), '@', 2);
+  if v_admin_domain = 'gmail.com' then
+    v_admin_local := replace(split_part(v_admin_local, '+', 1), '.', '');
+  end if;
+
+  return v_email_local = v_admin_local and v_email_domain = v_admin_domain;
+end;
+$$;
+
+grant execute on function public.is_configured_admin() to authenticated;
+
 create table if not exists public.forum_threads (
   id uuid primary key default extensions.gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -625,8 +659,19 @@ with check (
   and length(trim(coalesce(body, ''))) between 1 and 1500
 );
 
+drop policy if exists forum_threads_delete on public.forum_threads;
+create policy forum_threads_delete
+on public.forum_threads
+for delete
+to authenticated
+using (
+  auth.uid() = user_id
+  or public.is_configured_admin()
+);
+
 grant select on public.forum_threads to anon, authenticated;
 grant insert on public.forum_threads to authenticated;
+grant delete on public.forum_threads to authenticated;
 grant select on public.forum_replies to anon, authenticated;
 grant insert on public.forum_replies to authenticated;
 
