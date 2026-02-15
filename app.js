@@ -151,6 +151,12 @@ const BANNED_USERNAME_TOKENS = [
   "prick", "dick", "cock", "pussy", "asshole", "arsehole", "whore", "slut"
 ];
 let overallLeaderboardLoadPromise = null;
+let reloadAuthedDataPromise = null;
+let loadActiveLeagueDataPromise = null;
+let loadActiveLeagueDataLeagueId = null;
+let upcomingFixturesSyncPromise = null;
+let scorerStatsSyncPromise = null;
+let renderScheduled = false;
 
 const state = {
   client: null,
@@ -703,6 +709,11 @@ async function loadRegisteredUserCount() {
 }
 
 async function reloadAuthedData() {
+  if (reloadAuthedDataPromise) {
+    return reloadAuthedDataPromise;
+  }
+
+  reloadAuthedDataPromise = (async () => {
   state.leagues = [];
   state.activeLeagueMembers = [];
   state.activeLeagueFixtures = [];
@@ -738,6 +749,13 @@ async function reloadAuthedData() {
     if (state.topView === "leagues") {
       await loadAdminLeagues();
     }
+  }
+  })();
+
+  try {
+    await reloadAuthedDataPromise;
+  } finally {
+    reloadAuthedDataPromise = null;
   }
 }
 
@@ -1224,6 +1242,13 @@ async function loadAdminLeagues() {
 
 async function loadActiveLeagueData() {
   const league = getActiveLeague();
+  const leagueId = league?.id || null;
+  if (loadActiveLeagueDataPromise && loadActiveLeagueDataLeagueId === leagueId) {
+    return loadActiveLeagueDataPromise;
+  }
+
+  loadActiveLeagueDataLeagueId = leagueId;
+  loadActiveLeagueDataPromise = (async () => {
   if (!league) {
     state.activeLeagueMembers = [];
     state.activeLeagueFixtures = [];
@@ -1263,6 +1288,14 @@ async function loadActiveLeagueData() {
   await ensureUpcomingFixturesImported();
   await syncCompletedResultsFromChelsea();
   await Promise.all([loadMyPredictionsForActiveFixtures(), loadLeagueLeaderboard()]);
+  })();
+
+  try {
+    await loadActiveLeagueDataPromise;
+  } finally {
+    loadActiveLeagueDataPromise = null;
+    loadActiveLeagueDataLeagueId = null;
+  }
 }
 
 async function syncCompletedResultsFromChelsea() {
@@ -1431,6 +1464,22 @@ async function loadLeagueLeaderboard() {
 }
 
 function render() {
+  if (renderScheduled) {
+    return;
+  }
+  renderScheduled = true;
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => {
+      renderScheduled = false;
+      renderNow();
+    });
+    return;
+  }
+  renderScheduled = false;
+  renderNow();
+}
+
+function renderNow() {
   renderNavigation();
   renderUpcomingFixtures();
   renderTopScorers();
@@ -3064,6 +3113,11 @@ function getEmptyScorerCompetitionData() {
 }
 
 async function syncScorerStatsFromTheSportsDb(force = false) {
+  if (!force && scorerStatsSyncPromise) {
+    return scorerStatsSyncPromise;
+  }
+
+  scorerStatsSyncPromise = (async () => {
   const cachedAt = getCachedScorerStatsSyncTime();
   if (!force && cachedAt && Date.now() - cachedAt < THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS) {
     return;
@@ -3118,6 +3172,13 @@ async function syncScorerStatsFromTheSportsDb(force = false) {
 
   state.scorerDataByCompetition = nextData;
   persistScorerStatsCache(nextData, syncedAtIso);
+  })();
+
+  try {
+    await scorerStatsSyncPromise;
+  } finally {
+    scorerStatsSyncPromise = null;
+  }
 }
 
 function hydrateFixtureCache() {
@@ -3146,6 +3207,11 @@ function hydrateFixtureCache() {
 }
 
 async function syncUpcomingFixturesFromChelsea(force = false) {
+  if (!force && upcomingFixturesSyncPromise) {
+    return upcomingFixturesSyncPromise;
+  }
+
+  upcomingFixturesSyncPromise = (async () => {
   const raw = localStorage.getItem(FIXTURE_CACHE_KEY);
   if (!force && raw) {
     try {
@@ -3192,6 +3258,13 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     throw new Error("Could not parse sufficient fixtures");
   } catch {
     state.upcomingSourceText = "Live fixture sync unavailable. Showing fallback fixture list.";
+  }
+  })();
+
+  try {
+    await upcomingFixturesSyncPromise;
+  } finally {
+    upcomingFixturesSyncPromise = null;
   }
 }
 
