@@ -155,6 +155,7 @@ const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
 const accountSignInBtn = document.getElementById("account-signin-btn");
+const accountSignUpLink = document.getElementById("account-signup-link");
 const accountEditProfileTopBtn = document.getElementById("account-edit-profile-top-btn");
 const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
@@ -202,7 +203,7 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   renderUpcomingFixtures();
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
-if (accountSignInBtn) accountSignInBtn.addEventListener("click", onToggleLoginPanel);
+if (accountSignInBtn) accountSignInBtn.addEventListener("click", onOpenLoginPanel);
 if (accountEditProfileTopBtn) accountEditProfileTopBtn.addEventListener("click", onOpenProfileFromAccount);
 if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
@@ -340,10 +341,13 @@ function onDocumentKeydown(event) {
   }
 }
 
-function onToggleLoginPanel() {
-  state.loginPanelOpen = !state.loginPanelOpen;
+function onOpenLoginPanel() {
+  state.loginPanelOpen = true;
   state.accountMenuOpen = false;
   renderNavigation();
+  if (loginEmailInput) {
+    loginEmailInput.focus();
+  }
 }
 
 function onOpenProfileFromAccount() {
@@ -1199,6 +1203,7 @@ function render() {
   if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (accountSignInBtn) accountSignInBtn.classList.toggle("hidden", isAuthed || !isConnected);
+  if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", isAuthed || !isConnected);
   if (accountEditProfileTopBtn) accountEditProfileTopBtn.classList.toggle("hidden", !isAuthed || !isConnected);
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
 
