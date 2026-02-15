@@ -9,6 +9,10 @@ const VISITOR_TOKEN_KEY = "cfc-visitor-token-v1";
 const THE_SPORTS_DB_SCORERS_CACHE_KEY = "cfc-sportsdb-scorers-cache-v1";
 const THE_SPORTS_DB_SCORERS_CACHE_VERSION = 1;
 const THE_SPORTS_DB_SCORERS_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const REGISTERED_USER_COUNT_CACHE_KEY = "cfc-registered-user-count-cache-v1";
+const REGISTERED_USER_COUNT_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const VISITOR_COUNT_CACHE_KEY = "cfc-visitor-count-cache-v1";
+const VISITOR_COUNT_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -157,6 +161,9 @@ let loadActiveLeagueDataPromise = null;
 let loadActiveLeagueDataLeagueId = null;
 let upcomingFixturesSyncPromise = null;
 let scorerStatsSyncPromise = null;
+let registeredUserCountPromise = null;
+let visitorCountPromise = null;
+let authWarmupRunId = 0;
 let renderScheduled = false;
 const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
@@ -356,7 +363,9 @@ async function initializeApp() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
   render();
 
-  const backgroundSync = Promise.allSettled([syncUpcomingFixturesFromChelsea()]);
+  const backgroundSync = Promise.allSettled([syncUpcomingFixturesFromChelsea()]).then(() => {
+    render();
+  });
 
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
@@ -370,28 +379,34 @@ async function initializeApp() {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
-  await trackSiteVisit();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
-  await loadRegisteredUserCount();
-  await loadVisitorCount();
-  await reloadAuthedData();
-  await runTopViewEnterEffects();
   render();
+  runPostAuthWarmup();
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
-    await loadRegisteredUserCount();
-    await loadVisitorCount();
-    await reloadAuthedData();
-    await runTopViewEnterEffects();
-    render();
+    runPostAuthWarmup();
   });
 
   await backgroundSync;
-  await runTopViewEnterEffects();
-  render();
+}
+
+function runPostAuthWarmup() {
+  const runId = ++authWarmupRunId;
+  Promise.allSettled([
+    trackSiteVisit(),
+    loadRegisteredUserCount(),
+    loadVisitorCount(),
+    reloadAuthedData(),
+    runTopViewEnterEffects()
+  ]).then(() => {
+    if (runId !== authWarmupRunId) {
+      return;
+    }
+    render();
+  });
 }
 
 function onRouteChange() {
@@ -820,7 +835,55 @@ async function ensureOverallLeaderboardLoaded(force = false) {
   await overallLeaderboardLoadPromise;
 }
 
-async function loadRegisteredUserCount() {
+function readNumericCache(cacheKey, maxAgeMs) {
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    const value = Number(parsed?.value);
+    const syncedAt = new Date(parsed?.syncedAt || "").getTime();
+    if (!Number.isFinite(value) || !Number.isFinite(syncedAt)) {
+      return null;
+    }
+    if (Date.now() - syncedAt > maxAgeMs) {
+      return null;
+    }
+    return Math.max(0, Math.floor(value));
+  } catch {
+    return null;
+  }
+}
+
+function writeNumericCache(cacheKey, value) {
+  try {
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({
+        value: Math.max(0, Math.floor(Number(value) || 0)),
+        syncedAt: new Date().toISOString()
+      })
+    );
+  } catch {
+    // Ignore local cache failures.
+  }
+}
+
+async function loadRegisteredUserCount(force = false) {
+  if (!force && registeredUserCountPromise) {
+    await registeredUserCountPromise;
+    return;
+  }
+  if (!force) {
+    const cached = readNumericCache(REGISTERED_USER_COUNT_CACHE_KEY, REGISTERED_USER_COUNT_CACHE_MAX_AGE_MS);
+    if (cached !== null) {
+      state.registeredUserCount = cached;
+      return;
+    }
+  }
+
+  registeredUserCountPromise = (async () => {
   if (!state.client) {
     state.registeredUserCount = null;
     return;
@@ -834,6 +897,16 @@ async function loadRegisteredUserCount() {
 
   const count = Number(data);
   state.registeredUserCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+  if (state.registeredUserCount !== null) {
+    writeNumericCache(REGISTERED_USER_COUNT_CACHE_KEY, state.registeredUserCount);
+  }
+  })();
+
+  try {
+    await registeredUserCountPromise;
+  } finally {
+    registeredUserCountPromise = null;
+  }
 }
 
 function getVisitorToken() {
@@ -858,11 +931,24 @@ async function trackSiteVisit() {
   await state.client.rpc("log_site_visit", { p_visitor_token: token });
 }
 
-async function loadVisitorCount() {
+async function loadVisitorCount(force = false) {
   if (!state.client || !state.session?.user || !isAdminUser()) {
     state.visitorCount = null;
     return;
   }
+  if (!force && visitorCountPromise) {
+    await visitorCountPromise;
+    return;
+  }
+  if (!force) {
+    const cached = readNumericCache(VISITOR_COUNT_CACHE_KEY, VISITOR_COUNT_CACHE_MAX_AGE_MS);
+    if (cached !== null) {
+      state.visitorCount = cached;
+      return;
+    }
+  }
+
+  visitorCountPromise = (async () => {
   const { data, error } = await state.client.rpc("get_site_visitor_count");
   if (error) {
     state.visitorCount = null;
@@ -870,6 +956,16 @@ async function loadVisitorCount() {
   }
   const count = Number(data);
   state.visitorCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+  if (state.visitorCount !== null) {
+    writeNumericCache(VISITOR_COUNT_CACHE_KEY, state.visitorCount);
+  }
+  })();
+
+  try {
+    await visitorCountPromise;
+  } finally {
+    visitorCountPromise = null;
+  }
 }
 
 async function reloadAuthedData() {
