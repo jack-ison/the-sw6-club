@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Edit Profile | The SW6 Club</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div class="hero-main">
+          <h1>Edit Profile</h1>
+          <p>Update how your name and avatar appear on leaderboards.</p>
+        </div>
+      </header>
+
+      <section class="panel auth-card">
+        <form id="profile-form" class="mini-form">
+          <label>
+            Username
+            <input id="profile-username-input" type="text" maxlength="24" placeholder="e.g. SW6Jack" />
+          </label>
+          <label>
+            Actual name
+            <input id="profile-actual-name-input" type="text" maxlength="40" placeholder="Optional" />
+          </label>
+          <label>
+            Profile picture
+            <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" />
+          </label>
+          <label>
+            Display name preference
+            <select id="profile-display-mode-input">
+              <option value="username">Use username</option>
+              <option value="actual">Use actual name</option>
+            </select>
+          </label>
+          <button id="profile-save-btn" type="submit">Save profile</button>
+        </form>
+        <p id="profile-status" class="status" aria-live="polite"></p>
+        <p class="status no-margin"><a href="index.html#predict">Back to app</a></p>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="profile.js"></script>
+  </body>
+</html>
