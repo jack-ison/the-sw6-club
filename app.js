@@ -164,9 +164,9 @@ const accountMenuBtn = document.getElementById("account-menu-btn");
 const accountMenuDropdown = document.getElementById("account-menu-dropdown");
 const accountSignedOutActionsEl = document.getElementById("account-signed-out-actions");
 const accountSignedInActionsEl = document.getElementById("account-signed-in-actions");
+const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
 const accountOpenLoginBtn = document.getElementById("account-open-login-btn");
 const accountEditProfileBtn = document.getElementById("account-edit-profile-btn");
-const accountLogoutBtn = document.getElementById("account-logout-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
 const openRulesFooterBtn = document.getElementById("open-rules-footer");
 const closeRulesModalBtn = document.getElementById("close-rules-modal");
@@ -216,9 +216,9 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
 if (accountMenuBtn) accountMenuBtn.addEventListener("click", onToggleAccountMenu);
+if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
 if (accountOpenLoginBtn) accountOpenLoginBtn.addEventListener("click", onToggleLoginPanel);
 if (accountEditProfileBtn) accountEditProfileBtn.addEventListener("click", onOpenProfileFromAccount);
-if (accountLogoutBtn) accountLogoutBtn.addEventListener("click", onLogOut);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
 if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
 if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
@@ -1195,16 +1195,21 @@ function render() {
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (accountSignedOutActionsEl) accountSignedOutActionsEl.classList.toggle("hidden", isAuthed);
   if (accountSignedInActionsEl) accountSignedInActionsEl.classList.toggle("hidden", !isAuthed);
+  if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
   if (accountMenuDropdown) accountMenuDropdown.classList.toggle("hidden", !state.accountMenuOpen);
 
   if (!isConnected) {
-    if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
+    if (sessionStatus) {
+      sessionStatus.textContent = "";
+      sessionStatus.classList.add("hidden");
+    }
     renderMatchdayAttendance();
     return;
   }
 
   if (sessionStatus) {
-    sessionStatus.textContent = isAuthed ? `Signed in as ${state.session.user.email}` : "Not signed in.";
+    sessionStatus.textContent = "";
+    sessionStatus.classList.add("hidden");
   }
 
   if (leagueLoginPromptEl) leagueLoginPromptEl.classList.toggle("hidden", isAuthed);

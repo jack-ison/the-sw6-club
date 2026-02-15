@@ -179,6 +179,12 @@ body {
   background: rgb(255 255 255 / 90%);
 }
 
+.account-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .account-menu-wrap {
   position: relative;
 }
@@ -1184,6 +1190,12 @@ button:disabled {
 
   .account-menu-wrap {
     justify-self: end;
+  }
+
+  .account-actions {
+    justify-self: end;
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .account-menu-dropdown {
