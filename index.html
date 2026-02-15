@@ -36,6 +36,7 @@
           <div class="top-nav" role="tablist" aria-label="Primary navigation">
             <button id="topnav-predict" type="button" class="tab-btn active" role="tab" aria-selected="true">Predict</button>
             <button id="topnav-leagues" type="button" class="tab-btn" role="tab" aria-selected="false">Leagues</button>
+            <button id="topnav-forum" type="button" class="tab-btn" role="tab" aria-selected="false">Forum</button>
             <button id="topnav-results" type="button" class="tab-btn" role="tab" aria-selected="false">Results</button>
           </div>
           <div class="account-actions">
@@ -188,6 +189,37 @@
               <p id="overall-leaderboard-status" class="status no-margin"></p>
             </article>
           </div>
+      </section>
+
+      <section class="panel hidden" id="forum-panel" data-view="forum">
+          <h2>Forum</h2>
+          <p id="forum-login-prompt" class="status no-margin hidden">Log in to create threads and reply.</p>
+          <form id="forum-thread-form" class="mini-form">
+            <label>
+              New thread title
+              <input id="forum-thread-title-input" type="text" maxlength="120" required />
+            </label>
+            <label>
+              Message
+              <textarea id="forum-thread-body-input" rows="4" maxlength="2000" required></textarea>
+            </label>
+            <button id="forum-thread-submit-btn" type="submit">Post Thread</button>
+          </form>
+          <p id="forum-status" class="status no-margin"></p>
+          <ul id="forum-thread-list" class="prediction-list"></ul>
+
+          <article id="forum-thread-detail" class="subpanel hidden">
+            <h3 id="forum-thread-detail-title">Thread</h3>
+            <p id="forum-thread-detail-meta" class="status no-margin"></p>
+            <ul id="forum-reply-list" class="prediction-list"></ul>
+            <form id="forum-reply-form" class="mini-form">
+              <label>
+                Reply
+                <textarea id="forum-reply-body-input" rows="3" maxlength="1500" required></textarea>
+              </label>
+              <button id="forum-reply-submit-btn" type="submit">Post Reply</button>
+            </form>
+          </article>
       </section>
 
       <div id="rules-modal" class="rules-modal hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">

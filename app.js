@@ -161,6 +161,7 @@ let renderScheduled = false;
 const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
   leagues: "./view-leagues.js",
+  forum: "./view-forum.js",
   results: "./view-results.js"
 };
 const topViewModuleCache = new Map();
@@ -184,6 +185,10 @@ const state = {
   showAllUpcoming: false,
   topView: "predict",
   resultsTab: "fixtures",
+  forumThreads: [],
+  forumReplies: [],
+  activeForumThreadId: null,
+  forumStatus: "",
   scorerCompetition: "all",
   scorerDataByCompetition: cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION),
   leaderboardScope: "global",
@@ -202,6 +207,7 @@ const state = {
 
 const topnavPredictBtn = document.getElementById("topnav-predict");
 const topnavLeaguesBtn = document.getElementById("topnav-leagues");
+const topnavForumBtn = document.getElementById("topnav-forum");
 const topnavResultsBtn = document.getElementById("topnav-results");
 const resultsFixturesTabBtn = document.getElementById("results-fixtures-tab");
 const resultsPastTabBtn = document.getElementById("results-past-tab");
@@ -210,6 +216,7 @@ const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel")
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
 const pastOverviewPanel = document.getElementById("past-overview-panel");
 const predictViewEl = document.getElementById("predict-view");
+const forumPanelEl = document.getElementById("forum-panel");
 const resultsViewEl = document.getElementById("results-view");
 const loginPanelEl = document.getElementById("login-panel");
 const leagueLoginPromptEl = document.getElementById("league-login-prompt");
@@ -280,9 +287,24 @@ const adminScorePanelEl = document.getElementById("admin-score-panel");
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
+const forumLoginPromptEl = document.getElementById("forum-login-prompt");
+const forumThreadFormEl = document.getElementById("forum-thread-form");
+const forumThreadTitleInputEl = document.getElementById("forum-thread-title-input");
+const forumThreadBodyInputEl = document.getElementById("forum-thread-body-input");
+const forumThreadSubmitBtnEl = document.getElementById("forum-thread-submit-btn");
+const forumStatusEl = document.getElementById("forum-status");
+const forumThreadListEl = document.getElementById("forum-thread-list");
+const forumThreadDetailEl = document.getElementById("forum-thread-detail");
+const forumThreadDetailTitleEl = document.getElementById("forum-thread-detail-title");
+const forumThreadDetailMetaEl = document.getElementById("forum-thread-detail-meta");
+const forumReplyListEl = document.getElementById("forum-reply-list");
+const forumReplyFormEl = document.getElementById("forum-reply-form");
+const forumReplyBodyInputEl = document.getElementById("forum-reply-body-input");
+const forumReplySubmitBtnEl = document.getElementById("forum-reply-submit-btn");
 
 if (topnavPredictBtn) topnavPredictBtn.addEventListener("click", () => setTopView("predict"));
 if (topnavLeaguesBtn) topnavLeaguesBtn.addEventListener("click", () => setTopView("leagues"));
+if (topnavForumBtn) topnavForumBtn.addEventListener("click", () => setTopView("forum"));
 if (topnavResultsBtn) topnavResultsBtn.addEventListener("click", () => setTopView("results"));
 if (resultsFixturesTabBtn) resultsFixturesTabBtn.addEventListener("click", () => setResultsTab("fixtures"));
 if (resultsPastTabBtn) resultsPastTabBtn.addEventListener("click", () => setResultsTab("past"));
@@ -309,6 +331,9 @@ if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
 if (adminLeagueListEl) adminLeagueListEl.addEventListener("click", onAdminLeagueListClick);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
+if (forumThreadFormEl) forumThreadFormEl.addEventListener("submit", onCreateForumThread);
+if (forumReplyFormEl) forumReplyFormEl.addEventListener("submit", onCreateForumReply);
+if (forumThreadListEl) forumThreadListEl.addEventListener("click", onForumThreadListClick);
 
 setInterval(renderDeadlineCountdown, 1000);
 window.addEventListener("hashchange", onRouteChange);
@@ -371,7 +396,7 @@ function onRouteChange() {
 }
 
 async function ensureTopViewModule(topView) {
-  const key = ["predict", "leagues", "results"].includes(topView) ? topView : "predict";
+  const key = ["predict", "leagues", "forum", "results"].includes(topView) ? topView : "predict";
   if (topViewModuleCache.has(key)) {
     return topViewModuleCache.get(key);
   }
@@ -407,6 +432,7 @@ async function runTopViewEnterEffects() {
       isAdminUser,
       ensureOverallLeaderboardLoaded,
       loadAdminLeagues,
+      loadForumThreads,
       syncUpcomingFixturesFromChelsea,
       maybeRefreshChelseaSquad,
       syncScorerStatsFromTheSportsDb
@@ -559,6 +585,9 @@ function getRouteIntentFromUrl() {
   if (token === "leagues" || token === "myleagues") {
     return { topView: "leagues" };
   }
+  if (token === "forum" || token === "threads" || token === "community" || token === "forumpanel") {
+    return { topView: "forum" };
+  }
   if (
     token === "results" ||
     token === "resultsfixtures" ||
@@ -601,7 +630,7 @@ function normalizeRouteToken(value) {
 }
 
 function applyRouteIntent(intent, options = {}) {
-  const nextTop = ["predict", "leagues", "results"].includes(intent.topView) ? intent.topView : state.topView;
+  const nextTop = ["predict", "leagues", "forum", "results"].includes(intent.topView) ? intent.topView : state.topView;
   state.topView = nextTop || "predict";
   state.resultsTab = ["fixtures", "past", "stats"].includes(intent.resultsTab)
     ? intent.resultsTab
@@ -627,6 +656,8 @@ function syncRouteHash(forcedToken = "") {
       token = "predict";
     } else if (state.topView === "leagues") {
       token = "leagues";
+    } else if (state.topView === "forum") {
+      token = "forum";
     } else if (state.topView === "results") {
       token = `results-${state.resultsTab}`;
     }
@@ -1623,6 +1654,7 @@ function renderNow() {
   renderProfileEditor();
   const showPredict = state.topView === "predict";
   const showLeagues = state.topView === "leagues";
+  const showForum = state.topView === "forum";
   const showResults = state.topView === "results";
   const showResultsFixtures = showResults && state.resultsTab === "fixtures";
   const showResultsPast = showResults && state.resultsTab === "past";
@@ -1643,6 +1675,9 @@ function renderNow() {
     }
     renderOverallLeaderboard();
     renderAdminConsole();
+  }
+  if (showForum) {
+    renderForum();
   }
 
   const isConnected = Boolean(state.client);
@@ -1757,6 +1792,7 @@ function renderOverallLeaderboard() {
 function renderNavigation() {
   const showPredict = state.topView === "predict";
   const showLeagues = state.topView === "leagues";
+  const showForum = state.topView === "forum";
   const showResults = state.topView === "results";
   if (topnavPredictBtn) {
     topnavPredictBtn.classList.toggle("active", showPredict);
@@ -1766,6 +1802,10 @@ function renderNavigation() {
     topnavLeaguesBtn.classList.toggle("active", showLeagues);
     topnavLeaguesBtn.setAttribute("aria-selected", String(showLeagues));
   }
+  if (topnavForumBtn) {
+    topnavForumBtn.classList.toggle("active", showForum);
+    topnavForumBtn.setAttribute("aria-selected", String(showForum));
+  }
   if (topnavResultsBtn) {
     topnavResultsBtn.classList.toggle("active", showResults);
     topnavResultsBtn.setAttribute("aria-selected", String(showResults));
@@ -1773,6 +1813,7 @@ function renderNavigation() {
   if (predictViewEl) predictViewEl.classList.toggle("hidden", !showPredict);
   if (resultsViewEl) resultsViewEl.classList.toggle("hidden", !showResults);
   if (leaguePanel) leaguePanel.classList.toggle("hidden", !showLeagues);
+  if (forumPanelEl) forumPanelEl.classList.toggle("hidden", !showForum);
 
   const showFixtures = state.resultsTab === "fixtures";
   const showPast = state.resultsTab === "past";
@@ -2023,6 +2064,218 @@ function renderAdminConsole() {
     li.appendChild(btn);
     adminLeagueListEl.appendChild(li);
   });
+}
+
+async function loadForumThreads() {
+  if (!state.client) {
+    state.forumThreads = [];
+    return;
+  }
+  const { data, error } = await state.client
+    .from("forum_threads")
+    .select("id, title, body, user_id, author_display_name, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    state.forumThreads = [];
+    state.forumStatus = "Forum is unavailable right now.";
+    return;
+  }
+  state.forumThreads = Array.isArray(data) ? data : [];
+  if (!state.forumThreads.some((thread) => thread.id === state.activeForumThreadId)) {
+    state.activeForumThreadId = null;
+    state.forumReplies = [];
+  }
+}
+
+async function loadForumReplies(threadId) {
+  if (!state.client || !threadId) {
+    state.forumReplies = [];
+    return;
+  }
+  const { data, error } = await state.client
+    .from("forum_replies")
+    .select("id, thread_id, body, user_id, author_display_name, created_at")
+    .eq("thread_id", threadId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) {
+    state.forumReplies = [];
+    return;
+  }
+  state.forumReplies = Array.isArray(data) ? data : [];
+}
+
+async function onCreateForumThread(event) {
+  event.preventDefault();
+  if (!state.client || !state.session?.user) {
+    return;
+  }
+  const title = String(forumThreadTitleInputEl?.value || "").trim();
+  const body = String(forumThreadBodyInputEl?.value || "").trim();
+  if (!title || !body) {
+    return;
+  }
+
+  if (forumThreadSubmitBtnEl) {
+    forumThreadSubmitBtnEl.disabled = true;
+    forumThreadSubmitBtnEl.textContent = "Posting...";
+  }
+
+  const { data, error } = await state.client
+    .from("forum_threads")
+    .insert({
+      user_id: state.session.user.id,
+      author_display_name: getCurrentUserDisplayName(),
+      title,
+      body
+    })
+    .select("id")
+    .single();
+
+  if (forumThreadSubmitBtnEl) {
+    forumThreadSubmitBtnEl.disabled = false;
+    forumThreadSubmitBtnEl.textContent = "Post Thread";
+  }
+
+  if (error) {
+    state.forumStatus = error.message;
+    render();
+    return;
+  }
+
+  state.forumStatus = "Thread posted.";
+  if (forumThreadFormEl) forumThreadFormEl.reset();
+  await loadForumThreads();
+  state.activeForumThreadId = data?.id || null;
+  await loadForumReplies(state.activeForumThreadId);
+  render();
+}
+
+async function onCreateForumReply(event) {
+  event.preventDefault();
+  if (!state.client || !state.session?.user || !state.activeForumThreadId) {
+    return;
+  }
+  const body = String(forumReplyBodyInputEl?.value || "").trim();
+  if (!body) {
+    return;
+  }
+  if (forumReplySubmitBtnEl) {
+    forumReplySubmitBtnEl.disabled = true;
+    forumReplySubmitBtnEl.textContent = "Posting...";
+  }
+  const { error } = await state.client.from("forum_replies").insert({
+    thread_id: state.activeForumThreadId,
+    user_id: state.session.user.id,
+    author_display_name: getCurrentUserDisplayName(),
+    body
+  });
+  if (forumReplySubmitBtnEl) {
+    forumReplySubmitBtnEl.disabled = false;
+    forumReplySubmitBtnEl.textContent = "Post Reply";
+  }
+  if (error) {
+    state.forumStatus = error.message;
+    render();
+    return;
+  }
+  state.forumStatus = "Reply posted.";
+  if (forumReplyFormEl) forumReplyFormEl.reset();
+  await loadForumReplies(state.activeForumThreadId);
+  render();
+}
+
+async function onForumThreadListClick(event) {
+  const openBtn = event.target.closest("button[data-thread-id]");
+  if (!openBtn) {
+    return;
+  }
+  const threadId = openBtn.dataset.threadId || "";
+  if (!threadId) {
+    return;
+  }
+  state.activeForumThreadId = threadId;
+  await loadForumReplies(threadId);
+  render();
+}
+
+function renderForum() {
+  if (!forumThreadListEl || !forumStatusEl || !forumThreadDetailEl) {
+    return;
+  }
+  const isAuthed = Boolean(state.session?.user);
+  if (forumLoginPromptEl) forumLoginPromptEl.classList.toggle("hidden", isAuthed);
+  if (forumThreadFormEl) forumThreadFormEl.classList.toggle("hidden", !isAuthed);
+  if (forumStatusEl) forumStatusEl.textContent = state.forumStatus || "";
+
+  forumThreadListEl.textContent = "";
+  if (state.forumThreads.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No threads yet.";
+    forumThreadListEl.appendChild(li);
+  } else {
+    state.forumThreads.forEach((thread) => {
+      const li = document.createElement("li");
+      const title = document.createElement("p");
+      title.className = "no-margin";
+      title.style.fontWeight = "800";
+      title.textContent = thread.title || "Untitled";
+      const meta = document.createElement("p");
+      meta.className = "status no-margin";
+      meta.textContent = `${thread.author_display_name || "Player"} • ${formatKickoff(thread.created_at)}`;
+      const excerpt = document.createElement("p");
+      excerpt.className = "no-margin";
+      excerpt.textContent = String(thread.body || "").slice(0, 180);
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "ghost-btn";
+      openBtn.dataset.threadId = thread.id;
+      openBtn.textContent = "Open Thread";
+      li.appendChild(title);
+      li.appendChild(meta);
+      li.appendChild(excerpt);
+      li.appendChild(openBtn);
+      forumThreadListEl.appendChild(li);
+    });
+  }
+
+  const activeThread = state.forumThreads.find((thread) => thread.id === state.activeForumThreadId) || null;
+  forumThreadDetailEl.classList.toggle("hidden", !activeThread);
+  if (!activeThread) {
+    return;
+  }
+
+  if (forumThreadDetailTitleEl) forumThreadDetailTitleEl.textContent = activeThread.title || "Thread";
+  if (forumThreadDetailMetaEl) {
+    forumThreadDetailMetaEl.textContent = `${activeThread.author_display_name || "Player"} • ${formatKickoff(activeThread.created_at)}`;
+  }
+
+  if (forumReplyListEl) {
+    forumReplyListEl.textContent = "";
+    if (state.forumReplies.length === 0) {
+      const li = document.createElement("li");
+      li.className = "empty-state";
+      li.textContent = "No replies yet.";
+      forumReplyListEl.appendChild(li);
+    } else {
+      state.forumReplies.forEach((reply) => {
+        const li = document.createElement("li");
+        const meta = document.createElement("p");
+        meta.className = "status no-margin";
+        meta.textContent = `${reply.author_display_name || "Player"} • ${formatKickoff(reply.created_at)}`;
+        const body = document.createElement("p");
+        body.className = "no-margin";
+        body.textContent = reply.body || "";
+        li.appendChild(meta);
+        li.appendChild(body);
+        forumReplyListEl.appendChild(li);
+      });
+    }
+  }
+
+  if (forumReplyFormEl) forumReplyFormEl.classList.toggle("hidden", !isAuthed);
 }
 
 function getNextPendingResultFixture() {

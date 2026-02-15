@@ -566,6 +566,70 @@ $$;
 
 grant execute on function public.get_site_visitor_count() to authenticated;
 
+create table if not exists public.forum_threads (
+  id uuid primary key default extensions.gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  author_display_name text not null,
+  title text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.forum_replies (
+  id uuid primary key default extensions.gen_random_uuid(),
+  thread_id uuid not null references public.forum_threads(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  author_display_name text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists forum_threads_created_at_idx on public.forum_threads (created_at desc);
+create index if not exists forum_replies_thread_created_at_idx on public.forum_replies (thread_id, created_at asc);
+
+alter table public.forum_threads enable row level security;
+alter table public.forum_replies enable row level security;
+
+drop policy if exists forum_threads_select on public.forum_threads;
+create policy forum_threads_select
+on public.forum_threads
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists forum_threads_insert on public.forum_threads;
+create policy forum_threads_insert
+on public.forum_threads
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and length(trim(coalesce(title, ''))) between 3 and 120
+  and length(trim(coalesce(body, ''))) between 1 and 2000
+);
+
+drop policy if exists forum_replies_select on public.forum_replies;
+create policy forum_replies_select
+on public.forum_replies
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists forum_replies_insert on public.forum_replies;
+create policy forum_replies_insert
+on public.forum_replies
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and length(trim(coalesce(body, ''))) between 1 and 1500
+);
+
+grant select on public.forum_threads to anon, authenticated;
+grant insert on public.forum_threads to authenticated;
+grant select on public.forum_replies to anon, authenticated;
+grant insert on public.forum_replies to authenticated;
+
 drop function if exists public.get_overall_leaderboard(integer);
 
 create or replace function public.get_overall_leaderboard(p_limit integer default 10)
