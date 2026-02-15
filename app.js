@@ -70,6 +70,7 @@ const state = {
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
 const overviewScorersTabBtn = document.getElementById("overview-scorers-tab");
 const overviewGlobalTabBtn = document.getElementById("overview-global-tab");
+const overviewLeaguesTabBtn = document.getElementById("overview-leagues-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
 const globalOverviewPanel = document.getElementById("global-overview-panel");
@@ -113,6 +114,10 @@ overviewScorersTabBtn.addEventListener("click", () => {
 });
 overviewGlobalTabBtn.addEventListener("click", () => {
   state.overviewTab = "global";
+  renderOverviewTabs();
+});
+overviewLeaguesTabBtn.addEventListener("click", () => {
+  state.overviewTab = "leagues";
   renderOverviewTabs();
 });
 upcomingToggleBtn.addEventListener("click", () => {
@@ -715,7 +720,6 @@ function render() {
   if (logoutInlineBtn) logoutInlineBtn.classList.toggle("hidden", !isAuthed);
 
   if (authPanel) authPanel.classList.toggle("hidden", !isConnected);
-  if (leaguePanel) leaguePanel.classList.toggle("hidden", !isConnected || !isAuthed);
 
   if (!isConnected) {
     if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
@@ -765,15 +769,19 @@ function renderOverviewTabs() {
   const showFixtures = state.overviewTab === "fixtures";
   const showScorers = state.overviewTab === "scorers";
   const showGlobal = state.overviewTab === "global";
+  const showLeagues = state.overviewTab === "leagues";
   overviewFixturesTabBtn.classList.toggle("active", showFixtures);
   overviewScorersTabBtn.classList.toggle("active", showScorers);
   overviewGlobalTabBtn.classList.toggle("active", showGlobal);
+  overviewLeaguesTabBtn.classList.toggle("active", showLeagues);
   overviewFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
   overviewScorersTabBtn.setAttribute("aria-selected", String(showScorers));
   overviewGlobalTabBtn.setAttribute("aria-selected", String(showGlobal));
+  overviewLeaguesTabBtn.setAttribute("aria-selected", String(showLeagues));
   fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
   scorersOverviewPanel.classList.toggle("hidden", !showScorers);
   globalOverviewPanel.classList.toggle("hidden", !showGlobal);
+  leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
 }
 
 function renderUpcomingFixtures() {

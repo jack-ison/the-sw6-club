@@ -48,6 +48,9 @@
           <button id="overview-global-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
             Global Leaderboard
           </button>
+          <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            My Leagues
+          </button>
         </div>
 
         <div id="fixtures-overview-panel">
@@ -83,47 +86,47 @@
           <ul id="overall-leaderboard" class="leaderboard"></ul>
           <p id="overall-leaderboard-status" class="status no-margin"></p>
         </div>
-      </section>
 
-      <section class="panel hidden" id="league-panel">
-        <h2>League Dashboard</h2>
-        <div class="league-forms">
-          <form id="create-league-form" class="mini-form">
-            <h3>Create League</h3>
+        <div id="league-panel" class="hidden">
+          <h2>My Leagues</h2>
+          <div class="league-forms">
+            <form id="create-league-form" class="mini-form">
+              <h3>Create League</h3>
+              <label>
+                League name
+                <input id="league-name-input" type="text" required />
+              </label>
+              <button type="submit">Create</button>
+            </form>
+
+            <form id="join-league-form" class="mini-form">
+              <h3>Join League</h3>
+              <label>
+                League code
+                <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" required />
+              </label>
+              <button type="submit">Join</button>
+            </form>
+          </div>
+
+          <div class="league-meta">
             <label>
-              League name
-              <input id="league-name-input" type="text" required />
+              Active league
+              <select id="league-select"></select>
             </label>
-            <button type="submit">Create</button>
-          </form>
+            <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
+          </div>
 
-          <form id="join-league-form" class="mini-form">
-            <h3>Join League</h3>
-            <label>
-              League code
-              <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" required />
-            </label>
-            <button type="submit">Join</button>
-          </form>
+          <div class="dashboard-grid">
+            <article class="subpanel">
+              <h3>Leaderboard</h3>
+              <ul id="leaderboard" class="leaderboard"></ul>
+            </article>
+          </div>
+
+          <h3 class="fixtures-title">Prediction Fixtures</h3>
+          <ul id="fixtures-list" class="fixtures-list"></ul>
         </div>
-
-        <div class="league-meta">
-          <label>
-            Active league
-            <select id="league-select"></select>
-          </label>
-          <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
-        </div>
-
-        <div class="dashboard-grid">
-          <article class="subpanel">
-            <h3>Leaderboard</h3>
-            <ul id="leaderboard" class="leaderboard"></ul>
-          </article>
-        </div>
-
-        <h3 class="fixtures-title">Prediction Fixtures</h3>
-        <ul id="fixtures-list" class="fixtures-list"></ul>
       </section>
     </main>
 
