@@ -2131,7 +2131,7 @@ async function loadForumThreads() {
     .limit(50);
   if (error) {
     state.forumThreads = [];
-    state.forumStatus = "Forum is unavailable right now.";
+    state.forumStatus = "The Concourse is unavailable right now.";
     return;
   }
   state.forumThreads = Array.isArray(data) ? data : [];
