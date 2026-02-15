@@ -1023,6 +1023,16 @@ button:disabled {
   margin-top: 0.2rem;
 }
 
+.prediction-form .score-minus,
+.prediction-form .score-plus {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  margin-top: 0;
+}
+
 .prediction-form button:hover {
   background: linear-gradient(140deg, #0c6f41, #094e2f);
 }
