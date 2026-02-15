@@ -98,7 +98,7 @@ async function onSignUp(event) {
     return;
   }
 
-  signupStatus.textContent = "Account created. Redirecting...";
+  signupStatus.textContent = "Account created. Check your verification email (including spam/junk), then continue.";
   signupForm.reset();
   setTimeout(() => {
     window.location.href = "index.html#predict";
