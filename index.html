@@ -20,6 +20,11 @@
         <div class="hero-main">
           <h1>The SW6 Club</h1>
           <p>Your completely unofficial Chelsea score predictor.</p>
+          <div class="how-strip">
+            <p><strong>1.</strong> Pick score and scorers</p>
+            <p><strong>2.</strong> Submit before lock</p>
+            <p><strong>3.</strong> Climb league tables</p>
+          </div>
         </div>
         <p id="deadline-countdown" class="hero-deadline"></p>
       </header>
@@ -46,106 +51,73 @@
 
       <section class="panel overview-panel">
         <p class="section-kicker">Track</p>
-        <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
-          <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Fixtures
-          </button>
-          <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Scorers
-          </button>
-          <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
-            Global Leaderboard
-          </button>
-          <button id="overview-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Past Games
-          </button>
-          <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            My Leagues
-          </button>
-          <button id="overview-rules-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Game Rules
-          </button>
-        </div>
+        <details id="league-panel" class="collapse-card" open>
+          <summary>Your Leagues</summary>
+          <div class="collapse-body">
+            <div class="league-forms">
+              <form id="create-league-form" class="mini-form">
+                <h3>Create League</h3>
+                <label>
+                  League name
+                  <input id="league-name-input" type="text" required />
+                </label>
+                <button type="submit">Create</button>
+              </form>
 
-        <div id="fixtures-overview-panel">
-          <div class="upcoming-head">
-            <h2>Upcoming Chelsea Fixtures</h2>
-            <button id="upcoming-toggle-btn" type="button" class="ghost-btn">Show All</button>
+              <form id="join-league-form" class="mini-form">
+                <h3>Join League</h3>
+                <label>
+                  League code
+                  <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" required />
+                </label>
+                <button type="submit">Join</button>
+              </form>
+            </div>
+
+            <div class="league-meta">
+              <label>
+                Active league
+                <select id="league-select"></select>
+              </label>
+              <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
+              <button id="copy-invite-link-btn" type="button" class="ghost-btn">Copy Invite Link</button>
+            </div>
+
+            <div class="dashboard-grid">
+              <article class="subpanel">
+                <h3>Standings</h3>
+                <ul id="leaderboard" class="leaderboard"></ul>
+              </article>
+              <article class="subpanel">
+                <h3>League Home</h3>
+                <ul id="league-members-list" class="leaderboard"></ul>
+                <ul id="league-results-list" class="past-games-list"></ul>
+              </article>
+            </div>
           </div>
-          <p id="upcoming-source" class="status no-margin"></p>
-          <ul id="upcoming-list" class="upcoming-list"></ul>
-        </div>
+        </details>
 
-        <div id="scorers-overview-panel" class="hidden">
-          <h2>Top Chelsea Scorers (Premier League 2025/26)</h2>
-          <div class="table-wrap">
-            <table class="scorers-table">
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>Player</th>
-                  <th>Apps</th>
-                  <th>Goals</th>
-                  <th>Goals/Game</th>
-                </tr>
-              </thead>
-              <tbody id="scorers-table-body"></tbody>
-            </table>
-          </div>
-          <p id="scorers-source" class="status"></p>
-        </div>
-
-        <div id="global-overview-panel" class="hidden">
+        <details id="global-overview-panel" class="collapse-card">
+          <summary>Global Leaderboard</summary>
+          <div class="collapse-body">
           <h2>Global Leaderboard (Top 10)</h2>
           <ul id="overall-leaderboard" class="leaderboard"></ul>
           <p id="overall-leaderboard-status" class="status no-margin"></p>
-        </div>
+          </div>
+        </details>
 
-        <div id="past-overview-panel" class="hidden">
+        <details id="past-overview-panel" class="collapse-card">
+          <summary>Past Games</summary>
+          <div class="collapse-body">
           <h2>Past Games</h2>
           <ul id="past-games-list" class="past-games-list"></ul>
           <p id="past-games-status" class="status no-margin"></p>
-        </div>
-
-        <div id="league-panel" class="hidden">
-          <h2>My Leagues</h2>
-          <div class="league-forms">
-            <form id="create-league-form" class="mini-form">
-              <h3>Create League</h3>
-              <label>
-                League name
-                <input id="league-name-input" type="text" required />
-              </label>
-              <button type="submit">Create</button>
-            </form>
-
-            <form id="join-league-form" class="mini-form">
-              <h3>Join League</h3>
-              <label>
-                League code
-                <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" required />
-              </label>
-              <button type="submit">Join</button>
-            </form>
           </div>
+        </details>
 
-          <div class="league-meta">
-            <label>
-              Active league
-              <select id="league-select"></select>
-            </label>
-            <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
-          </div>
-
-          <div class="dashboard-grid">
-            <article class="subpanel">
-              <h3>Leaderboard</h3>
-              <ul id="leaderboard" class="leaderboard"></ul>
-            </article>
-          </div>
-        </div>
-
-        <div id="rules-overview-panel" class="hidden">
+        <details id="rules-overview-panel" class="collapse-card">
+          <summary>Rules</summary>
+          <div class="collapse-body">
           <h2>Game Rules</h2>
           <ul class="rules-list">
             <li><strong>Who can predict:</strong> Anyone logged in can submit a prediction.</li>
@@ -165,23 +137,29 @@
             <li>Perfect bonus (exact score + correct first scorer): <strong>+1</strong></li>
             <li>No prediction before deadline: <strong>0</strong></li>
           </ul>
-        </div>
+          </div>
+        </details>
       </section>
     </main>
 
     <footer class="site-footer">
       <p>Unofficial fan project. Not affiliated with Chelsea FC.</p>
+      <p id="data-source-line">Data source: Chelsea official fixtures feed + ESPN stat snapshot.</p>
     </footer>
 
     <template id="fixture-template">
       <li class="fixture-item">
-        <div class="fixture-head">
-          <p class="fixture-title"></p>
-          <span class="status-badge"></span>
+        <div class="next-fixture-card">
+          <p class="mini-title">Next Fixture</p>
+          <div class="fixture-head">
+            <p class="fixture-title"></p>
+            <span class="status-badge"></span>
+          </div>
+          <p class="fixture-meta"></p>
+          <p class="lock-line"></p>
         </div>
-        <p class="fixture-meta"></p>
         <div class="fixture-body">
-          <form class="prediction-form">
+          <form class="prediction-form prediction-card">
             <p class="mini-title">Your Prediction</p>
             <div class="scoreboard-picker">
               <div class="score-team">
@@ -206,6 +184,17 @@
             <input class="pred-opponent" type="number" min="0" required hidden />
             <div class="goalscorer-picker">
               <p class="mini-title no-margin">Select Goalscorers</p>
+              <p class="scorer-helper">Scorers chosen should match Chelsea goals. We auto-total Chelsea goals from your picks.</p>
+              <div class="scorer-fast-tools">
+                <input class="scorer-search" type="search" placeholder="Search players..." />
+                <button type="button" class="ghost-btn clear-scorers-btn">Clear all</button>
+                <button type="button" class="ghost-btn undo-scorer-btn">Undo last</button>
+                <button type="button" class="ghost-btn repeat-last-btn">Repeat last prediction</button>
+              </div>
+              <div class="quick-picks">
+                <p class="quick-picks-title">Quick picks</p>
+                <div class="quick-picks-wrap"></div>
+              </div>
               <p class="prediction-ack hidden" aria-live="polite"></p>
               <p class="status no-margin">Selected: <span class="selected-scorer-value">None</span></p>
               <input class="pred-scorer" type="text" readonly placeholder="Pick players below" />
@@ -221,7 +210,11 @@
                 <div class="player-chip-wrap player-chip-wrap-chelsea"></div>
               </div>
             </div>
-            <button type="submit">Save Prediction</button>
+            <button type="submit">Submit prediction</button>
+            <div class="auth-cta-row hidden">
+              <a class="ghost-link create-account-cta" href="signup.html">Create account to submit</a>
+              <button type="button" class="ghost-btn login-cta-btn">Log in</button>
+            </div>
           </form>
         </div>
 
