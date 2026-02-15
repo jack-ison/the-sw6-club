@@ -56,11 +56,14 @@ const CHELSEA_REGISTERED_PLAYERS = [
   "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
   "Joao Pedro", "Estevao", "Kendry Paez"
 ];
-const POSITION_GROUPS = ["Goalkeepers", "Defenders", "Midfielders", "Forwards", "Other"];
+const POSITION_GROUPS = ["Defenders", "Midfielders", "Forwards"];
 const CHELSEA_PLAYER_POSITION_GROUP = {
   "Robert Sanchez": "Goalkeepers",
   "Filip Jorgensen": "Goalkeepers",
   "Djordje Petrovic": "Goalkeepers",
+  "Gaga Slonina": "Goalkeepers",
+  "Lucas Bergstrom": "Goalkeepers",
+  "Teddy Sharman-Lowe": "Goalkeepers",
   "Malo Gusto": "Defenders",
   "Reece James": "Defenders",
   "Trevoh Chalobah": "Defenders",
@@ -1326,9 +1329,12 @@ function renderScorerButtons(container, players, targetInput, selectedLabelEl, s
   container.classList.add("position-groups-layout");
   const grouped = new Map(POSITION_GROUPS.map((group) => [group, []]));
   players.forEach((player) => {
+    if (isGoalkeeperName(player)) {
+      return;
+    }
     const group = getPositionGroupForPlayer(player);
     if (!grouped.has(group)) {
-      grouped.set(group, []);
+      grouped.set("Midfielders", []);
     }
     grouped.get(group).push(player);
   });
@@ -1348,7 +1354,10 @@ function renderScorerButtons(container, players, targetInput, selectedLabelEl, s
 }
 
 function appendCustomScorerButton(container, player, targetInput, selectedLabelEl, selectedListEl) {
-  const chipsWrap = ensurePositionGroupChipWrap(container, "Other");
+  if (isGoalkeeperName(player)) {
+    return;
+  }
+  const chipsWrap = ensurePositionGroupChipWrap(container, getPositionGroupForPlayer(player));
   chipsWrap.appendChild(createPlayerChipButton(container, player, targetInput, selectedLabelEl, selectedListEl));
 }
 
@@ -1394,7 +1403,15 @@ function ensurePositionGroupChipWrap(container, groupName) {
 }
 
 function getPositionGroupForPlayer(playerName) {
-  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "Other";
+  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "Midfielders";
+}
+
+function isGoalkeeperName(playerName) {
+  return getPositionGroupFromMap(playerName) === "Goalkeepers";
+}
+
+function getPositionGroupFromMap(playerName) {
+  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "";
 }
 
 function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl, selectedListEl) {
@@ -1549,7 +1566,8 @@ function adjustScorerCount(formEl, targetInput, player, delta, selectedLabelEl, 
 }
 
 function getChelseaRegisteredPlayers() {
-  return state.teamSquads.Chelsea || CHELSEA_REGISTERED_PLAYERS;
+  const squad = state.teamSquads.Chelsea || CHELSEA_REGISTERED_PLAYERS;
+  return squad.filter((name) => !isGoalkeeperName(name));
 }
 
 async function maybeRefreshChelseaSquad(force = false) {
