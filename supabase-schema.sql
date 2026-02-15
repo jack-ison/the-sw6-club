@@ -537,7 +537,6 @@ from auth.users u
 where lower(coalesce(u.email, '')) = lower('jackwilliamison@gmail.com')
 on conflict (user_id) do nothing;
 
-drop function if exists public.is_configured_admin();
 create or replace function public.is_configured_admin()
 returns boolean
 language plpgsql
