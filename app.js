@@ -154,13 +154,9 @@ const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-
 const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
-const accountMenuBtn = document.getElementById("account-menu-btn");
-const accountMenuDropdown = document.getElementById("account-menu-dropdown");
-const accountSignedOutActionsEl = document.getElementById("account-signed-out-actions");
-const accountSignedInActionsEl = document.getElementById("account-signed-in-actions");
+const accountSignInBtn = document.getElementById("account-signin-btn");
+const accountEditProfileTopBtn = document.getElementById("account-edit-profile-top-btn");
 const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
-const accountOpenLoginBtn = document.getElementById("account-open-login-btn");
-const accountEditProfileBtn = document.getElementById("account-edit-profile-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
 const openRulesFooterBtn = document.getElementById("open-rules-footer");
 const closeRulesModalBtn = document.getElementById("close-rules-modal");
@@ -206,10 +202,9 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   renderUpcomingFixtures();
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
-if (accountMenuBtn) accountMenuBtn.addEventListener("click", onToggleAccountMenu);
+if (accountSignInBtn) accountSignInBtn.addEventListener("click", onToggleLoginPanel);
+if (accountEditProfileTopBtn) accountEditProfileTopBtn.addEventListener("click", onOpenProfileFromAccount);
 if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
-if (accountOpenLoginBtn) accountOpenLoginBtn.addEventListener("click", onToggleLoginPanel);
-if (accountEditProfileBtn) accountEditProfileBtn.addEventListener("click", onOpenProfileFromAccount);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
 if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
 if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
@@ -316,7 +311,13 @@ function onDocumentClick(event) {
     onCloseRulesModal();
     return;
   }
-  if (!state.accountMenuOpen || !accountMenuDropdown || !accountMenuBtn) {
+  if (!state.accountMenuOpen) {
+    return;
+  }
+  const accountMenuDropdown = document.getElementById("account-menu-dropdown");
+  const accountMenuBtn = document.getElementById("account-menu-btn");
+  if (!accountMenuDropdown || !accountMenuBtn) {
+    state.accountMenuOpen = false;
     return;
   }
   const clickedInsideMenu = accountMenuDropdown.contains(event.target) || accountMenuBtn.contains(event.target);
@@ -1197,10 +1198,9 @@ function render() {
   if (authLoginFields) authLoginFields.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
-  if (accountSignedOutActionsEl) accountSignedOutActionsEl.classList.toggle("hidden", isAuthed);
-  if (accountSignedInActionsEl) accountSignedInActionsEl.classList.toggle("hidden", !isAuthed);
+  if (accountSignInBtn) accountSignInBtn.classList.toggle("hidden", isAuthed || !isConnected);
+  if (accountEditProfileTopBtn) accountEditProfileTopBtn.classList.toggle("hidden", !isAuthed || !isConnected);
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
-  if (accountMenuDropdown) accountMenuDropdown.classList.toggle("hidden", !state.accountMenuOpen);
 
   if (!isConnected) {
     if (sessionStatus) {
