@@ -24,6 +24,19 @@
         <p id="deadline-countdown" class="hero-deadline"></p>
       </header>
 
+      <section class="panel auth-thin" id="auth-panel">
+        <form id="login-form" class="auth-bar-form">
+          <div id="auth-login-fields" class="auth-login-fields">
+            <input id="login-email-input" type="email" placeholder="Email" required />
+            <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
+          </div>
+          <button id="login-btn" type="submit">Log In</button>
+          <button id="logout-inline-btn" type="button" class="danger-btn hidden">Log Out</button>
+          <a class="ghost-link" href="signup.html">Create account</a>
+        </form>
+        <p id="session-status" class="status auth-inline-status">Not signed in.</p>
+      </section>
+
       <section class="panel">
         <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
           <button id="overview-fixtures-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
@@ -67,24 +80,6 @@
         <h2>Overall Leaderboard</h2>
         <ul id="overall-leaderboard" class="leaderboard"></ul>
         <p id="overall-leaderboard-status" class="status no-margin"></p>
-      </section>
-
-      <section class="panel" id="auth-panel">
-        <div class="auth-bar-top">
-          <h2>Log In</h2>
-          <a class="ghost-link" href="signup.html">Create account</a>
-        </div>
-        <form id="login-form" class="auth-bar-form">
-          <div id="auth-login-fields" class="auth-login-fields">
-            <input id="login-email-input" type="email" placeholder="Email" required />
-            <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
-          </div>
-          <button id="login-btn" type="submit">Log In</button>
-          <button id="logout-inline-btn" type="button" class="danger-btn hidden">Log Out</button>
-        </form>
-        <div class="session-row">
-          <p id="session-status" class="status">Not signed in.</p>
-        </div>
       </section>
 
       <section class="panel hidden" id="league-panel">

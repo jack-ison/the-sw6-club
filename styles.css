@@ -290,6 +290,7 @@ button:disabled {
   font-size: 0.86rem;
   font-weight: 700;
   padding: 0.5rem 0.9rem;
+  white-space: nowrap;
 }
 
 .ghost-link:hover {
@@ -357,7 +358,6 @@ button:disabled {
 }
 
 .auth-bar-form {
-  margin-top: 0.65rem;
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -373,6 +373,17 @@ button:disabled {
 .auth-card {
   max-width: 520px;
   margin: 1rem auto 0;
+}
+
+.auth-thin {
+  padding: 0.62rem 0.82rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.auth-inline-status {
+  margin: 0;
+  font-size: 0.78rem;
 }
 
 .session-actions,
