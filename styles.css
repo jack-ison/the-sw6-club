@@ -835,10 +835,17 @@ button:disabled {
 
 .score-minus,
 .score-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  aspect-ratio: 1 / 1;
+  line-height: 1;
   border: 0;
   color: #fff;
   font-size: 1rem;
