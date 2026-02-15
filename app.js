@@ -156,6 +156,7 @@ const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
 const accountSignInLink = document.getElementById("account-signin-link");
 const accountSignUpLink = document.getElementById("account-signup-link");
+const accountEditProfileTopBtn = document.getElementById("account-edit-profile-top-btn");
 const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
 const openRulesFooterBtn = document.getElementById("open-rules-footer");
@@ -202,6 +203,7 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   renderUpcomingFixtures();
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
+if (accountEditProfileTopBtn) accountEditProfileTopBtn.addEventListener("click", onOpenProfileFromAccount);
 if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
 if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
@@ -1192,6 +1194,7 @@ function render() {
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
   if (accountSignInLink) accountSignInLink.classList.toggle("hidden", isAuthed || !isConnected);
   if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", isAuthed || !isConnected);
+  if (accountEditProfileTopBtn) accountEditProfileTopBtn.classList.toggle("hidden", !isAuthed || !isConnected);
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
 
   if (!isConnected) {
