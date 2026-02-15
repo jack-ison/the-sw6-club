@@ -35,21 +35,11 @@
             <button id="topnav-results" type="button" class="tab-btn" role="tab" aria-selected="false">Results</button>
           </div>
           <div class="account-actions">
-            <button id="account-signin-btn" type="button" class="ghost-btn">Sign in</button>
-            <a id="account-signup-link" class="ghost-link" href="signup.html">Sign up</a>
+            <a id="account-signin-link" class="account-auth-btn" href="login.html">Sign in</a>
+            <a id="account-signup-link" class="account-auth-btn" href="signup.html">Sign up</a>
             <button id="account-edit-profile-top-btn" type="button" class="ghost-btn hidden">Edit Profile</button>
             <button id="account-signout-quick-btn" type="button" class="ghost-btn hidden">Sign out</button>
           </div>
-        </div>
-        <div id="login-panel" class="hidden">
-          <form id="login-form" class="auth-bar-form">
-            <div id="auth-login-fields" class="auth-login-fields">
-              <input id="login-email-input" type="email" placeholder="Email" required />
-              <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
-            </div>
-            <button id="login-btn" type="submit">Log In</button>
-            <a class="ghost-link" href="signup.html">Create account</a>
-          </form>
         </div>
         <p id="session-status" class="status auth-inline-status hidden"></p>
       </section>

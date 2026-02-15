@@ -185,6 +185,26 @@ body {
   gap: 0.45rem;
 }
 
+.account-auth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 102px;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--primary-soft);
+  color: #274777;
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.account-auth-btn:hover {
+  background: #dbe9ff;
+}
+
 .account-menu-wrap {
   position: relative;
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Create Account | The SW6 Club</title>
+    <title>Sign In | The SW6 Club</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -18,39 +18,29 @@
     <main class="app-shell">
       <header class="hero">
         <div class="hero-main">
-          <h1>Create Account</h1>
-          <p>Join The SW6 Club to make predictions with your friends.</p>
+          <h1>Sign In</h1>
+          <p>Log in to make and update your predictions.</p>
         </div>
       </header>
 
       <section class="panel auth-card">
-        <form id="signup-form" class="mini-form">
-          <label>
-            Display name
-            <input id="signup-name-input" type="text" required />
-          </label>
-          <label>
-            Country
-            <select id="signup-country-input" required>
-              <option value="">Select country</option>
-            </select>
-          </label>
+        <form id="signin-form" class="mini-form">
           <label>
             Email
-            <input id="signup-email-input" type="email" required />
+            <input id="signin-email-input" type="email" required />
           </label>
           <label>
             Password
-            <input id="signup-password-input" type="password" minlength="6" required />
+            <input id="signin-password-input" type="password" minlength="6" required />
           </label>
-          <button type="submit">Create Account</button>
+          <button id="signin-submit-btn" type="submit">Sign In</button>
         </form>
-        <p id="signup-status" class="status" aria-live="polite"></p>
-        <p class="status no-margin">Already got an account? <a href="login.html">Back to log in</a></p>
+        <p id="signin-status" class="status" aria-live="polite"></p>
+        <p class="status no-margin">Need an account? <a href="signup.html">Create account</a></p>
       </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="signup.js"></script>
+    <script src="login.js"></script>
   </body>
 </html>
