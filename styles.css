@@ -564,6 +564,25 @@ button:disabled {
 .league-meta {
   margin-top: 0.94rem;
   justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.7rem;
+}
+
+.league-meta-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.35rem;
+}
+
+#copy-code-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 0.52rem 0.86rem;
+}
+
+#league-meta-note {
+  font-size: 0.76rem;
+  color: #5272a2;
 }
 
 .dashboard-grid {

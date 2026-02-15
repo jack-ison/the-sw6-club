@@ -199,6 +199,7 @@ const joinPrivatePasswordWrap = document.getElementById("join-private-password-w
 const joinPrivatePasswordInput = document.getElementById("join-private-password-input");
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
+const leagueMetaNoteEl = document.getElementById("league-meta-note");
 const adminConsoleEl = document.getElementById("admin-console");
 const adminLeagueListEl = document.getElementById("admin-league-list");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
@@ -1399,7 +1400,10 @@ function render() {
   if (leagueSelect?.closest("label")) {
     leagueSelect.closest("label").classList.toggle("hidden", !isAuthed);
   }
-  if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !isAuthed);
+  const activeLeague = getActiveLeague();
+  const isGlobalActive = isGlobalLeague(activeLeague);
+  if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !isAuthed || isGlobalActive);
+  if (leagueMetaNoteEl) leagueMetaNoteEl.classList.toggle("hidden", !isAuthed || !isGlobalActive);
 
   if (isAuthed) {
     renderLeagueSelect();
@@ -2368,6 +2372,10 @@ function getActiveLeague() {
 function getGlobalLeagueFromState() {
   return state.leagues.find((league) => String(league.name || "").trim().toLowerCase() === GLOBAL_LEAGUE_NAME.toLowerCase())
     || null;
+}
+
+function isGlobalLeague(league) {
+  return String(league?.name || "").trim().toLowerCase() === GLOBAL_LEAGUE_NAME.toLowerCase();
 }
 
 function getCurrentMember() {
