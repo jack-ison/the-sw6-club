@@ -62,7 +62,7 @@ const state = {
   teamSquadFetchedAt: {},
   squadFetchInFlight: {},
   showAllUpcoming: false,
-  overviewTab: "fixtures",
+  overviewTab: "global",
   upcomingFixtures: [...FALLBACK_FIXTURES],
   upcomingSourceText: "Using bundled SW6 fixture fallback list."
 };
