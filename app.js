@@ -69,8 +69,10 @@ const state = {
 
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
 const overviewScorersTabBtn = document.getElementById("overview-scorers-tab");
+const overviewGlobalTabBtn = document.getElementById("overview-global-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
+const globalOverviewPanel = document.getElementById("global-overview-panel");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -107,6 +109,10 @@ overviewFixturesTabBtn.addEventListener("click", () => {
 });
 overviewScorersTabBtn.addEventListener("click", () => {
   state.overviewTab = "scorers";
+  renderOverviewTabs();
+});
+overviewGlobalTabBtn.addEventListener("click", () => {
+  state.overviewTab = "global";
   renderOverviewTabs();
 });
 upcomingToggleBtn.addEventListener("click", () => {
@@ -757,12 +763,17 @@ function renderOverallLeaderboard() {
 
 function renderOverviewTabs() {
   const showFixtures = state.overviewTab === "fixtures";
+  const showScorers = state.overviewTab === "scorers";
+  const showGlobal = state.overviewTab === "global";
   overviewFixturesTabBtn.classList.toggle("active", showFixtures);
-  overviewScorersTabBtn.classList.toggle("active", !showFixtures);
+  overviewScorersTabBtn.classList.toggle("active", showScorers);
+  overviewGlobalTabBtn.classList.toggle("active", showGlobal);
   overviewFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
-  overviewScorersTabBtn.setAttribute("aria-selected", String(!showFixtures));
+  overviewScorersTabBtn.setAttribute("aria-selected", String(showScorers));
+  overviewGlobalTabBtn.setAttribute("aria-selected", String(showGlobal));
   fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
-  scorersOverviewPanel.classList.toggle("hidden", showFixtures);
+  scorersOverviewPanel.classList.toggle("hidden", !showScorers);
+  globalOverviewPanel.classList.toggle("hidden", !showGlobal);
 }
 
 function renderUpcomingFixtures() {

@@ -45,6 +45,9 @@
           <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
             Top Scorers
           </button>
+          <button id="overview-global-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Global Leaderboard
+          </button>
         </div>
 
         <div id="fixtures-overview-panel">
@@ -74,12 +77,12 @@
           </div>
           <p id="scorers-source" class="status"></p>
         </div>
-      </section>
 
-      <section class="panel">
-        <h2>Overall Leaderboard</h2>
-        <ul id="overall-leaderboard" class="leaderboard"></ul>
-        <p id="overall-leaderboard-status" class="status no-margin"></p>
+        <div id="global-overview-panel" class="hidden">
+          <h2>Global Leaderboard (Top 10)</h2>
+          <ul id="overall-leaderboard" class="leaderboard"></ul>
+          <p id="overall-leaderboard-status" class="status no-margin"></p>
+        </div>
       </section>
 
       <section class="panel hidden" id="league-panel">
