@@ -6,9 +6,24 @@ create table if not exists public.leagues (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
   name text not null,
+  is_public boolean not null default true,
+  join_password_hash text,
   owner_id uuid not null references auth.users(id) on delete cascade,
   created_at timestamptz not null default now()
 );
+
+alter table public.leagues
+  add column if not exists is_public boolean not null default true;
+
+alter table public.leagues
+  add column if not exists join_password_hash text;
+
+alter table public.leagues
+  drop constraint if exists leagues_private_password_required;
+
+alter table public.leagues
+  add constraint leagues_private_password_required
+  check (is_public or coalesce(length(join_password_hash), 0) > 0);
 
 create table if not exists public.league_members (
   league_id uuid not null references public.leagues(id) on delete cascade,
@@ -127,12 +142,97 @@ as $$
   );
 $$;
 
+drop function if exists public.create_league(text, boolean, text, text, text);
+create or replace function public.create_league(
+  p_name text,
+  p_is_public boolean default true,
+  p_join_password text default null,
+  p_display_name text default null,
+  p_country_code text default 'GB'
+)
+returns table (
+  id uuid,
+  name text,
+  code text,
+  owner_id uuid,
+  created_at timestamptz,
+  is_public boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid;
+  v_code text;
+  v_password_hash text;
+  v_attempt integer := 0;
+begin
+  v_owner_id := auth.uid();
+  if v_owner_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if trim(coalesce(p_name, '')) = '' then
+    raise exception 'League name is required';
+  end if;
+
+  if not coalesce(p_is_public, true) and length(trim(coalesce(p_join_password, ''))) < 6 then
+    raise exception 'Private league password must be at least 6 characters';
+  end if;
+
+  v_password_hash := case
+    when coalesce(p_is_public, true) then null
+    else crypt(trim(p_join_password), gen_salt('bf'))
+  end;
+
+  loop
+    v_attempt := v_attempt + 1;
+    v_code := upper(substring(md5(random()::text || clock_timestamp()::text || v_owner_id::text), 1, 8));
+    begin
+      insert into public.leagues (name, code, owner_id, is_public, join_password_hash)
+      values (trim(p_name), v_code, v_owner_id, coalesce(p_is_public, true), v_password_hash)
+      returning leagues.id, leagues.name, leagues.code, leagues.owner_id, leagues.created_at, leagues.is_public
+      into id, name, code, owner_id, created_at, is_public;
+      exit;
+    exception
+      when unique_violation then
+        if v_attempt >= 7 then
+          raise;
+        end if;
+    end;
+  end loop;
+
+  insert into public.league_members (league_id, user_id, display_name, country_code, role)
+  values (
+    id,
+    v_owner_id,
+    trim(coalesce(nullif(p_display_name, ''), split_part(coalesce(auth.jwt() ->> 'email', 'player'), '@', 1))),
+    case
+      when upper(trim(coalesce(p_country_code, ''))) ~ '^[A-Z]{2}$' then upper(trim(p_country_code))
+      else 'GB'
+    end,
+    'owner'
+  )
+  on conflict (league_id, user_id)
+  do update set
+    display_name = excluded.display_name,
+    country_code = excluded.country_code,
+    role = 'owner';
+
+  return next;
+end;
+$$;
+
+grant execute on function public.create_league(text, boolean, text, text, text) to authenticated;
+
+drop function if exists public.join_league_by_code(text, text, text);
 create or replace function public.join_league_by_code(
   p_code text,
   p_display_name text,
   p_country_code text default 'GB'
 )
-returns void
+returns uuid
 language plpgsql
 security definer
 set search_path = public
@@ -146,10 +246,11 @@ begin
 
   select l.id into v_league_id
   from public.leagues l
-  where upper(l.code) = upper(trim(p_code));
+  where upper(l.code) = upper(trim(p_code))
+    and l.is_public = true;
 
   if v_league_id is null then
-    raise exception 'League code not found';
+    raise exception 'Public league code not found';
   end if;
 
   insert into public.league_members (league_id, user_id, display_name, country_code, role)
@@ -167,10 +268,74 @@ begin
   do update set
     display_name = excluded.display_name,
     country_code = excluded.country_code;
+
+  return v_league_id;
 end;
 $$;
 
 grant execute on function public.join_league_by_code(text, text, text) to authenticated;
+
+drop function if exists public.join_private_league_by_name(text, text, text, text);
+create or replace function public.join_private_league_by_name(
+  p_name text,
+  p_password text,
+  p_display_name text,
+  p_country_code text default 'GB'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_league_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if trim(coalesce(p_name, '')) = '' then
+    raise exception 'League name is required';
+  end if;
+
+  if trim(coalesce(p_password, '')) = '' then
+    raise exception 'League password is required';
+  end if;
+
+  select l.id
+  into v_league_id
+  from public.leagues l
+  where lower(trim(l.name)) = lower(trim(p_name))
+    and l.is_public = false
+    and l.join_password_hash = crypt(trim(p_password), l.join_password_hash)
+  order by l.created_at desc
+  limit 1;
+
+  if v_league_id is null then
+    raise exception 'Private league name/password did not match';
+  end if;
+
+  insert into public.league_members (league_id, user_id, display_name, country_code, role)
+  values (
+    v_league_id,
+    auth.uid(),
+    trim(p_display_name),
+    case
+      when upper(trim(coalesce(p_country_code, ''))) ~ '^[A-Z]{2}$' then upper(trim(p_country_code))
+      else 'GB'
+    end,
+    'member'
+  )
+  on conflict (league_id, user_id)
+  do update set
+    display_name = excluded.display_name,
+    country_code = excluded.country_code;
+
+  return v_league_id;
+end;
+$$;
+
+grant execute on function public.join_private_league_by_name(text, text, text, text) to authenticated;
 
 create or replace function public.can_submit_prediction(p_fixture_id uuid)
 returns boolean
@@ -689,3 +854,50 @@ end;
 $$;
 
 grant execute on function public.delete_my_account() to authenticated;
+
+drop function if exists public.admin_list_leagues();
+create or replace function public.admin_list_leagues()
+returns table (
+  id uuid,
+  name text,
+  code text,
+  is_public boolean,
+  owner_id uuid,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if lower(coalesce(auth.jwt() ->> 'email', '')) <> 'jackwilliamison@gmail.com' then
+    raise exception 'Forbidden';
+  end if;
+
+  return query
+  select l.id, l.name, l.code, l.is_public, l.owner_id, l.created_at
+  from public.leagues l
+  order by l.created_at desc;
+end;
+$$;
+
+grant execute on function public.admin_list_leagues() to authenticated;
+
+drop function if exists public.admin_delete_league(uuid);
+create or replace function public.admin_delete_league(p_league_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if lower(coalesce(auth.jwt() ->> 'email', '')) <> 'jackwilliamison@gmail.com' then
+    raise exception 'Forbidden';
+  end if;
+
+  delete from public.leagues
+  where id = p_league_id;
+end;
+$$;
+
+grant execute on function public.admin_delete_league(uuid) to authenticated;

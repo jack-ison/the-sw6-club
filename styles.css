@@ -1096,6 +1096,19 @@ button:disabled {
   font-size: 0.84rem;
 }
 
+.admin-league-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.admin-league-item .danger-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 0.5rem 0.78rem;
+}
+
 .fixture-actions {
   margin-top: 0.66rem;
 }

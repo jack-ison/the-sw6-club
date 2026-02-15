@@ -1,5 +1,6 @@
 const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+const ADMIN_EMAIL = "jackwilliamison@gmail.com";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
@@ -128,7 +129,8 @@ const state = {
   lastPredictionAck: null,
   profileAck: null,
   predictionButtonFlashTimeoutId: null,
-  registeredUserCount: undefined
+  registeredUserCount: undefined,
+  adminLeagues: []
 };
 
 const topnavPredictBtn = document.getElementById("topnav-predict");
@@ -182,9 +184,20 @@ const leaguePanel = document.getElementById("league-panel");
 const createLeagueForm = document.getElementById("create-league-form");
 const joinLeagueForm = document.getElementById("join-league-form");
 const leagueNameInput = document.getElementById("league-name-input");
+const leagueVisibilityInput = document.getElementById("league-visibility-input");
+const leaguePasswordWrap = document.getElementById("league-password-wrap");
+const leaguePasswordInput = document.getElementById("league-password-input");
+const joinModeInput = document.getElementById("join-mode-input");
+const joinCodeWrap = document.getElementById("join-code-wrap");
 const joinCodeInput = document.getElementById("join-code-input");
+const joinPrivateNameWrap = document.getElementById("join-private-name-wrap");
+const joinPrivateNameInput = document.getElementById("join-private-name-input");
+const joinPrivatePasswordWrap = document.getElementById("join-private-password-wrap");
+const joinPrivatePasswordInput = document.getElementById("join-private-password-input");
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
+const adminConsoleEl = document.getElementById("admin-console");
+const adminLeagueListEl = document.getElementById("admin-league-list");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 
@@ -209,8 +222,11 @@ if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRules
 if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
 if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague);
 if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
+if (leagueVisibilityInput) leagueVisibilityInput.addEventListener("change", onLeagueVisibilityChange);
+if (joinModeInput) joinModeInput.addEventListener("change", onJoinModeChange);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
+if (adminLeagueListEl) adminLeagueListEl.addEventListener("click", onAdminLeagueListClick);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
 
@@ -224,6 +240,8 @@ initializeApp();
 async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
+  onLeagueVisibilityChange();
+  onJoinModeChange();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
   renderNavigation();
   renderUpcomingFixtures();
@@ -361,6 +379,35 @@ function onCloseRulesModal() {
   state.showRulesModal = false;
   syncRouteHash();
   render();
+}
+
+function onLeagueVisibilityChange() {
+  const isPrivate = (leagueVisibilityInput?.value || "public") === "private";
+  if (leaguePasswordWrap) leaguePasswordWrap.classList.toggle("hidden", !isPrivate);
+  if (leaguePasswordInput) {
+    leaguePasswordInput.required = isPrivate;
+    if (!isPrivate) leaguePasswordInput.value = "";
+  }
+}
+
+function onJoinModeChange() {
+  const mode = joinModeInput?.value || "public";
+  const isPrivate = mode === "private";
+  if (joinCodeWrap) joinCodeWrap.classList.toggle("hidden", isPrivate);
+  if (joinPrivateNameWrap) joinPrivateNameWrap.classList.toggle("hidden", !isPrivate);
+  if (joinPrivatePasswordWrap) joinPrivatePasswordWrap.classList.toggle("hidden", !isPrivate);
+  if (joinCodeInput) {
+    joinCodeInput.required = !isPrivate;
+    if (isPrivate) joinCodeInput.value = "";
+  }
+  if (joinPrivateNameInput) {
+    joinPrivateNameInput.required = isPrivate;
+    if (!isPrivate) joinPrivateNameInput.value = "";
+  }
+  if (joinPrivatePasswordInput) {
+    joinPrivatePasswordInput.required = isPrivate;
+    if (!isPrivate) joinPrivatePasswordInput.value = "";
+  }
 }
 
 function getRouteIntentFromUrl() {
@@ -554,6 +601,7 @@ async function reloadAuthedData() {
   state.activeLeagueMembers = [];
   state.activeLeagueFixtures = [];
   state.activeLeagueLeaderboard = [];
+  state.adminLeagues = [];
 
   if (!state.client || !state.session?.user) {
     state.activeLeagueId = null;
@@ -577,6 +625,10 @@ async function reloadAuthedData() {
     await loadActiveLeagueData();
     await maybeRefreshChelseaSquad();
   }
+
+  if (isAdminUser()) {
+    await loadAdminLeagues();
+  }
 }
 
 async function ensureDefaultLeagueForUser() {
@@ -586,45 +638,32 @@ async function ensureDefaultLeagueForUser() {
   }
 
   const baseName = `${getCurrentUserDisplayName()}'s League`;
-  let createdLeague = null;
-
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const name = attempt === 0 ? baseName : `${baseName} ${attempt + 1}`;
-    const code = createLeagueCode();
-    const { data, error } = await state.client
-      .from("leagues")
-      .insert({ name, code, owner_id: ownerId })
-      .select("id, name, code, owner_id, created_at")
-      .single();
-
-    if (!error && data) {
-      createdLeague = data;
-      break;
+    const { error } = await state.client.rpc("create_league", {
+      p_name: name,
+      p_is_public: true,
+      p_join_password: null,
+      p_display_name: getCurrentUserDisplayName(),
+      p_country_code: getCurrentUserCountryCode()
+    });
+    if (!error) {
+      await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
+      return;
     }
-
+    if (isMissingFunctionError(error, "create_league")) {
+      const created = await createLeagueLegacyPublic(name, ownerId);
+      if (created) {
+        await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
+        return;
+      }
+      continue;
+    }
     if (!isUniqueViolation(error)) {
       console.error("Could not create default league", error?.message || error);
       return;
     }
   }
-
-  if (!createdLeague) {
-    return;
-  }
-
-  const { error: memberError } = await state.client.from("league_members").insert({
-    league_id: createdLeague.id,
-    user_id: ownerId,
-    display_name: getCurrentUserDisplayName(),
-    country_code: getCurrentUserCountryCode(),
-    role: "owner"
-  });
-
-  if (memberError) {
-    console.error("Could not create default membership", memberError.message);
-    return;
-  }
-  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
 }
 
 async function onCreateLeague(event) {
@@ -634,14 +673,47 @@ async function onCreateLeague(event) {
   }
 
   const name = leagueNameInput.value.trim();
+  const visibility = leagueVisibilityInput?.value === "private" ? "private" : "public";
+  const joinPassword = String(leaguePasswordInput?.value || "");
   if (!name) {
     return;
   }
+  if (visibility === "private" && joinPassword.trim().length < 6) {
+    alert("Private leagues require a password with at least 6 characters.");
+    return;
+  }
 
-  const ownerId = state.session.user.id;
+  const { data, error } = await state.client.rpc("create_league", {
+    p_name: name,
+    p_is_public: visibility === "public",
+    p_join_password: visibility === "private" ? joinPassword : null,
+    p_display_name: getCurrentUserDisplayName(),
+    p_country_code: getCurrentUserCountryCode()
+  });
+  let leagueData = Array.isArray(data) ? data[0] : data;
+  if (error || !leagueData) {
+    if (visibility === "public" && isMissingFunctionError(error, "create_league")) {
+      leagueData = await createLeagueLegacyPublic(name, state.session.user.id);
+    }
+    if (!leagueData) {
+      alert(error?.message || "Could not create league right now.");
+      return;
+    }
+  }
+
+  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
+
+  leagueNameInput.value = "";
+  if (leaguePasswordInput) leaguePasswordInput.value = "";
+  if (leagueVisibilityInput) leagueVisibilityInput.value = "public";
+  onLeagueVisibilityChange();
+  state.activeLeagueId = leagueData.id;
+  await reloadAuthedData();
+  render();
+}
+
+async function createLeagueLegacyPublic(name, ownerId) {
   let leagueData = null;
-  let leagueError = null;
-
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = createLeagueCode();
     const result = await state.client
@@ -649,23 +721,17 @@ async function onCreateLeague(event) {
       .insert({ name, code, owner_id: ownerId })
       .select("id, name, code, owner_id, created_at")
       .single();
-
-    leagueData = result.data;
-    leagueError = result.error;
-    if (!leagueError) {
+    if (!result.error && result.data) {
+      leagueData = result.data;
       break;
     }
-    if (!isUniqueViolation(leagueError)) {
-      alert(leagueError.message);
-      return;
+    if (!isUniqueViolation(result.error)) {
+      return null;
     }
   }
-
-  if (leagueError || !leagueData) {
-    alert("Could not create a unique league code. Please try again.");
-    return;
+  if (!leagueData) {
+    return null;
   }
-
   const { error: memberError } = await state.client.from("league_members").insert({
     league_id: leagueData.id,
     user_id: ownerId,
@@ -673,18 +739,11 @@ async function onCreateLeague(event) {
     country_code: getCurrentUserCountryCode(),
     role: "owner"
   });
-
   if (memberError) {
-    alert(memberError.message);
-    return;
+    return null;
   }
-
-  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
-
-  leagueNameInput.value = "";
-  state.activeLeagueId = leagueData.id;
-  await reloadAuthedData();
-  render();
+  leagueData.is_public = true;
+  return leagueData;
 }
 
 async function onJoinLeague(event) {
@@ -693,27 +752,52 @@ async function onJoinLeague(event) {
     return;
   }
 
-  const code = joinCodeInput.value.trim().toUpperCase();
-  if (!code) {
-    return;
-  }
+  const mode = joinModeInput?.value || "public";
+  let joinedLeagueId = null;
+  let publicCode = "";
 
-  const { error } = await state.client.rpc("join_league_by_code", {
-    p_code: code,
-    p_display_name: getCurrentUserDisplayName(),
-    p_country_code: getCurrentUserCountryCode()
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
+  if (mode === "private") {
+    const privateName = String(joinPrivateNameInput?.value || "").trim();
+    const privatePassword = String(joinPrivatePasswordInput?.value || "");
+    if (!privateName || !privatePassword) {
+      return;
+    }
+    const { data, error } = await state.client.rpc("join_private_league_by_name", {
+      p_name: privateName,
+      p_password: privatePassword,
+      p_display_name: getCurrentUserDisplayName(),
+      p_country_code: getCurrentUserCountryCode()
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    joinedLeagueId = data || null;
+  } else {
+    publicCode = String(joinCodeInput?.value || "").trim().toUpperCase();
+    if (!publicCode) {
+      return;
+    }
+    const { data, error } = await state.client.rpc("join_league_by_code", {
+      p_code: publicCode,
+      p_display_name: getCurrentUserDisplayName(),
+      p_country_code: getCurrentUserCountryCode()
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    joinedLeagueId = data || null;
   }
 
   await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
 
-  joinCodeInput.value = "";
+  if (joinCodeInput) joinCodeInput.value = "";
+  if (joinPrivateNameInput) joinPrivateNameInput.value = "";
+  if (joinPrivatePasswordInput) joinPrivatePasswordInput.value = "";
   await reloadAuthedData();
-  const joined = state.leagues.find((league) => league.code === code);
+  const joined = state.leagues.find((league) => league.id === joinedLeagueId)
+    || (publicCode ? state.leagues.find((league) => league.code === publicCode) : null);
   if (joined) {
     state.activeLeagueId = joined.id;
     await loadActiveLeagueData();
@@ -953,10 +1037,19 @@ async function onSaveResult(fixture, form) {
 }
 
 async function loadLeaguesForUser() {
-  const { data, error } = await state.client
+  let { data, error } = await state.client
     .from("league_members")
-    .select("league_id, leagues(id, name, code, owner_id, created_at)")
+    .select("league_id, leagues(id, name, code, owner_id, created_at, is_public)")
     .eq("user_id", state.session.user.id);
+
+  if (error && /is_public|column/i.test(error.message || "")) {
+    const fallback = await state.client
+      .from("league_members")
+      .select("league_id, leagues(id, name, code, owner_id, created_at)")
+      .eq("user_id", state.session.user.id);
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     alert(error.message);
@@ -964,9 +1057,18 @@ async function loadLeaguesForUser() {
   }
 
   state.leagues = (data || [])
-    .map((row) => row.leagues)
+    .map((row) => (row.leagues ? { ...row.leagues, is_public: row.leagues.is_public !== false } : null))
     .filter(Boolean)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+async function loadAdminLeagues() {
+  const { data, error } = await state.client.rpc("admin_list_leagues");
+  if (error) {
+    state.adminLeagues = [];
+    return;
+  }
+  state.adminLeagues = Array.isArray(data) ? data : [];
 }
 
 async function loadActiveLeagueData() {
@@ -1185,6 +1287,7 @@ function render() {
   renderOverallLeaderboard();
   renderPastGames();
   renderProfileEditor();
+  renderAdminConsole();
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -1459,13 +1562,79 @@ function renderLeagueSelect() {
   state.leagues.forEach((league) => {
     const option = document.createElement("option");
     option.value = league.id;
-    option.textContent = `${league.name} (${league.code})`;
+    const visibilityLabel = league.is_public ? "Public" : "Private";
+    option.textContent = `${league.name} (${visibilityLabel} • ${league.code})`;
     leagueSelect.appendChild(option);
   });
 
   if (state.activeLeagueId) {
     leagueSelect.value = state.activeLeagueId;
   }
+}
+
+function renderAdminConsole() {
+  if (!adminConsoleEl || !adminLeagueListEl) {
+    return;
+  }
+  const show = Boolean(state.session?.user) && isAdminUser();
+  adminConsoleEl.classList.toggle("hidden", !show);
+  if (!show) {
+    adminLeagueListEl.textContent = "";
+    return;
+  }
+
+  adminLeagueListEl.textContent = "";
+  if (state.adminLeagues.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No leagues found.";
+    adminLeagueListEl.appendChild(li);
+    return;
+  }
+
+  state.adminLeagues.forEach((league) => {
+    const li = document.createElement("li");
+    li.className = "admin-league-item";
+    const meta = document.createElement("span");
+    const visibility = league.is_public ? "Public" : "Private";
+    meta.textContent = `${league.name} (${visibility} • ${league.code})`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "danger-btn";
+    btn.dataset.leagueId = league.id;
+    btn.dataset.leagueName = league.name;
+    btn.textContent = "Delete league";
+    li.appendChild(meta);
+    li.appendChild(btn);
+    adminLeagueListEl.appendChild(li);
+  });
+}
+
+async function onAdminLeagueListClick(event) {
+  const deleteBtn = event.target.closest("button[data-league-id]");
+  if (!deleteBtn || !state.client || !isAdminUser()) {
+    return;
+  }
+  const leagueId = deleteBtn.dataset.leagueId;
+  const leagueName = deleteBtn.dataset.leagueName || "this league";
+  if (!leagueId) {
+    return;
+  }
+  const ok = window.confirm(`Delete "${leagueName}" and all associated data? This cannot be undone.`);
+  if (!ok) {
+    return;
+  }
+
+  deleteBtn.disabled = true;
+  const { error } = await state.client.rpc("admin_delete_league", { p_league_id: leagueId });
+  if (error) {
+    alert(error.message);
+    deleteBtn.disabled = false;
+    return;
+  }
+
+  await reloadAuthedData();
+  render();
 }
 
 function renderLeaderboard() {
@@ -2146,6 +2315,11 @@ function getCurrentUserAvatarUrl() {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+function isAdminUser() {
+  const email = String(state.session?.user?.email || "").trim().toLowerCase();
+  return email === ADMIN_EMAIL;
+}
+
 function countryCodeToFlag(code) {
   if (!/^[A-Z]{2}$/.test(code || "")) {
     return "";
@@ -2213,6 +2387,11 @@ function createLeagueCode() {
 
 function isUniqueViolation(error) {
   return error?.code === "23505" || /duplicate|unique/i.test(error?.message || "");
+}
+
+function isMissingFunctionError(error, fnName) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("does not exist") && message.includes(String(fnName || "").toLowerCase());
 }
 
 async function syncLeagueMemberProfileFields(displayName, avatarUrl) {

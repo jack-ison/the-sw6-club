@@ -107,14 +107,40 @@
                 League name
                 <input id="league-name-input" type="text" required />
               </label>
+              <label>
+                League visibility
+                <select id="league-visibility-input" required>
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
+                </select>
+              </label>
+              <label id="league-password-wrap" class="hidden">
+                Private league password
+                <input id="league-password-input" type="password" minlength="6" placeholder="Minimum 6 characters" />
+              </label>
               <button type="submit">Create</button>
             </form>
 
             <form id="join-league-form" class="mini-form">
               <h3>Join League</h3>
               <label>
+                Join mode
+                <select id="join-mode-input" required>
+                  <option value="public">Public (League code)</option>
+                  <option value="private">Private (Name + Password)</option>
+                </select>
+              </label>
+              <label id="join-code-wrap">
                 League code
-                <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" required />
+                <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" />
+              </label>
+              <label id="join-private-name-wrap" class="hidden">
+                Private league name
+                <input id="join-private-name-input" type="text" placeholder="Exact league name" />
+              </label>
+              <label id="join-private-password-wrap" class="hidden">
+                Private league password
+                <input id="join-private-password-input" type="password" placeholder="Password" />
               </label>
               <button type="submit">Join</button>
             </form>
@@ -127,6 +153,12 @@
             </label>
             <button id="copy-code-btn" type="button" class="ghost-btn">Copy League Code</button>
           </div>
+
+          <section id="admin-console" class="subpanel hidden">
+            <h3>Admin Console</h3>
+            <p class="status no-margin">Visible only to the configured admin account.</p>
+            <ul id="admin-league-list" class="prediction-list"></ul>
+          </section>
 
           <div class="dashboard-grid">
             <article class="subpanel">
