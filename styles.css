@@ -474,7 +474,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 .league-forms .mini-form {
@@ -484,8 +484,7 @@ button:disabled {
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
-  gap: 0.62rem;
-  min-height: 460px;
+  gap: 0.56rem;
 }
 
 .league-forms .mini-form h3 {
@@ -493,18 +492,13 @@ button:disabled {
 }
 
 .league-forms .field-slot {
-  min-height: 106px;
   display: grid;
   align-content: start;
+  gap: 0.4rem;
 }
 
 .league-forms .field-slot.inactive {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.league-forms .mini-form button[type="submit"] {
-  margin-top: auto;
+  display: none;
 }
 
 .helper,
