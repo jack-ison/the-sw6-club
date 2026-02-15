@@ -72,7 +72,8 @@ const state = {
   showAllUpcoming: false,
   overviewTab: "global",
   upcomingFixtures: [...FALLBACK_FIXTURES],
-  upcomingSourceText: "Using bundled SW6 fixture fallback list."
+  upcomingSourceText: "Using bundled SW6 fixture fallback list.",
+  lastPredictionAck: null
 };
 
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
@@ -448,6 +449,7 @@ async function onSavePrediction(fixture, form) {
     return;
   }
 
+  const hadExistingPrediction = fixture.predictions.some((row) => row.user_id === state.session.user.id);
   syncChelseaGoalsToScorerSelection(form);
   const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".pred-opponent").value);
@@ -481,6 +483,11 @@ async function onSavePrediction(fixture, form) {
     return;
   }
 
+  state.lastPredictionAck = {
+    fixtureId: fixture.id,
+    updated: hadExistingPrediction,
+    at: Date.now()
+  };
   cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
   await loadActiveLeagueData();
   render();
@@ -1017,6 +1024,7 @@ function renderFixtures() {
     const predOpponentInput = predictionForm.querySelector(".pred-opponent");
     const predScorerInput = predictionForm.querySelector(".pred-scorer");
     const predFirstScorerSelect = predictionForm.querySelector(".pred-first-scorer");
+    const predictionAckEl = predictionForm.querySelector(".prediction-ack");
     const opponentNameEl = predictionForm.querySelector(".pred-opponent-name");
     const opponentScoreValueEl = predictionForm.querySelector(".score-value-opponent");
     const chelseaScoreValueEl = predictionForm.querySelector(".score-value-chelsea");
@@ -1110,6 +1118,26 @@ function renderFixtures() {
       savePredictionBtn.title = predictionEnabled
         ? "You can edit your prediction until 90 minutes before kick-off."
         : "";
+    }
+    const ack = state.lastPredictionAck;
+    const isRecentAck =
+      Boolean(ack) &&
+      ack.fixtureId === fixture.id &&
+      Date.now() - ack.at < 120000;
+    if (predictionAckEl && myPrediction) {
+      predictionAckEl.classList.remove("hidden");
+      predictionAckEl.classList.toggle("fresh", isRecentAck);
+      predictionForm.classList.toggle("saved-state", isRecentAck);
+      predictionAckEl.textContent = isRecentAck
+        ? ack.updated
+          ? "Prediction updated. Nice one."
+          : "Prediction saved. Nice one."
+        : "Prediction saved. You can edit it until lock time.";
+    } else if (predictionAckEl) {
+      predictionAckEl.classList.add("hidden");
+      predictionAckEl.classList.remove("fresh");
+      predictionForm.classList.remove("saved-state");
+      predictionAckEl.textContent = "";
     }
 
     if (!predictionEnabled) {
