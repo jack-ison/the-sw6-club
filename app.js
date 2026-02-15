@@ -4,7 +4,7 @@ const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
 const PREDICTION_SCORERS_CACHE_KEY = "cfc-prediction-scorers-cache-v1";
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
-const SQUAD_CACHE_VERSION = 2;
+const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PREDICTION_CUTOFF_MINUTES = 90;
 const SCORING = {
@@ -50,39 +50,51 @@ const TOP_SCORERS = [
   { name: "Marc Cucurella", apps: 24, goals: 1 }
 ];
 const CHELSEA_REGISTERED_PLAYERS = [
-  "Robert Sanchez", "Filip Jorgensen", "Djordje Petrovic", "Malo Gusto", "Reece James",
-  "Trevoh Chalobah", "Levi Colwill", "Wesley Fofana", "Benoit Badiashile", "Marc Cucurella",
-  "Enzo Fernandez", "Moises Caicedo", "Romeo Lavia", "Carney Chukwuemeka", "Cole Palmer",
-  "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
-  "Joao Pedro", "Estevao", "Kendry Paez"
+  "Robert Sanchez", "Filip Jorgensen", "Teddy Sharman-Lowe", "Gaga Slonina",
+  "Marc Cucurella", "Tosin Adarabioyo", "Benoit Badiashile", "Levi Colwill", "Mamadou Sarr",
+  "Jorrel Hato", "Trevoh Chalobah", "Reece James", "Malo Gusto", "Wesley Fofana", "Josh Acheampong",
+  "Enzo Fernandez", "Dario Essugo", "Andrey Santos", "Moises Caicedo", "Romeo Lavia", "Cole Palmer",
+  "Pedro Neto", "Liam Delap", "Jamie Gittens", "Joao Pedro", "Marc Guiu", "Estevao Willian",
+  "Alejandro Garnacho", "Mykhailo Mudryk"
 ];
 const POSITION_GROUPS = ["Defenders", "Midfielders", "Forwards"];
 const CHELSEA_PLAYER_POSITION_GROUP = {
   "Robert Sanchez": "Goalkeepers",
   "Filip Jorgensen": "Goalkeepers",
-  "Djordje Petrovic": "Goalkeepers",
-  "Gaga Slonina": "Goalkeepers",
-  "Lucas Bergstrom": "Goalkeepers",
   "Teddy Sharman-Lowe": "Goalkeepers",
-  "Malo Gusto": "Defenders",
-  "Reece James": "Defenders",
-  "Trevoh Chalobah": "Defenders",
-  "Levi Colwill": "Defenders",
-  "Wesley Fofana": "Defenders",
-  "Benoit Badiashile": "Defenders",
+  "Gaga Slonina": "Goalkeepers",
+  "Djordje Petrovic": "Goalkeepers",
+  "Lucas Bergstrom": "Goalkeepers",
   "Marc Cucurella": "Defenders",
+  "Tosin Adarabioyo": "Defenders",
+  "Benoit Badiashile": "Defenders",
+  "Levi Colwill": "Defenders",
+  "Mamadou Sarr": "Defenders",
+  "Jorrel Hato": "Defenders",
+  "Trevoh Chalobah": "Defenders",
+  "Reece James": "Defenders",
+  "Malo Gusto": "Defenders",
+  "Wesley Fofana": "Defenders",
+  "Josh Acheampong": "Defenders",
   "Enzo Fernandez": "Midfielders",
+  "Dario Essugo": "Midfielders",
+  "Andrey Santos": "Midfielders",
   "Moises Caicedo": "Midfielders",
   "Romeo Lavia": "Midfielders",
   "Carney Chukwuemeka": "Midfielders",
   "Cole Palmer": "Midfielders",
   "Pedro Neto": "Forwards",
-  "Noni Madueke": "Forwards",
+  "Liam Delap": "Forwards",
+  "Jamie Gittens": "Forwards",
+  "Joao Pedro": "Forwards",
+  "Marc Guiu": "Forwards",
+  "Estevao Willian": "Forwards",
+  "Estevao": "Forwards",
+  "Alejandro Garnacho": "Forwards",
   "Mykhailo Mudryk": "Forwards",
+  "Noni Madueke": "Forwards",
   "Christopher Nkunku": "Forwards",
   "Nicolas Jackson": "Forwards",
-  "Joao Pedro": "Forwards",
-  "Estevao": "Forwards",
   "Kendry Paez": "Forwards"
 };
 const BANNED_USERNAME_TOKENS = [
