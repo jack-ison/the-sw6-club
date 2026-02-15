@@ -426,6 +426,7 @@ async function onSavePrediction(fixture, form) {
     return;
   }
 
+  syncChelseaGoalsToScorerSelection(form);
   const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".pred-opponent").value);
   const firstScorer = form.querySelector(".pred-scorer").value.trim();
@@ -980,8 +981,10 @@ function renderFixtures() {
     };
     opponentMinusBtn.addEventListener("click", () => stepScore(predOpponentInput, -1));
     opponentPlusBtn.addEventListener("click", () => stepScore(predOpponentInput, 1));
-    chelseaMinusBtn.addEventListener("click", () => stepScore(predChelseaInput, -1));
-    chelseaPlusBtn.addEventListener("click", () => stepScore(predChelseaInput, 1));
+    chelseaMinusBtn.disabled = true;
+    chelseaPlusBtn.disabled = true;
+    chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+    chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
 
     if (!predictionEnabled) {
       predictionForm.querySelectorAll("input, button").forEach((node) => {
@@ -1072,6 +1075,23 @@ function refreshScorerState(formEl, selectedRaw, selectedLabelEl, selectedListEl
       ? selectedPlayers.map((entry) => (entry.count > 1 ? `${entry.name} x${entry.count}` : entry.name)).join(", ")
       : "None";
   renderSelectedScorerList(formEl, selectedPlayers, selectedListEl);
+  syncChelseaGoalsToScorerSelection(formEl, selectedPlayers);
+}
+
+function syncChelseaGoalsToScorerSelection(formEl, selectedPlayers) {
+  const predChelseaInput = formEl.querySelector(".pred-chelsea");
+  if (!predChelseaInput) {
+    return;
+  }
+  const selections =
+    selectedPlayers ||
+    parseScorerSelections(formEl.querySelector(".pred-scorer")?.value || "");
+  const goals = selections.reduce((sum, entry) => sum + entry.count, 0);
+  predChelseaInput.value = String(goals);
+  const chelseaScoreValueEl = formEl.querySelector(".score-value-chelsea");
+  if (chelseaScoreValueEl) {
+    chelseaScoreValueEl.textContent = String(goals);
+  }
 }
 
 function renderSelectedScorerList(formEl, selections, listEl) {
