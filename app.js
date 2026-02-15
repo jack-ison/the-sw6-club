@@ -1518,12 +1518,27 @@ function render() {
 
 function renderNow() {
   renderNavigation();
-  renderUpcomingFixtures();
-  renderTopScorers();
-  renderOverallLeaderboard();
-  renderPastGames();
   renderProfileEditor();
-  renderAdminConsole();
+  const showPredict = state.topView === "predict";
+  const showLeagues = state.topView === "leagues";
+  const showResults = state.topView === "results";
+  const showResultsFixtures = showResults && state.resultsTab === "fixtures";
+  const showResultsPast = showResults && state.resultsTab === "past";
+  const showResultsStats = showResults && state.resultsTab === "stats";
+
+  if (showResultsFixtures) {
+    renderUpcomingFixtures();
+  }
+  if (showResultsPast) {
+    renderPastGames();
+  }
+  if (showResultsStats) {
+    renderTopScorers();
+  }
+  if (showLeagues) {
+    renderOverallLeaderboard();
+    renderAdminConsole();
+  }
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -1562,12 +1577,18 @@ function renderNow() {
   if (leagueMetaNoteEl) leagueMetaNoteEl.classList.toggle("hidden", !isAuthed || !isGlobalActive);
 
   if (isAuthed) {
-    renderLeagueSelect();
-    renderLeaderboard();
+    if (showLeagues) {
+      renderLeagueSelect();
+      renderLeaderboard();
+    }
   } else {
-    leaderboardEl.textContent = "";
+    if (showLeagues) {
+      leaderboardEl.textContent = "";
+    }
   }
-  renderFixtures();
+  if (showPredict) {
+    renderFixtures();
+  }
   renderDeadlineCountdown();
   renderMatchdayAttendance();
 }
