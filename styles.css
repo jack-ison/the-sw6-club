@@ -493,11 +493,14 @@ button:disabled {
 }
 
 .league-forms .field-slot {
-  min-height: 96px;
+  min-height: 106px;
+  display: grid;
+  align-content: start;
 }
 
 .league-forms .field-slot.inactive {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .league-forms .mini-form button[type="submit"] {
