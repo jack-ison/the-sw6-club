@@ -535,9 +535,25 @@ set search_path = public
 as $$
 declare
   v_email text;
+  v_email_local text;
+  v_email_domain text;
+  v_admin_local text;
+  v_admin_domain text;
 begin
   v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
-  if v_email <> lower('jackwilliamison@gmail.com') then
+  v_email_local := split_part(v_email, '@', 1);
+  v_email_domain := split_part(v_email, '@', 2);
+  if v_email_domain = 'gmail.com' then
+    v_email_local := replace(split_part(v_email_local, '+', 1), '.', '');
+  end if;
+
+  v_admin_local := split_part(lower('jackwilliamison@gmail.com'), '@', 1);
+  v_admin_domain := split_part(lower('jackwilliamison@gmail.com'), '@', 2);
+  if v_admin_domain = 'gmail.com' then
+    v_admin_local := replace(split_part(v_admin_local, '+', 1), '.', '');
+  end if;
+
+  if v_email_local <> v_admin_local or v_email_domain <> v_admin_domain then
     return 0;
   end if;
 

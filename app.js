@@ -2826,8 +2826,24 @@ function getCurrentUserAvatarUrl() {
 }
 
 function isAdminUser() {
-  const email = String(state.session?.user?.email || "").trim().toLowerCase();
-  return email === ADMIN_EMAIL;
+  const adminEmail = normalizeEmailForAdminMatch(ADMIN_EMAIL);
+  const email = normalizeEmailForAdminMatch(state.session?.user?.email || "");
+  return Boolean(email) && email === adminEmail;
+}
+
+function normalizeEmailForAdminMatch(value) {
+  const email = String(value || "").trim().toLowerCase();
+  const atIndex = email.indexOf("@");
+  if (atIndex <= 0) {
+    return email;
+  }
+  const local = email.slice(0, atIndex);
+  const domain = email.slice(atIndex + 1);
+  if (domain !== "gmail.com") {
+    return `${local}@${domain}`;
+  }
+  const canonicalLocal = local.split("+")[0].replace(/\./g, "");
+  return `${canonicalLocal}@gmail.com`;
 }
 
 function countryCodeToFlag(code) {
