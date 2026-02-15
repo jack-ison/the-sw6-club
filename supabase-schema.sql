@@ -14,6 +14,7 @@ create table if not exists public.league_members (
   league_id uuid not null references public.leagues(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   display_name text not null,
+  avatar_url text,
   country_code text not null default 'GB' check (country_code ~ '^[A-Z]{2}$'),
   role text not null default 'member' check (role in ('owner', 'member')),
   joined_at timestamptz not null default now(),
@@ -22,6 +23,9 @@ create table if not exists public.league_members (
 
 alter table public.league_members
   add column if not exists country_code text not null default 'GB';
+
+alter table public.league_members
+  add column if not exists avatar_url text;
 
 alter table public.league_members
   drop constraint if exists league_members_country_code_check;
@@ -255,10 +259,13 @@ $$;
 
 grant execute on function public.get_registered_user_count() to anon, authenticated;
 
+drop function if exists public.get_overall_leaderboard(integer);
+
 create or replace function public.get_overall_leaderboard(p_limit integer default 10)
 returns table (
   user_id uuid,
   display_name text,
+  avatar_url text,
   country_code text,
   points integer
 )
@@ -324,6 +331,7 @@ as $$
     select distinct on (m.user_id)
       m.user_id,
       m.display_name,
+      m.avatar_url,
       m.country_code
     from public.league_members m
     order by m.user_id, m.joined_at desc
@@ -331,6 +339,7 @@ as $$
   select
     s.user_id,
     coalesce(mm.display_name, 'Player') as display_name,
+    mm.avatar_url,
     coalesce(mm.country_code, 'GB') as country_code,
     s.points
   from scored s
@@ -341,10 +350,13 @@ $$;
 
 grant execute on function public.get_overall_leaderboard(integer) to anon, authenticated;
 
+drop function if exists public.get_league_leaderboard(uuid);
+
 create or replace function public.get_league_leaderboard(p_league_id uuid)
 returns table (
   user_id uuid,
   display_name text,
+  avatar_url text,
   country_code text,
   role text,
   points integer
@@ -355,7 +367,7 @@ security definer
 set search_path = public
 as $$
   with member_rows as (
-    select m.user_id, m.display_name, m.country_code, m.role
+    select m.user_id, m.display_name, m.avatar_url, m.country_code, m.role
     from public.league_members m
     where m.league_id = p_league_id
   ),
@@ -417,6 +429,7 @@ as $$
   select
     mr.user_id,
     mr.display_name,
+    mr.avatar_url,
     mr.country_code,
     mr.role,
     coalesce(sc.points, 0)::integer as points
@@ -426,6 +439,56 @@ as $$
 $$;
 
 grant execute on function public.get_league_leaderboard(uuid) to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  2097152,
+  array['image/png', 'image/jpeg', 'image/webp']
+)
+on conflict (id) do nothing;
+
+drop policy if exists avatars_public_read on storage.objects;
+create policy avatars_public_read
+on storage.objects
+for select
+using (bucket_id = 'avatars');
+
+drop policy if exists avatars_user_upload on storage.objects;
+create policy avatars_user_upload
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'avatars'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists avatars_user_update on storage.objects;
+create policy avatars_user_update
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'avatars'
+  and owner = auth.uid()
+)
+with check (
+  bucket_id = 'avatars'
+  and owner = auth.uid()
+);
+
+drop policy if exists avatars_user_delete on storage.objects;
+create policy avatars_user_delete
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'avatars'
+  and owner = auth.uid()
+);
 
 alter table public.leagues enable row level security;
 alter table public.league_members enable row level security;

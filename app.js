@@ -81,8 +81,8 @@ const CHELSEA_PLAYER_POSITION_GROUP = {
   "Andrey Santos": "Midfielders",
   "Moises Caicedo": "Midfielders",
   "Romeo Lavia": "Midfielders",
-  "Carney Chukwuemeka": "Midfielders",
   "Cole Palmer": "Midfielders",
+  "Carney Chukwuemeka": "Midfielders",
   "Pedro Neto": "Forwards",
   "Liam Delap": "Forwards",
   "Jamie Gittens": "Forwards",
@@ -113,6 +113,7 @@ const state = {
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
   teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS] },
+  teamSquadPositionGroup: { Chelsea: { ...CHELSEA_PLAYER_POSITION_GROUP } },
   teamSquadFetchedAt: {},
   squadFetchInFlight: {},
   showAllUpcoming: false,
@@ -121,6 +122,7 @@ const state = {
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
   lastPredictionAck: null,
   profileAck: null,
+  predictionButtonFlashTimeoutId: null,
   registeredUserCount: undefined
 };
 
@@ -149,6 +151,7 @@ const editProfileBtn = document.getElementById("edit-profile-btn");
 const profileEditForm = document.getElementById("profile-edit-form");
 const profileUsernameInput = document.getElementById("profile-username-input");
 const profileActualNameInput = document.getElementById("profile-actual-name-input");
+const profileAvatarInput = document.getElementById("profile-avatar-input");
 const profileDisplayModeInput = document.getElementById("profile-display-mode-input");
 const cancelProfileBtn = document.getElementById("cancel-profile-btn");
 const profileEditStatus = document.getElementById("profile-edit-status");
@@ -405,7 +408,9 @@ async function ensureDefaultLeagueForUser() {
 
   if (memberError) {
     console.error("Could not create default membership", memberError.message);
+    return;
   }
+  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
 }
 
 async function onCreateLeague(event) {
@@ -460,6 +465,8 @@ async function onCreateLeague(event) {
     return;
   }
 
+  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
+
   leagueNameInput.value = "";
   state.activeLeagueId = leagueData.id;
   await reloadAuthedData();
@@ -487,6 +494,8 @@ async function onJoinLeague(event) {
     alert(error.message);
     return;
   }
+
+  await syncLeagueMemberProfileFields(getCurrentUserDisplayName(), getCurrentUserAvatarUrl());
 
   joinCodeInput.value = "";
   await reloadAuthedData();
@@ -553,12 +562,41 @@ async function onSaveProfileSettings(event) {
   }
 
   const userMeta = state.session.user.user_metadata || {};
+  let avatarUrl = String(userMeta.avatar_url || "").trim();
+  const avatarFile = profileAvatarInput?.files?.[0];
+  if (avatarFile) {
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (!allowedTypes.includes(avatarFile.type)) {
+      showProfileAck("Please upload PNG, JPEG, or WEBP images only.", true);
+      return;
+    }
+    if (avatarFile.size > maxSizeBytes) {
+      showProfileAck("Profile picture must be 2MB or smaller.", true);
+      return;
+    }
+    const ext = (avatarFile.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const safeExt = ext || "png";
+    const path = `${state.session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
+    const uploadResult = await state.client.storage.from("avatars").upload(path, avatarFile, {
+      upsert: true,
+      cacheControl: "3600",
+      contentType: avatarFile.type
+    });
+    if (uploadResult.error) {
+      showProfileAck("Avatar upload failed. Ensure the avatars storage bucket is set up.", true);
+      return;
+    }
+    const { data: publicUrlData } = state.client.storage.from("avatars").getPublicUrl(path);
+    avatarUrl = String(publicUrlData?.publicUrl || "").trim();
+  }
   const nextMeta = {
     ...userMeta,
     username,
     actual_name: actualName,
     display_mode: displayMode,
-    display_name: preferredName
+    display_name: preferredName,
+    avatar_url: avatarUrl
   };
 
   const { data: updateData, error: updateError } = await state.client.auth.updateUser({
@@ -569,10 +607,7 @@ async function onSaveProfileSettings(event) {
     return;
   }
 
-  const { error: memberError } = await state.client
-    .from("league_members")
-    .update({ display_name: preferredName })
-    .eq("user_id", state.session.user.id);
+  const memberError = await syncLeagueMemberProfileFields(preferredName, avatarUrl);
   if (memberError) {
     showProfileAck(memberError.message, true);
     return;
@@ -607,6 +642,7 @@ function hydrateProfileEditorFields() {
     const mode = meta.display_mode === "actual" ? "actual" : "username";
     profileDisplayModeInput.value = mode;
   }
+  if (profileAvatarInput) profileAvatarInput.value = "";
   if (profileEditStatus) profileEditStatus.classList.add("hidden");
 }
 
@@ -660,6 +696,13 @@ async function onSavePrediction(fixture, form) {
   cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
   await loadActiveLeagueData();
   render();
+  if (state.predictionButtonFlashTimeoutId) {
+    clearTimeout(state.predictionButtonFlashTimeoutId);
+  }
+  state.predictionButtonFlashTimeoutId = setTimeout(() => {
+    state.predictionButtonFlashTimeoutId = null;
+    render();
+  }, 3600);
 }
 
 async function onSaveResult(fixture, form) {
@@ -990,8 +1033,10 @@ function renderOverallLeaderboard() {
   } else {
     state.overallLeaderboard.forEach((row, index) => {
       const li = document.createElement("li");
-      li.textContent = `${index + 1}. ${formatMemberName(row.display_name || "Player", row.country_code || "GB")}`;
+      const left = createLeaderboardIdentity(index, row.display_name || "Player", row.country_code || "GB", row.avatar_url);
+      li.appendChild(left);
       const pts = document.createElement("span");
+      pts.className = "leader-points";
       pts.textContent = `${row.points || 0} pts`;
       li.appendChild(pts);
       overallLeaderboardEl.appendChild(li);
@@ -1186,9 +1231,12 @@ function renderLeaderboard() {
 
   rows.forEach((row, index) => {
     const li = document.createElement("li");
-    const prefix = row.role === "owner" ? "(Owner)" : "";
-    li.textContent = `${index + 1}. ${formatMemberName(row.display_name, row.country_code)} ${prefix}`.trim();
+    const safeName = row.display_name || "Player";
+    const suffix = row.role === "owner" ? " (Owner)" : "";
+    const left = createLeaderboardIdentity(index, `${safeName}${suffix}`.trim(), row.country_code, row.avatar_url);
+    li.appendChild(left);
     const right = document.createElement("span");
+    right.className = "leader-points";
     right.textContent = `${row.points} pts`;
     li.appendChild(right);
     leaderboardEl.appendChild(li);
@@ -1326,6 +1374,13 @@ function renderFixtures() {
       Boolean(ack) &&
       ack.fixtureId === fixture.id &&
       Date.now() - ack.at < 120000;
+    const isVeryRecentAck =
+      Boolean(ack) &&
+      ack.fixtureId === fixture.id &&
+      Date.now() - ack.at < 3500;
+    if (savePredictionBtn && predictionEnabled && isVeryRecentAck) {
+      savePredictionBtn.textContent = ack.updated ? "Prediction updated" : "Prediction saved";
+    }
     if (predictionAckEl && myPrediction) {
       predictionAckEl.classList.remove("hidden");
       predictionAckEl.classList.toggle("fresh", isRecentAck);
@@ -1439,7 +1494,7 @@ function ensurePositionGroupChipWrap(container, groupName) {
 }
 
 function getPositionGroupForPlayer(playerName) {
-  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "Midfielders";
+  return getPositionGroupFromMap(playerName) || "Midfielders";
 }
 
 function isGoalkeeperName(playerName) {
@@ -1447,7 +1502,36 @@ function isGoalkeeperName(playerName) {
 }
 
 function getPositionGroupFromMap(playerName) {
-  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "";
+  const dynamicMap = state.teamSquadPositionGroup?.Chelsea || {};
+  return dynamicMap[playerName] || CHELSEA_PLAYER_POSITION_GROUP[playerName] || "";
+}
+
+function inferPositionGroupFromText(text) {
+  const raw = String(text || "").toLowerCase();
+  if (!raw.trim()) {
+    return "";
+  }
+  if (raw.includes("goalkeeper")) {
+    return "Goalkeepers";
+  }
+  if (
+    raw.includes("defender") ||
+    raw.includes("wing-back") ||
+    raw.includes("right-back") ||
+    raw.includes("left-back") ||
+    raw.includes("centre-back") ||
+    raw.includes("center-back") ||
+    raw.includes("full-back")
+  ) {
+    return "Defenders";
+  }
+  if (raw.includes("midfielder") || raw.includes("midfield")) {
+    return "Midfielders";
+  }
+  if (raw.includes("winger") || raw.includes("forward") || raw.includes("striker")) {
+    return "Forwards";
+  }
+  return "";
 }
 
 function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl, selectedListEl) {
@@ -1617,9 +1701,15 @@ async function maybeRefreshChelseaSquad(force = false) {
   }
   state.squadFetchInFlight[teamName] = true;
   try {
-    const players = await fetchChelseaSquadFromOfficial();
+    const { players, positionGroups } = await fetchChelseaSquadFromOfficial();
     if (players.length >= 15) {
       state.teamSquads.Chelsea = players;
+      if (positionGroups && typeof positionGroups === "object") {
+        state.teamSquadPositionGroup.Chelsea = {
+          ...CHELSEA_PLAYER_POSITION_GROUP,
+          ...positionGroups
+        };
+      }
       state.teamSquadFetchedAt[teamName] = Date.now();
       persistSquadCache();
       render();
@@ -1637,8 +1727,10 @@ async function fetchChelseaSquadFromOfficial() {
     throw new Error(`Chelsea squad fetch failed: ${response.status}`);
   }
   const text = await response.text();
+  const lines = text.split("\n");
   const re = /\[([^\]]+)\]\(https:\/\/www\.chelseafc\.com\/en\/teams\/profile\/[^)]+\)/g;
   const names = [];
+  const positionGroups = {};
   const seen = new Set();
   let match;
   while ((match = re.exec(text)) !== null) {
@@ -1652,8 +1744,20 @@ async function fetchChelseaSquadFromOfficial() {
     }
     seen.add(key);
     names.push(name);
+
+    const linkLineIndex = lines.findIndex((line) => line.includes(`[${name}](`));
+    if (linkLineIndex !== -1) {
+      const context = lines.slice(Math.max(0, linkLineIndex - 3), linkLineIndex + 1).join(" ");
+      const inferredGroup = inferPositionGroupFromText(context);
+      if (inferredGroup) {
+        positionGroups[name] = inferredGroup;
+      }
+    }
   }
-  return names.sort((a, b) => a.localeCompare(b));
+  return {
+    players: names.sort((a, b) => a.localeCompare(b)),
+    positionGroups
+  };
 }
 
 function summarizeMemberScore(userId) {
@@ -1770,6 +1874,11 @@ function getCurrentUserCountryCode() {
   return /^[A-Z]{2}$/.test(code) ? code : "GB";
 }
 
+function getCurrentUserAvatarUrl() {
+  const raw = state.session?.user?.user_metadata?.avatar_url;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
 function countryCodeToFlag(code) {
   if (!/^[A-Z]{2}$/.test(code || "")) {
     return "";
@@ -1783,6 +1892,49 @@ function formatMemberName(displayName, countryCode) {
   return flag ? `${flag} ${displayName}` : displayName;
 }
 
+function createLeaderboardIdentity(index, displayName, countryCode, avatarUrl) {
+  const wrap = document.createElement("div");
+  wrap.className = "leader-identity";
+
+  const rank = document.createElement("span");
+  rank.className = "leader-rank";
+  rank.textContent = `${index + 1}.`;
+
+  const avatar = createAvatarElement(displayName, avatarUrl);
+
+  const name = document.createElement("span");
+  name.className = "leader-name";
+  name.textContent = formatMemberName(displayName, countryCode || "GB");
+
+  wrap.appendChild(rank);
+  wrap.appendChild(avatar);
+  wrap.appendChild(name);
+  return wrap;
+}
+
+function createAvatarElement(displayName, avatarUrl) {
+  const fallback = document.createElement("span");
+  fallback.className = "leader-avatar fallback";
+  const initial = String(displayName || "P").trim().charAt(0).toUpperCase() || "P";
+  fallback.textContent = initial;
+
+  const cleanUrl = String(avatarUrl || "").trim();
+  if (!cleanUrl) {
+    return fallback;
+  }
+
+  const img = document.createElement("img");
+  img.className = "leader-avatar";
+  img.src = cleanUrl;
+  img.alt = `${displayName} avatar`;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.addEventListener("error", () => {
+    img.replaceWith(fallback);
+  });
+  return img;
+}
+
 function createLeagueCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "SW6";
@@ -1794,6 +1946,30 @@ function createLeagueCode() {
 
 function isUniqueViolation(error) {
   return error?.code === "23505" || /duplicate|unique/i.test(error?.message || "");
+}
+
+async function syncLeagueMemberProfileFields(displayName, avatarUrl) {
+  if (!state.client || !state.session?.user) {
+    return null;
+  }
+  const payload = { display_name: displayName };
+  if (avatarUrl) {
+    payload.avatar_url = avatarUrl;
+  }
+
+  let { error } = await state.client
+    .from("league_members")
+    .update(payload)
+    .eq("user_id", state.session.user.id);
+
+  if (error && /avatar_url/i.test(error.message || "")) {
+    const retry = await state.client
+      .from("league_members")
+      .update({ display_name: displayName })
+      .eq("user_id", state.session.user.id);
+    error = retry.error;
+  }
+  return error || null;
 }
 
 function isFixtureLocked(fixture) {
@@ -2010,12 +2186,23 @@ function hydrateSquadCache() {
       return;
     }
     const squads = parsed.squads && typeof parsed.squads === "object" ? parsed.squads : {};
+    const positionGroups =
+      parsed.positionGroups && typeof parsed.positionGroups === "object" ? parsed.positionGroups : {};
     const fetchedAt = parsed.fetchedAt && typeof parsed.fetchedAt === "object" ? parsed.fetchedAt : {};
     Object.entries(squads).forEach(([teamName, players]) => {
       if (!Array.isArray(players) || players.length === 0) {
         return;
       }
       state.teamSquads[teamName] = players.filter((name) => typeof name === "string");
+    });
+    Object.entries(positionGroups).forEach(([teamName, positionMap]) => {
+      if (!positionMap || typeof positionMap !== "object") {
+        return;
+      }
+      state.teamSquadPositionGroup[teamName] = {
+        ...(state.teamSquadPositionGroup[teamName] || {}),
+        ...positionMap
+      };
     });
     Object.entries(fetchedAt).forEach(([teamName, ts]) => {
       if (typeof ts === "number" && Number.isFinite(ts)) {
@@ -2034,6 +2221,7 @@ function persistSquadCache() {
       JSON.stringify({
         version: SQUAD_CACHE_VERSION,
         squads: state.teamSquads,
+        positionGroups: state.teamSquadPositionGroup,
         fetchedAt: state.teamSquadFetchedAt
       })
     );
