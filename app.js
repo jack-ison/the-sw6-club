@@ -159,30 +159,12 @@ const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
 
-overviewFixturesTabBtn.addEventListener("click", () => {
-  state.overviewTab = "fixtures";
-  renderOverviewTabs();
-});
-overviewScorersTabBtn.addEventListener("click", () => {
-  state.overviewTab = "scorers";
-  renderOverviewTabs();
-});
-overviewGlobalTabBtn.addEventListener("click", () => {
-  state.overviewTab = "global";
-  renderOverviewTabs();
-});
-overviewPastTabBtn.addEventListener("click", () => {
-  state.overviewTab = "past";
-  renderOverviewTabs();
-});
-overviewLeaguesTabBtn.addEventListener("click", () => {
-  state.overviewTab = "leagues";
-  renderOverviewTabs();
-});
-overviewRulesTabBtn.addEventListener("click", () => {
-  state.overviewTab = "rules";
-  renderOverviewTabs();
-});
+overviewFixturesTabBtn.addEventListener("click", () => toggleOverviewTab("fixtures"));
+overviewScorersTabBtn.addEventListener("click", () => toggleOverviewTab("scorers"));
+overviewGlobalTabBtn.addEventListener("click", () => toggleOverviewTab("global"));
+overviewPastTabBtn.addEventListener("click", () => toggleOverviewTab("past"));
+overviewLeaguesTabBtn.addEventListener("click", () => toggleOverviewTab("leagues"));
+overviewRulesTabBtn.addEventListener("click", () => toggleOverviewTab("rules"));
 upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
@@ -200,6 +182,11 @@ if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSet
 setInterval(renderDeadlineCountdown, 1000);
 
 initializeApp();
+
+function toggleOverviewTab(tabName) {
+  state.overviewTab = state.overviewTab === tabName ? null : tabName;
+  renderOverviewTabs();
+}
 
 async function initializeApp() {
   hydrateSquadCache();
