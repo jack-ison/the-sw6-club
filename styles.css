@@ -465,6 +465,18 @@ button:disabled {
   color: #35507d;
 }
 
+.rules-list {
+  margin: 0.1rem 0 0.85rem;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.32rem;
+}
+
+.rules-list li {
+  font-size: 0.9rem;
+  color: #2f4e80;
+}
+
 .fixtures-title {
   margin-top: 1rem;
 }

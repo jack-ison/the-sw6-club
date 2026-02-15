@@ -59,6 +59,9 @@
           <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
             My Leagues
           </button>
+          <button id="overview-rules-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Game Rules
+          </button>
         </div>
 
         <div id="fixtures-overview-panel">
@@ -137,6 +140,27 @@
               <ul id="leaderboard" class="leaderboard"></ul>
             </article>
           </div>
+        </div>
+
+        <div id="rules-overview-panel" class="hidden">
+          <h2>Game Rules</h2>
+          <ul class="rules-list">
+            <li><strong>Who can predict:</strong> Anyone logged in can submit a prediction.</li>
+            <li><strong>Which fixture:</strong> You can only predict the next Chelsea fixture.</li>
+            <li><strong>Deadline:</strong> Predictions lock 90 minutes before kick-off.</li>
+            <li><strong>Chelsea goals:</strong> Auto-calculated from selected Chelsea goalscorers.</li>
+            <li><strong>First scorer:</strong> Must be selected from your chosen goalscorers when Chelsea are predicted to score.</li>
+          </ul>
+          <h3>Scoring</h3>
+          <ul class="rules-list">
+            <li>Exact score: <strong>+5</strong></li>
+            <li>Correct result (win/draw/loss), but not exact: <strong>+2</strong></li>
+            <li>Correct Chelsea goals: <strong>+1</strong></li>
+            <li>Correct opponent goals: <strong>+1</strong></li>
+            <li>Correct first Chelsea scorer: <strong>+2</strong></li>
+            <li>Perfect bonus (exact score + correct first scorer): <strong>+1</strong></li>
+            <li>No prediction before deadline: <strong>0</strong></li>
+          </ul>
         </div>
       </section>
     </main>

@@ -80,10 +80,12 @@ const overviewScorersTabBtn = document.getElementById("overview-scorers-tab");
 const overviewGlobalTabBtn = document.getElementById("overview-global-tab");
 const overviewPastTabBtn = document.getElementById("overview-past-tab");
 const overviewLeaguesTabBtn = document.getElementById("overview-leagues-tab");
+const overviewRulesTabBtn = document.getElementById("overview-rules-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
 const globalOverviewPanel = document.getElementById("global-overview-panel");
 const pastOverviewPanel = document.getElementById("past-overview-panel");
+const rulesOverviewPanel = document.getElementById("rules-overview-panel");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -134,6 +136,10 @@ overviewPastTabBtn.addEventListener("click", () => {
 });
 overviewLeaguesTabBtn.addEventListener("click", () => {
   state.overviewTab = "leagues";
+  renderOverviewTabs();
+});
+overviewRulesTabBtn.addEventListener("click", () => {
+  state.overviewTab = "rules";
   renderOverviewTabs();
 });
 upcomingToggleBtn.addEventListener("click", () => {
@@ -798,21 +804,25 @@ function renderOverviewTabs() {
   const showGlobal = state.overviewTab === "global";
   const showPast = state.overviewTab === "past";
   const showLeagues = state.overviewTab === "leagues";
+  const showRules = state.overviewTab === "rules";
   overviewFixturesTabBtn.classList.toggle("active", showFixtures);
   overviewScorersTabBtn.classList.toggle("active", showScorers);
   overviewGlobalTabBtn.classList.toggle("active", showGlobal);
   overviewPastTabBtn.classList.toggle("active", showPast);
   overviewLeaguesTabBtn.classList.toggle("active", showLeagues);
+  overviewRulesTabBtn.classList.toggle("active", showRules);
   overviewFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
   overviewScorersTabBtn.setAttribute("aria-selected", String(showScorers));
   overviewGlobalTabBtn.setAttribute("aria-selected", String(showGlobal));
   overviewPastTabBtn.setAttribute("aria-selected", String(showPast));
   overviewLeaguesTabBtn.setAttribute("aria-selected", String(showLeagues));
+  overviewRulesTabBtn.setAttribute("aria-selected", String(showRules));
   fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
   scorersOverviewPanel.classList.toggle("hidden", !showScorers);
   globalOverviewPanel.classList.toggle("hidden", !showGlobal);
   pastOverviewPanel.classList.toggle("hidden", !showPast);
   leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
+  rulesOverviewPanel.classList.toggle("hidden", !showRules);
 }
 
 function renderPastGames() {
