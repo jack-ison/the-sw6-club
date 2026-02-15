@@ -203,31 +203,39 @@ initializeApp();
 async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
-  await syncUpcomingFixturesFromChelsea();
-  await maybeRefreshChelseaSquad();
   renderOverviewTabs();
   renderUpcomingFixtures();
   renderTopScorers();
+
+  const backgroundSync = Promise.allSettled([
+    syncUpcomingFixturesFromChelsea().then(() => render()),
+    maybeRefreshChelseaSquad().then(() => render())
+  ]);
+
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     render();
+    await backgroundSync;
     return;
   }
-
-  await loadOverallLeaderboard();
 
   const {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
+  render();
+
+  loadOverallLeaderboard().then(render);
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
+    render();
     await reloadAuthedData();
     render();
   });
 
-  await reloadAuthedData();
+  reloadAuthedData().then(render);
+  await backgroundSync;
   render();
 }
 
@@ -1154,7 +1162,8 @@ function renderLeaderboard() {
 function renderFixtures() {
   fixturesListEl.textContent = "";
 
-  const nextFixture = getNextFixtureForPrediction();
+  const realNextFixture = getNextFixtureForPrediction();
+  const nextFixture = realNextFixture || getFallbackNextFixture();
   const fixturesToRender = nextFixture ? [nextFixture] : [];
 
   if (fixturesToRender.length === 0) {
@@ -1191,13 +1200,16 @@ function renderFixtures() {
 
     titleEl.textContent = `Chelsea vs ${fixture.opponent}`;
     metaEl.textContent = `${formatKickoff(fixture.kickoff)} | ${fixture.competition}`;
-    const isNextFixture = Boolean(nextFixture && fixture.id === nextFixture.id);
+    const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
+    const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
     const predictionEnabled = isNextFixture && !locked;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
     const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
-    if (fixture.result) {
+    if (isFallbackFixture) {
+      badgeEl.textContent = "Loading fixture...";
+    } else if (fixture.result) {
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
       badgeEl.textContent = "Closed";
@@ -1298,6 +1310,9 @@ function renderFixtures() {
       predictionForm.querySelectorAll("input, button, select").forEach((node) => {
         node.disabled = true;
       });
+      if (isFallbackFixture && savePredictionBtn) {
+        savePredictionBtn.textContent = "Loading next fixture...";
+      }
     }
 
     predictionForm.addEventListener("submit", (event) => {
@@ -2226,6 +2241,21 @@ function getNextFixtureForPrediction() {
       .slice()
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())[0] || null
   );
+}
+
+function getFallbackNextFixture() {
+  const scheduleNext = getNextUpcomingFixtureFromSchedule();
+  if (!scheduleNext) {
+    return null;
+  }
+  return {
+    id: `fallback-${scheduleNext.date}-${scheduleNext.opponent.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+    kickoff: buildFixtureKickoffIso(scheduleNext.date, scheduleNext.kickoffUk),
+    opponent: scheduleNext.opponent,
+    competition: scheduleNext.competition,
+    predictions: [],
+    result: null
+  };
 }
 
 function canPredictFixture(fixture) {
