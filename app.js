@@ -56,6 +56,32 @@ const CHELSEA_REGISTERED_PLAYERS = [
   "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
   "Joao Pedro", "Estevao", "Kendry Paez"
 ];
+const POSITION_GROUPS = ["Goalkeepers", "Defenders", "Midfielders", "Forwards", "Other"];
+const CHELSEA_PLAYER_POSITION_GROUP = {
+  "Robert Sanchez": "Goalkeepers",
+  "Filip Jorgensen": "Goalkeepers",
+  "Djordje Petrovic": "Goalkeepers",
+  "Malo Gusto": "Defenders",
+  "Reece James": "Defenders",
+  "Trevoh Chalobah": "Defenders",
+  "Levi Colwill": "Defenders",
+  "Wesley Fofana": "Defenders",
+  "Benoit Badiashile": "Defenders",
+  "Marc Cucurella": "Defenders",
+  "Enzo Fernandez": "Midfielders",
+  "Moises Caicedo": "Midfielders",
+  "Romeo Lavia": "Midfielders",
+  "Carney Chukwuemeka": "Midfielders",
+  "Cole Palmer": "Midfielders",
+  "Pedro Neto": "Forwards",
+  "Noni Madueke": "Forwards",
+  "Mykhailo Mudryk": "Forwards",
+  "Christopher Nkunku": "Forwards",
+  "Nicolas Jackson": "Forwards",
+  "Joao Pedro": "Forwards",
+  "Estevao": "Forwards",
+  "Kendry Paez": "Forwards"
+};
 
 const state = {
   client: null,
@@ -1165,27 +1191,35 @@ function renderFixtures() {
 
 function renderScorerButtons(container, players, targetInput, selectedLabelEl, selectedListEl) {
   container.textContent = "";
+  const grouped = new Map(POSITION_GROUPS.map((group) => [group, []]));
   players.forEach((player) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "player-chip";
-    button.dataset.player = player;
-    button.dataset.baseLabel = player;
-    button.textContent = player;
-    button.addEventListener("click", () => {
-      incrementScorerSelection(
-        container.closest(".prediction-form"),
-        targetInput,
-        player,
-        selectedLabelEl,
-        selectedListEl
+    const group = getPositionGroupForPlayer(player);
+    if (!grouped.has(group)) {
+      grouped.set(group, []);
+    }
+    grouped.get(group).push(player);
+  });
+
+  POSITION_GROUPS.forEach((group) => {
+    const names = (grouped.get(group) || []).slice().sort((a, b) => a.localeCompare(b));
+    if (names.length === 0) {
+      return;
+    }
+    const chipsWrap = ensurePositionGroupChipWrap(container, group);
+    names.forEach((player) => {
+      chipsWrap.appendChild(
+        createPlayerChipButton(container, player, targetInput, selectedLabelEl, selectedListEl)
       );
     });
-    container.appendChild(button);
   });
 }
 
 function appendCustomScorerButton(container, player, targetInput, selectedLabelEl, selectedListEl) {
+  const chipsWrap = ensurePositionGroupChipWrap(container, "Other");
+  chipsWrap.appendChild(createPlayerChipButton(container, player, targetInput, selectedLabelEl, selectedListEl));
+}
+
+function createPlayerChipButton(container, player, targetInput, selectedLabelEl, selectedListEl) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "player-chip";
@@ -1201,7 +1235,33 @@ function appendCustomScorerButton(container, player, targetInput, selectedLabelE
       selectedListEl
     );
   });
-  container.appendChild(button);
+  return button;
+}
+
+function ensurePositionGroupChipWrap(container, groupName) {
+  const groupKey = groupName.toLowerCase().replace(/\s+/g, "-");
+  let groupEl = container.querySelector(`.position-group[data-group='${groupKey}']`);
+  if (!groupEl) {
+    groupEl = document.createElement("div");
+    groupEl.className = "position-group";
+    groupEl.dataset.group = groupKey;
+
+    const title = document.createElement("p");
+    title.className = "position-group-title";
+    title.textContent = groupName;
+
+    const chipsWrap = document.createElement("div");
+    chipsWrap.className = "player-chip-wrap";
+
+    groupEl.appendChild(title);
+    groupEl.appendChild(chipsWrap);
+    container.appendChild(groupEl);
+  }
+  return groupEl.querySelector(".player-chip-wrap");
+}
+
+function getPositionGroupForPlayer(playerName) {
+  return CHELSEA_PLAYER_POSITION_GROUP[playerName] || "Other";
 }
 
 function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl, selectedListEl) {

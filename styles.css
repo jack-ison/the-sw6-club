@@ -715,6 +715,19 @@ button:disabled {
   gap: 0.35rem;
 }
 
+.position-group + .position-group {
+  margin-top: 0.42rem;
+}
+
+.position-group-title {
+  margin: 0 0 0.28rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #42679e;
+}
+
 .player-chip {
   border-radius: 999px;
   border: 1px solid #aac4ef;
