@@ -2140,20 +2140,24 @@ async function onAdminLeagueListClick(event) {
 
 function renderLeaderboard() {
   leaderboardEl.textContent = "";
-  if (!state.activeLeagueId || state.activeLeagueLeaderboard.length === 0) {
+  const activeLeague = getActiveLeague();
+  const useGlobalTopTen = isGlobalLeague(activeLeague);
+  const rows = useGlobalTopTen ? state.overallLeaderboard.slice(0, 10) : state.activeLeagueLeaderboard;
+
+  if (!state.activeLeagueId || rows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No members yet.";
+    li.textContent = useGlobalTopTen
+      ? "No global rankings yet. Rankings appear after completed matches."
+      : "No members yet.";
     leaderboardEl.appendChild(li);
     return;
   }
 
-  const rows = state.activeLeagueLeaderboard;
-
   rows.forEach((row, index) => {
     const li = document.createElement("li");
     const safeName = row.display_name || "Player";
-    const suffix = row.role === "owner" ? " (Owner)" : "";
+    const suffix = !useGlobalTopTen && row.role === "owner" ? " (Owner)" : "";
     const left = createLeaderboardIdentity(index, `${safeName}${suffix}`.trim(), row.country_code, row.avatar_url);
     li.appendChild(left);
     const right = document.createElement("span");
