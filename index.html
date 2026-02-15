@@ -46,6 +46,32 @@
 
       <section class="panel overview-panel">
         <p class="section-kicker">Track</p>
+        <div id="profile-edit-shell" class="profile-edit-shell">
+          <button id="edit-profile-btn" type="button" class="ghost-btn">Edit Profile</button>
+          <form id="profile-edit-form" class="mini-form hidden">
+            <label>
+              Username
+              <input id="profile-username-input" type="text" maxlength="24" placeholder="e.g. SW6Jack" />
+            </label>
+            <label>
+              Actual name
+              <input id="profile-actual-name-input" type="text" maxlength="40" placeholder="Optional" />
+            </label>
+            <label>
+              Display name preference
+              <select id="profile-display-mode-input">
+                <option value="username">Use username</option>
+                <option value="actual">Use actual name</option>
+              </select>
+            </label>
+            <div class="profile-actions">
+              <button id="save-profile-btn" type="submit">Save profile</button>
+              <button id="cancel-profile-btn" type="button" class="ghost-btn">Cancel</button>
+            </div>
+          </form>
+          <p id="profile-edit-status" class="status no-margin hidden"></p>
+        </div>
+
         <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
           <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
             Fixtures

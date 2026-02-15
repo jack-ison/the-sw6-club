@@ -82,6 +82,10 @@ const CHELSEA_PLAYER_POSITION_GROUP = {
   "Estevao": "Forwards",
   "Kendry Paez": "Forwards"
 };
+const BANNED_USERNAME_TOKENS = [
+  "fuck", "shit", "bitch", "cunt", "nigger", "nigga", "fag", "faggot", "wank", "twat",
+  "prick", "dick", "cock", "pussy", "asshole", "arsehole", "whore", "slut"
+];
 
 const state = {
   client: null,
@@ -123,6 +127,14 @@ const overallLeaderboardEl = document.getElementById("overall-leaderboard");
 const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
 const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
+const profileEditShellEl = document.getElementById("profile-edit-shell");
+const editProfileBtn = document.getElementById("edit-profile-btn");
+const profileEditForm = document.getElementById("profile-edit-form");
+const profileUsernameInput = document.getElementById("profile-username-input");
+const profileActualNameInput = document.getElementById("profile-actual-name-input");
+const profileDisplayModeInput = document.getElementById("profile-display-mode-input");
+const cancelProfileBtn = document.getElementById("cancel-profile-btn");
+const profileEditStatus = document.getElementById("profile-edit-status");
 
 const authPanel = document.getElementById("auth-panel");
 const loginForm = document.getElementById("login-form");
@@ -180,6 +192,9 @@ if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague
 if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
+if (editProfileBtn) editProfileBtn.addEventListener("click", onToggleProfileEditor);
+if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
+if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
 
 setInterval(renderDeadlineCountdown, 1000);
 
@@ -468,6 +483,99 @@ async function onCopyLeagueCode() {
   } catch {
     alert(`League code: ${league.code}`);
   }
+}
+
+function onToggleProfileEditor() {
+  if (!profileEditForm) {
+    return;
+  }
+  profileEditForm.classList.toggle("hidden");
+  if (!profileEditForm.classList.contains("hidden")) {
+    hydrateProfileEditorFields();
+  }
+}
+
+function onCancelProfileEdit() {
+  if (profileEditForm) profileEditForm.classList.add("hidden");
+  if (profileEditStatus) profileEditStatus.classList.add("hidden");
+}
+
+async function onSaveProfileSettings(event) {
+  event.preventDefault();
+  if (!state.client || !state.session?.user) {
+    return;
+  }
+
+  const username = String(profileUsernameInput?.value || "").trim();
+  const actualName = String(profileActualNameInput?.value || "").trim();
+  const displayMode = String(profileDisplayModeInput?.value || "username");
+  const preferredName = displayMode === "actual" ? actualName : username;
+
+  if (!preferredName) {
+    setProfileStatus("Please choose a display name.", true);
+    return;
+  }
+  if (username && containsBlockedUsernameLanguage(username)) {
+    setProfileStatus("That username is not allowed. Please choose another.", true);
+    return;
+  }
+
+  const userMeta = state.session.user.user_metadata || {};
+  const nextMeta = {
+    ...userMeta,
+    username,
+    actual_name: actualName,
+    display_mode: displayMode,
+    display_name: preferredName
+  };
+
+  const { data: updateData, error: updateError } = await state.client.auth.updateUser({
+    data: nextMeta
+  });
+  if (updateError) {
+    setProfileStatus(updateError.message, true);
+    return;
+  }
+
+  const { error: memberError } = await state.client
+    .from("league_members")
+    .update({ display_name: preferredName })
+    .eq("user_id", state.session.user.id);
+  if (memberError) {
+    setProfileStatus(memberError.message, true);
+    return;
+  }
+
+  if (updateData?.user && state.session) {
+    state.session = { ...state.session, user: updateData.user };
+  }
+  setProfileStatus("Profile updated.", false);
+  if (profileEditForm) profileEditForm.classList.add("hidden");
+  await reloadAuthedData();
+  render();
+}
+
+function setProfileStatus(message, isError) {
+  if (!profileEditStatus) {
+    return;
+  }
+  profileEditStatus.textContent = message;
+  profileEditStatus.classList.remove("hidden");
+  profileEditStatus.classList.toggle("error-text", Boolean(isError));
+}
+
+function hydrateProfileEditorFields() {
+  if (!state.session?.user) {
+    return;
+  }
+  const meta = state.session.user.user_metadata || {};
+  if (profileUsernameInput) profileUsernameInput.value = String(meta.username || "");
+  if (profileActualNameInput) profileActualNameInput.value = String(meta.actual_name || "");
+  if (profileDisplayModeInput) {
+    const mode = meta.display_mode === "actual" ? "actual" : "username";
+    profileDisplayModeInput.value = mode;
+  }
+  if (profileEditStatus) profileEditStatus.classList.add("hidden");
 }
 
 async function onSavePrediction(fixture, form) {
@@ -784,6 +892,7 @@ function render() {
   renderTopScorers();
   renderOverallLeaderboard();
   renderPastGames();
+  renderProfileEditor();
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -810,6 +919,17 @@ function render() {
   renderLeaderboard();
   renderFixtures();
   renderDeadlineCountdown();
+}
+
+function renderProfileEditor() {
+  if (!profileEditShellEl) {
+    return;
+  }
+  const isAuthed = Boolean(state.session?.user);
+  profileEditShellEl.classList.toggle("hidden", !isAuthed);
+  if (isAuthed && profileEditForm && !profileEditForm.classList.contains("hidden")) {
+    hydrateProfileEditorFields();
+  }
 }
 
 function renderOverallLeaderboard() {
@@ -1669,6 +1789,26 @@ function normalizeFirstScorerValue(rawValue) {
     return value;
   }
   return parseScorerSelections(value)[0]?.name || "";
+}
+
+function containsBlockedUsernameLanguage(value) {
+  const normalized = normalizeForModeration(value);
+  if (!normalized) {
+    return false;
+  }
+  return BANNED_USERNAME_TOKENS.some((token) => normalized.includes(token));
+}
+
+function normalizeForModeration(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[@4]/g, "a")
+    .replace(/[1!|]/g, "i")
+    .replace(/[3]/g, "e")
+    .replace(/[0]/g, "o")
+    .replace(/[5$]/g, "s")
+    .replace(/[7]/g, "t")
+    .replace(/[^a-z]/g, "");
 }
 
 function countCorrectGoalscorers(predictedSelections, resultSelections) {

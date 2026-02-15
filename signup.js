@@ -1,5 +1,9 @@
 const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+const BANNED_USERNAME_TOKENS = [
+  "fuck", "shit", "bitch", "cunt", "nigger", "nigga", "fag", "faggot", "wank", "twat",
+  "prick", "dick", "cock", "pussy", "asshole", "arsehole", "whore", "slut"
+];
 const COUNTRIES = [
   ["AF", "Afghanistan"], ["AL", "Albania"], ["DZ", "Algeria"], ["AD", "Andorra"], ["AO", "Angola"],
   ["AG", "Antigua and Barbuda"], ["AR", "Argentina"], ["AM", "Armenia"], ["AU", "Australia"], ["AT", "Austria"],
@@ -77,6 +81,10 @@ async function onSignUp(event) {
   if (!displayName || !countryCode || !email || !password) {
     return;
   }
+  if (containsBlockedUsernameLanguage(displayName)) {
+    signupStatus.textContent = "That username is not allowed. Please choose another.";
+    return;
+  }
 
   signupStatus.textContent = "Creating account...";
   const { error } = await client.auth.signUp({
@@ -95,4 +103,24 @@ async function onSignUp(event) {
   setTimeout(() => {
     window.location.href = "index.html";
   }, 900);
+}
+
+function containsBlockedUsernameLanguage(value) {
+  const normalized = normalizeForModeration(value);
+  if (!normalized) {
+    return false;
+  }
+  return BANNED_USERNAME_TOKENS.some((token) => normalized.includes(token));
+}
+
+function normalizeForModeration(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[@4]/g, "a")
+    .replace(/[1!|]/g, "i")
+    .replace(/[3]/g, "e")
+    .replace(/[0]/g, "o")
+    .replace(/[5$]/g, "s")
+    .replace(/[7]/g, "t")
+    .replace(/[^a-z]/g, "");
 }

@@ -910,6 +910,32 @@ button:disabled {
   z-index: 1;
 }
 
+.profile-edit-shell {
+  margin-bottom: 0.62rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.profile-edit-shell .mini-form {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.62rem;
+  background: rgb(255 255 255 / 88%);
+}
+
+.profile-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.profile-actions button {
+  flex: 1;
+}
+
+.error-text {
+  color: #a12626;
+}
+
 .site-footer p {
   margin: 0;
   font-size: 0.78rem;
