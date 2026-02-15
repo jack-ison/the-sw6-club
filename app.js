@@ -7,7 +7,14 @@ const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 2;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PREDICTION_CUTOFF_MINUTES = 90;
-const SCORING = { exactScore: 3, correctResult: 1, correctFirstScorer: 2 };
+const SCORING = {
+  exactScore: 5,
+  correctResult: 2,
+  correctChelseaGoals: 1,
+  correctOpponentGoals: 1,
+  correctFirstScorer: 2,
+  perfectBonus: 1
+};
 const FALLBACK_FIXTURES = [
   { date: "2026-02-21", opponent: "Burnley", competition: "Premier League", kickoffUk: "15:00" },
   { date: "2026-03-01", opponent: "Arsenal", competition: "Premier League", kickoffUk: "16:30" },
@@ -1377,9 +1384,13 @@ function scorePrediction(prediction, result) {
   const predictedFirstScorer = normalizeFirstScorerValue(prediction.first_scorer);
   const resultFirstScorer = normalizeFirstScorerValue(result.first_scorer);
   const correctScorer =
+    result.chelsea_goals > 0 &&
     Boolean(predictedFirstScorer) &&
     Boolean(resultFirstScorer) &&
     predictedFirstScorer.toLowerCase() === resultFirstScorer.toLowerCase();
+  const correctChelseaGoals = prediction.chelsea_goals === result.chelsea_goals;
+  const correctOpponentGoals = prediction.opponent_goals === result.opponent_goals;
+  const perfect = exact && correctScorer;
 
   let points = 0;
   if (exact) {
@@ -1387,11 +1398,28 @@ function scorePrediction(prediction, result) {
   } else if (correctResult) {
     points += SCORING.correctResult;
   }
+  if (correctChelseaGoals) {
+    points += SCORING.correctChelseaGoals;
+  }
+  if (correctOpponentGoals) {
+    points += SCORING.correctOpponentGoals;
+  }
   if (correctScorer) {
     points += SCORING.correctFirstScorer;
   }
+  if (perfect) {
+    points += SCORING.perfectBonus;
+  }
 
-  return { points, exact, correctResult, correctScorer };
+  return {
+    points,
+    exact,
+    correctResult,
+    correctScorer,
+    correctChelseaGoals,
+    correctOpponentGoals,
+    perfect
+  };
 }
 
 function getOutcome(chelsea, opponent) {

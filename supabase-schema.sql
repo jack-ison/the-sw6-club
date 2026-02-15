@@ -199,9 +199,9 @@ as $$
     select
       p.user_id,
       sum(
-        case
+        (case
           when p.chelsea_goals = r.chelsea_goals
-               and p.opponent_goals = r.opponent_goals then 3
+               and p.opponent_goals = r.opponent_goals then 5
           when (
             case
               when p.chelsea_goals > p.opponent_goals then 'W'
@@ -214,14 +214,33 @@ as $$
               when r.chelsea_goals < r.opponent_goals then 'L'
               else 'D'
             end
-          ) then 1
+          ) then 2
           else 0
-        end
+        end)
         +
-        case
-          when lower(trim(p.first_scorer)) = lower(trim(r.first_scorer)) then 2
+        (case when p.chelsea_goals = r.chelsea_goals then 1 else 0 end)
+        +
+        (case when p.opponent_goals = r.opponent_goals then 1 else 0 end)
+        +
+        (case
+          when r.chelsea_goals > 0
+               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
+               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          then 2
           else 0
-        end
+        end)
+        +
+        (case
+          when p.chelsea_goals = r.chelsea_goals
+               and p.opponent_goals = r.opponent_goals
+               and r.chelsea_goals > 0
+               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
+               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          then 1
+          else 0
+        end)
       )::integer as points
     from public.predictions p
     join public.results r on r.fixture_id = p.fixture_id
@@ -270,9 +289,9 @@ as $$
     select
       p.user_id,
       sum(
-        case
+        (case
           when p.chelsea_goals = r.chelsea_goals
-               and p.opponent_goals = r.opponent_goals then 3
+               and p.opponent_goals = r.opponent_goals then 5
           when (
             case
               when p.chelsea_goals > p.opponent_goals then 'W'
@@ -285,14 +304,33 @@ as $$
               when r.chelsea_goals < r.opponent_goals then 'L'
               else 'D'
             end
-          ) then 1
+          ) then 2
           else 0
-        end
+        end)
         +
-        case
-          when lower(trim(p.first_scorer)) = lower(trim(r.first_scorer)) then 2
+        (case when p.chelsea_goals = r.chelsea_goals then 1 else 0 end)
+        +
+        (case when p.opponent_goals = r.opponent_goals then 1 else 0 end)
+        +
+        (case
+          when r.chelsea_goals > 0
+               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
+               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          then 2
           else 0
-        end
+        end)
+        +
+        (case
+          when p.chelsea_goals = r.chelsea_goals
+               and p.opponent_goals = r.opponent_goals
+               and r.chelsea_goals > 0
+               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
+               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          then 1
+          else 0
+        end)
       )::integer as points
     from public.predictions p
     join public.results r on r.fixture_id = p.fixture_id
