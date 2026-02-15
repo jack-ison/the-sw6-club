@@ -28,78 +28,86 @@
       </header>
 
       <section class="panel auth-thin" id="auth-panel">
-        <p class="section-kicker">Account</p>
-        <form id="login-form" class="auth-bar-form">
-          <div id="auth-login-fields" class="auth-login-fields">
-            <input id="login-email-input" type="email" placeholder="Email" required />
-            <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
+        <div class="top-nav-row">
+          <div class="top-nav" role="tablist" aria-label="Primary navigation">
+            <button id="topnav-predict" type="button" class="tab-btn active" role="tab" aria-selected="true">Predict</button>
+            <button id="topnav-leagues" type="button" class="tab-btn" role="tab" aria-selected="false">Leagues</button>
+            <button id="topnav-results" type="button" class="tab-btn" role="tab" aria-selected="false">Results</button>
           </div>
-          <button id="login-btn" type="submit">Log In</button>
-          <button id="logout-inline-btn" type="button" class="danger-btn hidden">Log Out</button>
-          <a class="ghost-link" href="signup.html">Create account</a>
-        </form>
+          <div class="account-menu-wrap">
+            <button id="account-menu-btn" type="button" class="ghost-btn">Account</button>
+            <div id="account-menu-dropdown" class="account-menu-dropdown hidden">
+              <div id="account-signed-out-actions">
+                <button id="account-open-login-btn" type="button" class="ghost-btn">Log in</button>
+                <a class="ghost-link" href="signup.html">Create account</a>
+              </div>
+              <div id="account-signed-in-actions" class="hidden">
+                <button id="account-edit-profile-btn" type="button" class="ghost-btn">Edit Profile</button>
+                <button id="account-logout-btn" type="button" class="danger-btn">Log Out</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="login-panel" class="hidden">
+          <form id="login-form" class="auth-bar-form">
+            <div id="auth-login-fields" class="auth-login-fields">
+              <input id="login-email-input" type="email" placeholder="Email" required />
+              <input id="login-password-input" type="password" minlength="6" placeholder="Password" required />
+            </div>
+            <button id="login-btn" type="submit">Log In</button>
+            <a class="ghost-link" href="signup.html">Create account</a>
+          </form>
+        </div>
         <p id="session-status" class="status auth-inline-status">Not signed in.</p>
       </section>
 
-      <section class="panel prediction-primary">
+      <section class="panel prediction-primary" id="predict-view" data-view="predict">
         <p class="section-kicker">Predict</p>
-        <h2 class="fixtures-title">Next Game</h2>
+        <div class="predict-head">
+          <h2 class="fixtures-title">Next Game</h2>
+          <button id="open-rules-inline" type="button" class="inline-rules-link">Rules</button>
+        </div>
         <ul id="fixtures-list" class="fixtures-list"></ul>
       </section>
 
-      <section class="panel overview-panel">
-        <p class="section-kicker">Track</p>
-        <div class="overview-tabs" role="tablist" aria-label="SW6 overview tabs">
-          <button id="overview-fixtures-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Fixtures
-          </button>
-          <button id="overview-scorers-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Scorers
-          </button>
-          <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
-            Global Leaderboard
-          </button>
-          <button id="overview-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Past Games
-          </button>
-          <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            My Leagues
-          </button>
-          <button id="overview-rules-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
-            Game Rules
-          </button>
-          <button id="edit-profile-btn" type="button" class="tab-btn profile-tab-btn">
-            Edit Profile
-          </button>
-        </div>
+      <section class="panel profile-edit-shell hidden" id="profile-edit-shell">
+        <p class="section-kicker">Account</p>
+        <h2>Edit Profile</h2>
+        <form id="profile-edit-form" class="mini-form hidden">
+          <label>
+            Username
+            <input id="profile-username-input" type="text" maxlength="24" placeholder="e.g. SW6Jack" />
+          </label>
+          <label>
+            Actual name
+            <input id="profile-actual-name-input" type="text" maxlength="40" placeholder="Optional" />
+          </label>
+          <label>
+            Profile picture
+            <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" />
+          </label>
+          <label>
+            Display name preference
+            <select id="profile-display-mode-input">
+              <option value="username">Use username</option>
+              <option value="actual">Use actual name</option>
+            </select>
+          </label>
+          <div class="profile-actions">
+            <button id="save-profile-btn" type="submit">Save profile</button>
+            <button id="cancel-profile-btn" type="button" class="ghost-btn">Cancel</button>
+          </div>
+        </form>
+        <p id="profile-edit-status" class="status no-margin hidden"></p>
+      </section>
 
-        <div id="profile-edit-shell" class="profile-edit-shell">
-          <form id="profile-edit-form" class="mini-form hidden">
-            <label>
-              Username
-              <input id="profile-username-input" type="text" maxlength="24" placeholder="e.g. SW6Jack" />
-            </label>
-            <label>
-              Actual name
-              <input id="profile-actual-name-input" type="text" maxlength="40" placeholder="Optional" />
-            </label>
-            <label>
-              Profile picture
-              <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" />
-            </label>
-            <label>
-              Display name preference
-              <select id="profile-display-mode-input">
-                <option value="username">Use username</option>
-                <option value="actual">Use actual name</option>
-              </select>
-            </label>
-            <div class="profile-actions">
-              <button id="save-profile-btn" type="submit">Save profile</button>
-              <button id="cancel-profile-btn" type="button" class="ghost-btn">Cancel</button>
-            </div>
-          </form>
-          <p id="profile-edit-status" class="status no-margin hidden"></p>
+      <section class="panel overview-panel hidden" id="results-view" data-view="results">
+        <p class="section-kicker">Results</p>
+        <div class="overview-tabs" role="tablist" aria-label="Results views">
+          <button id="results-fixtures-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">Fixtures</button>
+          <button id="results-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Past Games</button>
+          <button id="results-leaderboards-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Leaderboards</button>
+          <button id="results-stats-tab" type="button" class="tab-btn" role="tab" aria-selected="false">Stats</button>
         </div>
 
         <div id="fixtures-overview-panel">
@@ -131,9 +139,17 @@
         </div>
 
         <div id="global-overview-panel" class="hidden">
-          <h2>Global Leaderboard (Top 10)</h2>
+          <div class="leaderboards-head">
+            <h2>Leaderboards</h2>
+            <div class="overview-tabs mini-toggle" role="tablist" aria-label="Leaderboard scope">
+              <button id="leaderboard-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">Global</button>
+              <button id="leaderboard-league-tab" type="button" class="tab-btn" role="tab" aria-selected="false">League</button>
+            </div>
+          </div>
           <ul id="overall-leaderboard" class="leaderboard"></ul>
           <p id="overall-leaderboard-status" class="status no-margin"></p>
+          <ul id="results-league-leaderboard" class="leaderboard hidden"></ul>
+          <p id="results-league-status" class="status no-margin hidden"></p>
         </div>
 
         <div id="past-overview-panel" class="hidden">
@@ -142,8 +158,11 @@
           <p id="past-games-status" class="status no-margin"></p>
         </div>
 
-        <div id="league-panel" class="hidden">
+      </section>
+
+      <section class="panel hidden" id="league-panel" data-view="leagues">
           <h2>My Leagues</h2>
+          <p id="league-login-prompt" class="status no-margin hidden">Log in to create or join leagues.</p>
           <div class="league-forms">
             <form id="create-league-form" class="mini-form">
               <h3>Create League</h3>
@@ -178,10 +197,14 @@
               <ul id="leaderboard" class="leaderboard"></ul>
             </article>
           </div>
-        </div>
+      </section>
 
-        <div id="rules-overview-panel" class="hidden">
-          <h2>Game Rules</h2>
+      <div id="rules-modal" class="rules-modal hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+        <section class="panel rules-modal-content">
+          <div class="rules-modal-head">
+            <h2 id="rules-title">Game Rules</h2>
+            <button id="close-rules-modal" type="button" class="ghost-btn">Close</button>
+          </div>
           <ul class="rules-list">
             <li><strong>Who can predict:</strong> Anyone logged in can submit a prediction.</li>
             <li><strong>Which fixture:</strong> You can only predict the next Chelsea fixture.</li>
@@ -200,12 +223,13 @@
             <li>Perfect bonus (exact score + correct first scorer): <strong>+1</strong></li>
             <li>No prediction before deadline: <strong>0</strong></li>
           </ul>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
 
     <footer class="site-footer">
       <p>Unofficial fan project. Not affiliated with Chelsea FC.</p>
+      <p><button id="open-rules-footer" type="button" class="inline-rules-link">Rules</button></p>
     </footer>
 
     <template id="fixture-template">

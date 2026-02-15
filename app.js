@@ -117,7 +117,12 @@ const state = {
   teamSquadFetchedAt: {},
   squadFetchInFlight: {},
   showAllUpcoming: false,
-  overviewTab: "global",
+  topView: "predict",
+  resultsTab: "fixtures",
+  leaderboardScope: "global",
+  accountMenuOpen: false,
+  loginPanelOpen: false,
+  showRulesModal: false,
   upcomingFixtures: [...FALLBACK_FIXTURES],
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
   lastPredictionAck: null,
@@ -126,17 +131,25 @@ const state = {
   registeredUserCount: undefined
 };
 
-const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
-const overviewScorersTabBtn = document.getElementById("overview-scorers-tab");
-const overviewGlobalTabBtn = document.getElementById("overview-global-tab");
-const overviewPastTabBtn = document.getElementById("overview-past-tab");
-const overviewLeaguesTabBtn = document.getElementById("overview-leagues-tab");
-const overviewRulesTabBtn = document.getElementById("overview-rules-tab");
+const topnavPredictBtn = document.getElementById("topnav-predict");
+const topnavLeaguesBtn = document.getElementById("topnav-leagues");
+const topnavResultsBtn = document.getElementById("topnav-results");
+const resultsFixturesTabBtn = document.getElementById("results-fixtures-tab");
+const resultsPastTabBtn = document.getElementById("results-past-tab");
+const resultsLeaderboardsTabBtn = document.getElementById("results-leaderboards-tab");
+const resultsStatsTabBtn = document.getElementById("results-stats-tab");
+const leaderboardGlobalTabBtn = document.getElementById("leaderboard-global-tab");
+const leaderboardLeagueTabBtn = document.getElementById("leaderboard-league-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
 const globalOverviewPanel = document.getElementById("global-overview-panel");
 const pastOverviewPanel = document.getElementById("past-overview-panel");
-const rulesOverviewPanel = document.getElementById("rules-overview-panel");
+const resultsLeagueLeaderboardEl = document.getElementById("results-league-leaderboard");
+const resultsLeagueStatusEl = document.getElementById("results-league-status");
+const predictViewEl = document.getElementById("predict-view");
+const resultsViewEl = document.getElementById("results-view");
+const loginPanelEl = document.getElementById("login-panel");
+const leagueLoginPromptEl = document.getElementById("league-login-prompt");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -147,7 +160,17 @@ const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-
 const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
-const editProfileBtn = document.getElementById("edit-profile-btn");
+const accountMenuBtn = document.getElementById("account-menu-btn");
+const accountMenuDropdown = document.getElementById("account-menu-dropdown");
+const accountSignedOutActionsEl = document.getElementById("account-signed-out-actions");
+const accountSignedInActionsEl = document.getElementById("account-signed-in-actions");
+const accountOpenLoginBtn = document.getElementById("account-open-login-btn");
+const accountEditProfileBtn = document.getElementById("account-edit-profile-btn");
+const accountLogoutBtn = document.getElementById("account-logout-btn");
+const openRulesInlineBtn = document.getElementById("open-rules-inline");
+const openRulesFooterBtn = document.getElementById("open-rules-footer");
+const closeRulesModalBtn = document.getElementById("close-rules-modal");
+const rulesModalEl = document.getElementById("rules-modal");
 const profileEditForm = document.getElementById("profile-edit-form");
 const profileUsernameInput = document.getElementById("profile-username-input");
 const profileActualNameInput = document.getElementById("profile-actual-name-input");
@@ -162,7 +185,6 @@ const authLoginFields = document.getElementById("auth-login-fields");
 const loginEmailInput = document.getElementById("login-email-input");
 const loginPasswordInput = document.getElementById("login-password-input");
 const loginBtn = document.getElementById("login-btn");
-const logoutInlineBtn = document.getElementById("logout-inline-btn");
 const sessionStatus = document.getElementById("session-status");
 
 const leaguePanel = document.getElementById("league-panel");
@@ -179,39 +201,46 @@ const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
 
-overviewFixturesTabBtn.addEventListener("click", () => toggleOverviewTab("fixtures"));
-overviewScorersTabBtn.addEventListener("click", () => toggleOverviewTab("scorers"));
-overviewGlobalTabBtn.addEventListener("click", () => toggleOverviewTab("global"));
-overviewPastTabBtn.addEventListener("click", () => toggleOverviewTab("past"));
-overviewLeaguesTabBtn.addEventListener("click", () => toggleOverviewTab("leagues"));
-overviewRulesTabBtn.addEventListener("click", () => toggleOverviewTab("rules"));
-upcomingToggleBtn.addEventListener("click", () => {
+if (topnavPredictBtn) topnavPredictBtn.addEventListener("click", () => setTopView("predict"));
+if (topnavLeaguesBtn) topnavLeaguesBtn.addEventListener("click", () => setTopView("leagues"));
+if (topnavResultsBtn) topnavResultsBtn.addEventListener("click", () => setTopView("results"));
+if (resultsFixturesTabBtn) resultsFixturesTabBtn.addEventListener("click", () => setResultsTab("fixtures"));
+if (resultsPastTabBtn) resultsPastTabBtn.addEventListener("click", () => setResultsTab("past"));
+if (resultsLeaderboardsTabBtn) resultsLeaderboardsTabBtn.addEventListener("click", () => setResultsTab("leaderboards"));
+if (resultsStatsTabBtn) resultsStatsTabBtn.addEventListener("click", () => setResultsTab("stats"));
+if (leaderboardGlobalTabBtn) leaderboardGlobalTabBtn.addEventListener("click", () => setLeaderboardScope("global"));
+if (leaderboardLeagueTabBtn) leaderboardLeagueTabBtn.addEventListener("click", () => setLeaderboardScope("league"));
+if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
-if (logoutInlineBtn) logoutInlineBtn.addEventListener("click", onLogOut);
+if (accountMenuBtn) accountMenuBtn.addEventListener("click", onToggleAccountMenu);
+if (accountOpenLoginBtn) accountOpenLoginBtn.addEventListener("click", onToggleLoginPanel);
+if (accountEditProfileBtn) accountEditProfileBtn.addEventListener("click", onOpenProfileFromAccount);
+if (accountLogoutBtn) accountLogoutBtn.addEventListener("click", onLogOut);
+if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
+if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
+if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
 if (createLeagueForm) createLeagueForm.addEventListener("submit", onCreateLeague);
 if (joinLeagueForm) joinLeagueForm.addEventListener("submit", onJoinLeague);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
-if (editProfileBtn) editProfileBtn.addEventListener("click", onToggleProfileEditor);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
 
 setInterval(renderDeadlineCountdown, 1000);
+window.addEventListener("hashchange", onRouteChange);
+document.addEventListener("click", onDocumentClick);
+document.addEventListener("keydown", onDocumentKeydown);
 
 initializeApp();
-
-function toggleOverviewTab(tabName) {
-  state.overviewTab = state.overviewTab === tabName ? null : tabName;
-  renderOverviewTabs();
-}
 
 async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
-  renderOverviewTabs();
+  applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
+  renderNavigation();
   renderUpcomingFixtures();
   renderTopScorers();
 
@@ -233,12 +262,14 @@ async function initializeApp() {
     data: { session }
   } = await state.client.auth.getSession();
   state.session = session;
+  applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   render();
 
   loadOverallLeaderboard().then(render);
 
   state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
     state.session = sessionUpdate;
+    applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
     await loadRegisteredUserCount();
     await reloadAuthedData();
@@ -248,6 +279,196 @@ async function initializeApp() {
   reloadAuthedData().then(render);
   await backgroundSync;
   render();
+}
+
+function onRouteChange() {
+  applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
+  render();
+}
+
+function setTopView(view) {
+  state.topView = view;
+  if (view !== "results") {
+    state.showRulesModal = false;
+  }
+  if (view !== "predict") {
+    state.loginPanelOpen = false;
+  }
+  syncRouteHash();
+  render();
+}
+
+function setResultsTab(tab) {
+  state.topView = "results";
+  state.resultsTab = tab;
+  state.showRulesModal = false;
+  syncRouteHash();
+  render();
+}
+
+function setLeaderboardScope(scope) {
+  state.topView = "results";
+  state.resultsTab = "leaderboards";
+  state.leaderboardScope = scope;
+  syncRouteHash();
+  render();
+}
+
+function onToggleAccountMenu(event) {
+  event.stopPropagation();
+  state.accountMenuOpen = !state.accountMenuOpen;
+  renderNavigation();
+}
+
+function onDocumentClick(event) {
+  if (state.showRulesModal && rulesModalEl && event.target === rulesModalEl) {
+    onCloseRulesModal();
+    return;
+  }
+  if (!state.accountMenuOpen || !accountMenuDropdown || !accountMenuBtn) {
+    return;
+  }
+  const clickedInsideMenu = accountMenuDropdown.contains(event.target) || accountMenuBtn.contains(event.target);
+  if (!clickedInsideMenu) {
+    state.accountMenuOpen = false;
+    renderNavigation();
+  }
+}
+
+function onDocumentKeydown(event) {
+  if (event.key === "Escape") {
+    if (state.showRulesModal) {
+      onCloseRulesModal();
+      return;
+    }
+    if (state.accountMenuOpen) {
+      state.accountMenuOpen = false;
+      renderNavigation();
+    }
+  }
+}
+
+function onToggleLoginPanel() {
+  state.loginPanelOpen = !state.loginPanelOpen;
+  state.accountMenuOpen = false;
+  renderNavigation();
+}
+
+function onOpenProfileFromAccount() {
+  if (!state.session?.user) {
+    return;
+  }
+  state.topView = "predict";
+  state.accountMenuOpen = false;
+  if (profileEditForm) profileEditForm.classList.remove("hidden");
+  hydrateProfileEditorFields();
+  syncRouteHash("profile");
+  render();
+}
+
+function onOpenRulesModal() {
+  state.showRulesModal = true;
+  syncRouteHash("rules");
+  render();
+}
+
+function onCloseRulesModal() {
+  state.showRulesModal = false;
+  syncRouteHash();
+  render();
+}
+
+function getRouteIntentFromUrl() {
+  const hashToken = normalizeRouteToken(window.location.hash.replace(/^#/, ""));
+  const search = new URLSearchParams(window.location.search);
+  const queryToken = normalizeRouteToken(search.get("tab") || search.get("view") || search.get("section") || "");
+  const token = hashToken || queryToken;
+  if (!token) {
+    return { topView: "predict" };
+  }
+
+  if (token === "predict" || token === "home") {
+    return { topView: "predict" };
+  }
+  if (token === "leagues" || token === "myleagues") {
+    return { topView: "leagues" };
+  }
+  if (
+    token === "results" ||
+    token === "resultsfixtures" ||
+    token === "fixtures" ||
+    token === "fixturesoverviewpanel"
+  ) {
+    return { topView: "results", resultsTab: "fixtures" };
+  }
+  if (token === "resultspast" || token === "pastgames" || token === "past" || token === "pastoverviewpanel") {
+    return { topView: "results", resultsTab: "past" };
+  }
+  if (token === "resultsstats" || token === "scorers" || token === "stats" || token === "scorersoverviewpanel") {
+    return { topView: "results", resultsTab: "stats" };
+  }
+  if (
+    token === "resultsleaderboards" ||
+    token === "globalleaderboard" ||
+    token === "leaderboard" ||
+    token === "global" ||
+    token === "globaloverviewpanel"
+  ) {
+    return { topView: "results", resultsTab: "leaderboards", leaderboardScope: "global" };
+  }
+  if (token === "rules" || token === "gamerules" || token === "rulesoverviewpanel") {
+    return { topView: "predict", showRulesModal: true };
+  }
+  if (token === "profile" || token === "editprofile" || token === "profileeditshell") {
+    return { topView: "predict", openProfileEditor: true };
+  }
+  if (token === "leaguepanel") {
+    return { topView: "leagues" };
+  }
+  return { topView: "predict" };
+}
+
+function normalizeRouteToken(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function applyRouteIntent(intent, options = {}) {
+  const nextTop = ["predict", "leagues", "results"].includes(intent.topView) ? intent.topView : state.topView;
+  state.topView = nextTop || "predict";
+  state.resultsTab = ["fixtures", "past", "leaderboards", "stats"].includes(intent.resultsTab)
+    ? intent.resultsTab
+    : state.resultsTab || "fixtures";
+  state.leaderboardScope = intent.leaderboardScope === "league" ? "league" : state.leaderboardScope || "global";
+  state.showRulesModal = Boolean(intent.showRulesModal);
+  if (intent.openProfileEditor && state.session?.user && profileEditForm) {
+    state.accountMenuOpen = true;
+    profileEditForm.classList.remove("hidden");
+    hydrateProfileEditorFields();
+  }
+  if (options.syncHash) {
+    syncRouteHash();
+  }
+}
+
+function syncRouteHash(forcedToken = "") {
+  let token = forcedToken;
+  if (!token) {
+    if (state.showRulesModal) {
+      token = "rules";
+    } else if (state.topView === "predict") {
+      token = "predict";
+    } else if (state.topView === "leagues") {
+      token = "leagues";
+    } else if (state.topView === "results") {
+      token = `results-${state.resultsTab}`;
+    }
+  }
+  const nextHash = token ? `#${token}` : "";
+  if (window.location.hash !== nextHash) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+  }
 }
 
 function initSupabaseClient(url, key) {
@@ -280,6 +501,9 @@ async function onLogIn(event) {
   }
 
   loginForm.reset();
+  state.loginPanelOpen = false;
+  state.accountMenuOpen = false;
+  syncRouteHash();
 }
 
 async function onLogOut() {
@@ -289,7 +513,12 @@ async function onLogOut() {
   const { error } = await state.client.auth.signOut();
   if (error) {
     alert(error.message);
+    return;
   }
+  state.accountMenuOpen = false;
+  state.loginPanelOpen = false;
+  if (profileEditForm) profileEditForm.classList.add("hidden");
+  syncRouteHash();
 }
 
 async function onRefreshAll() {
@@ -523,16 +752,6 @@ async function onCopyLeagueCode() {
     alert(`Copied ${league.code}`);
   } catch {
     alert(`League code: ${league.code}`);
-  }
-}
-
-function onToggleProfileEditor() {
-  if (!profileEditForm) {
-    return;
-  }
-  profileEditForm.classList.toggle("hidden");
-  if (!profileEditForm.classList.contains("hidden")) {
-    hydrateProfileEditorFields();
   }
 }
 
@@ -962,7 +1181,7 @@ async function loadLeagueLeaderboard() {
 }
 
 function render() {
-  renderOverviewTabs();
+  renderNavigation();
   renderUpcomingFixtures();
   renderTopScorers();
   renderOverallLeaderboard();
@@ -971,11 +1190,12 @@ function render() {
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
-  if (authLoginFields) authLoginFields.classList.toggle("hidden", isAuthed);
-  if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed);
-  if (logoutInlineBtn) logoutInlineBtn.classList.toggle("hidden", !isAuthed);
-
-  if (authPanel) authPanel.classList.toggle("hidden", !isConnected);
+  if (authLoginFields) authLoginFields.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
+  if (loginBtn) loginBtn.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
+  if (loginPanelEl) loginPanelEl.classList.toggle("hidden", isAuthed || !state.loginPanelOpen);
+  if (accountSignedOutActionsEl) accountSignedOutActionsEl.classList.toggle("hidden", isAuthed);
+  if (accountSignedInActionsEl) accountSignedInActionsEl.classList.toggle("hidden", !isAuthed);
+  if (accountMenuDropdown) accountMenuDropdown.classList.toggle("hidden", !state.accountMenuOpen);
 
   if (!isConnected) {
     if (sessionStatus) sessionStatus.textContent = "Supabase is currently unavailable.";
@@ -986,32 +1206,40 @@ function render() {
   if (sessionStatus) {
     sessionStatus.textContent = isAuthed ? `Signed in as ${state.session.user.email}` : "Not signed in.";
   }
-  if (!isAuthed) {
-    renderDeadlineCountdown();
-    renderMatchdayAttendance();
-    return;
-  }
 
-  renderLeagueSelect();
-  renderLeaderboard();
+  if (leagueLoginPromptEl) leagueLoginPromptEl.classList.toggle("hidden", isAuthed);
+  if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !isAuthed);
+  if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !isAuthed);
+  if (leagueSelect?.closest("label")) {
+    leagueSelect.closest("label").classList.toggle("hidden", !isAuthed);
+  }
+  if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !isAuthed);
+
+  if (isAuthed) {
+    renderLeagueSelect();
+    renderLeaderboard();
+  } else {
+    leaderboardEl.textContent = "";
+    if (resultsLeagueLeaderboardEl) resultsLeagueLeaderboardEl.textContent = "";
+  }
   renderFixtures();
   renderDeadlineCountdown();
   renderMatchdayAttendance();
 }
 
 function renderProfileEditor() {
-  if (!profileEditShellEl || !editProfileBtn) {
+  if (!profileEditShellEl) {
     return;
   }
   const isAuthed = Boolean(state.session?.user);
-  profileEditShellEl.classList.toggle("hidden", !isAuthed);
-  editProfileBtn.classList.toggle("hidden", !isAuthed);
-  if (isAuthed && profileEditForm && !profileEditForm.classList.contains("hidden")) {
+  const isFormVisible = Boolean(profileEditForm && !profileEditForm.classList.contains("hidden"));
+  const ack = state.profileAck;
+  const isFresh = Boolean(ack) && Date.now() - ack.at < 7000;
+  profileEditShellEl.classList.toggle("hidden", !isAuthed || (!isFormVisible && !isFresh));
+  if (isAuthed && isFormVisible) {
     hydrateProfileEditorFields();
   }
   if (profileEditStatus) {
-    const ack = state.profileAck;
-    const isFresh = Boolean(ack) && Date.now() - ack.at < 7000;
     profileEditStatus.classList.toggle("hidden", !isFresh);
     profileEditStatus.classList.toggle("error-text", Boolean(ack?.isError));
     profileEditStatus.classList.toggle("success-text", Boolean(ack && !ack.isError));
@@ -1028,7 +1256,13 @@ function renderOverallLeaderboard() {
   if (state.overallLeaderboard.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No players ranked yet.";
+    li.textContent = "No players ranked yet. Rankings appear after the first completed match.";
+    const cta = document.createElement("button");
+    cta.type = "button";
+    cta.className = "ghost-btn";
+    cta.textContent = "Make a prediction";
+    cta.addEventListener("click", () => setTopView("predict"));
+    li.appendChild(cta);
     overallLeaderboardEl.appendChild(li);
   } else {
     state.overallLeaderboard.forEach((row, index) => {
@@ -1046,31 +1280,69 @@ function renderOverallLeaderboard() {
   overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus;
 }
 
-function renderOverviewTabs() {
-  const showFixtures = state.overviewTab === "fixtures";
-  const showScorers = state.overviewTab === "scorers";
-  const showGlobal = state.overviewTab === "global";
-  const showPast = state.overviewTab === "past";
-  const showLeagues = state.overviewTab === "leagues";
-  const showRules = state.overviewTab === "rules";
-  overviewFixturesTabBtn.classList.toggle("active", showFixtures);
-  overviewScorersTabBtn.classList.toggle("active", showScorers);
-  overviewGlobalTabBtn.classList.toggle("active", showGlobal);
-  overviewPastTabBtn.classList.toggle("active", showPast);
-  overviewLeaguesTabBtn.classList.toggle("active", showLeagues);
-  overviewRulesTabBtn.classList.toggle("active", showRules);
-  overviewFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
-  overviewScorersTabBtn.setAttribute("aria-selected", String(showScorers));
-  overviewGlobalTabBtn.setAttribute("aria-selected", String(showGlobal));
-  overviewPastTabBtn.setAttribute("aria-selected", String(showPast));
-  overviewLeaguesTabBtn.setAttribute("aria-selected", String(showLeagues));
-  overviewRulesTabBtn.setAttribute("aria-selected", String(showRules));
-  fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
-  scorersOverviewPanel.classList.toggle("hidden", !showScorers);
-  globalOverviewPanel.classList.toggle("hidden", !showGlobal);
-  pastOverviewPanel.classList.toggle("hidden", !showPast);
-  leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
-  rulesOverviewPanel.classList.toggle("hidden", !showRules);
+function renderNavigation() {
+  const showPredict = state.topView === "predict";
+  const showLeagues = state.topView === "leagues";
+  const showResults = state.topView === "results";
+  if (topnavPredictBtn) {
+    topnavPredictBtn.classList.toggle("active", showPredict);
+    topnavPredictBtn.setAttribute("aria-selected", String(showPredict));
+  }
+  if (topnavLeaguesBtn) {
+    topnavLeaguesBtn.classList.toggle("active", showLeagues);
+    topnavLeaguesBtn.setAttribute("aria-selected", String(showLeagues));
+  }
+  if (topnavResultsBtn) {
+    topnavResultsBtn.classList.toggle("active", showResults);
+    topnavResultsBtn.setAttribute("aria-selected", String(showResults));
+  }
+  if (predictViewEl) predictViewEl.classList.toggle("hidden", !showPredict);
+  if (resultsViewEl) resultsViewEl.classList.toggle("hidden", !showResults);
+  if (leaguePanel) leaguePanel.classList.toggle("hidden", !showLeagues);
+
+  const showFixtures = state.resultsTab === "fixtures";
+  const showPast = state.resultsTab === "past";
+  const showLeaderboards = state.resultsTab === "leaderboards";
+  const showStats = state.resultsTab === "stats";
+  if (resultsFixturesTabBtn) {
+    resultsFixturesTabBtn.classList.toggle("active", showFixtures);
+    resultsFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
+  }
+  if (resultsPastTabBtn) {
+    resultsPastTabBtn.classList.toggle("active", showPast);
+    resultsPastTabBtn.setAttribute("aria-selected", String(showPast));
+  }
+  if (resultsLeaderboardsTabBtn) {
+    resultsLeaderboardsTabBtn.classList.toggle("active", showLeaderboards);
+    resultsLeaderboardsTabBtn.setAttribute("aria-selected", String(showLeaderboards));
+  }
+  if (resultsStatsTabBtn) {
+    resultsStatsTabBtn.classList.toggle("active", showStats);
+    resultsStatsTabBtn.setAttribute("aria-selected", String(showStats));
+  }
+
+  if (fixturesOverviewPanel) fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
+  if (pastOverviewPanel) pastOverviewPanel.classList.toggle("hidden", !showPast);
+  if (globalOverviewPanel) globalOverviewPanel.classList.toggle("hidden", !showLeaderboards);
+  if (scorersOverviewPanel) scorersOverviewPanel.classList.toggle("hidden", !showStats);
+
+  const showGlobalScope = state.leaderboardScope !== "league";
+  if (leaderboardGlobalTabBtn) {
+    leaderboardGlobalTabBtn.classList.toggle("active", showGlobalScope);
+    leaderboardGlobalTabBtn.setAttribute("aria-selected", String(showGlobalScope));
+  }
+  if (leaderboardLeagueTabBtn) {
+    leaderboardLeagueTabBtn.classList.toggle("active", !showGlobalScope);
+    leaderboardLeagueTabBtn.setAttribute("aria-selected", String(!showGlobalScope));
+  }
+  if (overallLeaderboardEl) overallLeaderboardEl.classList.toggle("hidden", !showGlobalScope);
+  if (overallLeaderboardStatusEl) overallLeaderboardStatusEl.classList.toggle("hidden", !showGlobalScope);
+  if (resultsLeagueLeaderboardEl) resultsLeagueLeaderboardEl.classList.toggle("hidden", showGlobalScope);
+  if (resultsLeagueStatusEl) resultsLeagueStatusEl.classList.toggle("hidden", showGlobalScope);
+  if (!showGlobalScope) {
+    renderLeagueLeaderboardInResults();
+  }
+  if (rulesModalEl) rulesModalEl.classList.toggle("hidden", !state.showRulesModal);
 }
 
 function renderPastGames() {
@@ -1243,8 +1515,46 @@ function renderLeaderboard() {
   });
 }
 
+function renderLeagueLeaderboardInResults() {
+  if (!resultsLeagueLeaderboardEl || !resultsLeagueStatusEl) {
+    return;
+  }
+  resultsLeagueLeaderboardEl.textContent = "";
+  if (!state.session?.user) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "Log in to view league leaderboard.";
+    resultsLeagueLeaderboardEl.appendChild(li);
+    resultsLeagueStatusEl.textContent = "Join or create a league to compete with friends.";
+    return;
+  }
+  if (!state.activeLeagueId || state.activeLeagueLeaderboard.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No league rankings yet.";
+    resultsLeagueLeaderboardEl.appendChild(li);
+    resultsLeagueStatusEl.textContent = "Rankings appear after predictions and completed matches.";
+    return;
+  }
+  state.activeLeagueLeaderboard.forEach((row, index) => {
+    const li = document.createElement("li");
+    const safeName = row.display_name || "Player";
+    const suffix = row.role === "owner" ? " (Owner)" : "";
+    const left = createLeaderboardIdentity(index, `${safeName}${suffix}`.trim(), row.country_code, row.avatar_url);
+    li.appendChild(left);
+    const pts = document.createElement("span");
+    pts.className = "leader-points";
+    pts.textContent = `${row.points || 0} pts`;
+    li.appendChild(pts);
+    resultsLeagueLeaderboardEl.appendChild(li);
+  });
+  const active = getActiveLeague();
+  resultsLeagueStatusEl.textContent = active ? `Showing league: ${active.name}` : "League leaderboard";
+}
+
 function renderFixtures() {
   fixturesListEl.textContent = "";
+  const isAuthed = Boolean(state.session?.user);
 
   const realNextFixture = getNextFixtureForPrediction();
   const nextFixture = realNextFixture || getFallbackNextFixture();
@@ -1287,12 +1597,16 @@ function renderFixtures() {
     const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
     const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const predictionEnabled = isNextFixture && !locked;
+    const predictionEnabled = isAuthed && isNextFixture && !locked;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
-    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
+    const myPrediction = isAuthed
+      ? fixture.predictions.find((row) => row.user_id === state.session.user.id)
+      : null;
     if (isFallbackFixture) {
       badgeEl.textContent = "Loading fixture...";
+    } else if (!isAuthed) {
+      badgeEl.textContent = "Log in to submit";
     } else if (fixture.result) {
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
@@ -1403,6 +1717,8 @@ function renderFixtures() {
       });
       if (isFallbackFixture && savePredictionBtn) {
         savePredictionBtn.textContent = "Loading next fixture...";
+      } else if (!isAuthed && savePredictionBtn) {
+        savePredictionBtn.textContent = "Create account to submit";
       }
     }
 

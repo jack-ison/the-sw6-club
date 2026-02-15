@@ -162,6 +162,116 @@ body {
   background: rgb(255 255 255 / 90%);
 }
 
+.top-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.top-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  padding: 0.34rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgb(255 255 255 / 90%);
+}
+
+.account-menu-wrap {
+  position: relative;
+}
+
+.account-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 12;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  padding: 0.52rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.account-menu-dropdown .ghost-btn,
+.account-menu-dropdown .danger-btn,
+.account-menu-dropdown .ghost-link {
+  width: 100%;
+  justify-content: center;
+}
+
+#account-signed-out-actions,
+#account-signed-in-actions {
+  display: grid;
+  gap: 0.4rem;
+}
+
+#login-panel {
+  margin-top: 0.55rem;
+}
+
+.predict-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.inline-rules-link {
+  border: 0;
+  background: transparent;
+  color: #21497f;
+  padding: 0.1rem 0.22rem;
+  text-decoration: underline;
+  border-radius: 6px;
+}
+
+.inline-rules-link:hover {
+  background: #e8f1ff;
+  transform: none;
+}
+
+.leaderboards-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.mini-toggle {
+  margin: 0;
+  padding: 0.2rem;
+}
+
+.rules-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgb(8 24 54 / 52%);
+  padding: 1rem;
+  display: grid;
+  place-items: center;
+}
+
+.rules-modal-content {
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.rules-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.35rem;
+}
+
 .upcoming-head {
   display: flex;
   justify-content: space-between;
@@ -920,6 +1030,10 @@ button:disabled {
   background: rgb(255 255 255 / 82%);
 }
 
+.empty-state .ghost-btn {
+  margin-top: 0.58rem;
+}
+
 .hidden {
   display: none;
 }
@@ -1059,9 +1173,29 @@ button:disabled {
     width: 100%;
   }
 
+  .top-nav-row {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .top-nav {
+    width: 100%;
+  }
+
+  .account-menu-wrap {
+    justify-self: end;
+  }
+
+  .account-menu-dropdown {
+    left: 0;
+    right: 0;
+    min-width: 0;
+  }
+
   .tab-btn {
     flex: 1;
     justify-content: center;
+    min-height: 42px;
   }
 
   .hero {
