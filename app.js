@@ -865,13 +865,18 @@ function hydrateProfileEditorFields() {
   if (profileEditStatus) profileEditStatus.classList.add("hidden");
 }
 
-async function onSavePrediction(fixture, form) {
+async function onSavePrediction(fixture, form, submitBtn = null) {
   if (!state.session?.user || !canPredictFixture(fixture)) {
     alert("Only the next fixture can be predicted, and it locks 90 minutes before kickoff.");
     return;
   }
 
   const hadExistingPrediction = fixture.predictions.some((row) => row.user_id === state.session.user.id);
+  const idleLabel = hadExistingPrediction ? "Update Prediction" : "Save Prediction";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = hadExistingPrediction ? "Updating prediction..." : "Saving prediction...";
+  }
   syncChelseaGoalsToScorerSelection(form);
   const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".pred-opponent").value);
@@ -903,10 +908,18 @@ async function onSavePrediction(fixture, form) {
   );
 
   if (error) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = idleLabel;
+    }
     alert(error.message);
     return;
   }
 
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = hadExistingPrediction ? "Prediction updated" : "Prediction saved";
+  }
   state.lastPredictionAck = {
     fixtureId: fixture.id,
     updated: hadExistingPrediction,
@@ -921,7 +934,7 @@ async function onSavePrediction(fixture, form) {
   state.predictionButtonFlashTimeoutId = setTimeout(() => {
     state.predictionButtonFlashTimeoutId = null;
     render();
-  }, 3600);
+  }, 5000);
 }
 
 async function onSaveResult(fixture, form) {
@@ -1729,7 +1742,7 @@ function renderFixtures() {
 
     predictionForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      onSavePrediction(fixture, predictionForm);
+      onSavePrediction(fixture, predictionForm, savePredictionBtn);
     });
 
     fixturesListEl.appendChild(fragment);
