@@ -26,8 +26,8 @@ const CHELSEA_FIXTURES_PROXY_URL = `https://r.jina.ai/http://${CHELSEA_FIXTURES_
   /^https?:\/\//,
   ""
 )}`;
-const SPORTSDB_SEARCH_TEAMS_URL = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=";
-const SPORTSDB_LOOKUP_ALL_PLAYERS_URL = "https://www.thesportsdb.com/api/v1/json/3/lookup_all_players.php?id=";
+const CHELSEA_SQUAD_URL = "https://www.chelseafc.com/en/teams/men";
+const CHELSEA_SQUAD_PROXY_URL = `https://r.jina.ai/http://${CHELSEA_SQUAD_URL.replace(/^https?:\/\//, "")}`;
 const TOP_SCORERS = [
   { name: "Joao Pedro", apps: 26, goals: 10 },
   { name: "Enzo Fernandez", apps: 25, goals: 8 },
@@ -47,30 +47,6 @@ const CHELSEA_REGISTERED_PLAYERS = [
   "Pedro Neto", "Noni Madueke", "Mykhailo Mudryk", "Christopher Nkunku", "Nicolas Jackson",
   "Joao Pedro", "Estevao", "Kendry Paez"
 ];
-const OPPONENT_REGISTERED_PLAYERS = {
-  Arsenal: ["David Raya", "Ben White", "William Saliba", "Gabriel", "Declan Rice", "Martin Odegaard", "Bukayo Saka", "Kai Havertz", "Gabriel Martinelli", "Leandro Trossard"],
-  "Aston Villa": ["Emiliano Martinez", "Matty Cash", "Pau Torres", "Ezri Konsa", "Douglas Luiz", "John McGinn", "Youri Tielemans", "Leon Bailey", "Ollie Watkins", "Moussa Diaby"],
-  Bournemouth: ["Neto", "Adam Smith", "Marcos Senesi", "Illia Zabarnyi", "Lewis Cook", "Ryan Christie", "Marcus Tavernier", "Justin Kluivert", "Antoine Semenyo", "Dominic Solanke"],
-  Brighton: ["Bart Verbruggen", "Lewis Dunk", "Jan Paul van Hecke", "Pervis Estupinan", "Pascal Gross", "Billy Gilmour", "Kaoru Mitoma", "Joao Pedro", "Danny Welbeck", "Evan Ferguson"],
-  "Brighton & Hove Albion": ["Bart Verbruggen", "Lewis Dunk", "Jan Paul van Hecke", "Pervis Estupinan", "Pascal Gross", "Billy Gilmour", "Kaoru Mitoma", "Joao Pedro", "Danny Welbeck", "Evan Ferguson"],
-  Burnley: ["James Trafford", "Dara O'Shea", "Jordan Beyer", "Vitinho", "Josh Cullen", "Sander Berge", "Lyle Foster", "Zeki Amdouni", "Wilson Odobert", "Johann Berg Gudmundsson"],
-  Everton: ["Jordan Pickford", "James Tarkowski", "Jarrad Branthwaite", "Vitalii Mykolenko", "Amadou Onana", "Idrissa Gueye", "Abdoulaye Doucoure", "Dwight McNeil", "Jack Harrison", "Dominic Calvert-Lewin"],
-  Leeds: ["Illan Meslier", "Pascal Struijk", "Joe Rodon", "Junior Firpo", "Ethan Ampadu", "Glen Kamara", "Crysencio Summerville", "Dan James", "Wilfried Gnonto", "Georginio Rutter"],
-  "Leeds United": ["Illan Meslier", "Pascal Struijk", "Joe Rodon", "Junior Firpo", "Ethan Ampadu", "Glen Kamara", "Crysencio Summerville", "Dan James", "Wilfried Gnonto", "Georginio Rutter"],
-  "Manchester City": ["Ederson", "Kyle Walker", "Ruben Dias", "Josko Gvardiol", "Rodri", "Kevin De Bruyne", "Bernardo Silva", "Phil Foden", "Jeremy Doku", "Erling Haaland"],
-  "Manchester United": ["Andre Onana", "Diogo Dalot", "Lisandro Martinez", "Raphael Varane", "Luke Shaw", "Casemiro", "Bruno Fernandes", "Kobbie Mainoo", "Marcus Rashford", "Rasmus Hojlund"],
-  Newcastle: ["Nick Pope", "Kieran Trippier", "Fabian Schar", "Sven Botman", "Dan Burn", "Bruno Guimaraes", "Joelinton", "Sean Longstaff", "Anthony Gordon", "Alexander Isak"],
-  "Newcastle United": ["Nick Pope", "Kieran Trippier", "Fabian Schar", "Sven Botman", "Dan Burn", "Bruno Guimaraes", "Joelinton", "Sean Longstaff", "Anthony Gordon", "Alexander Isak"],
-  Sunderland: ["Anthony Patterson", "Luke O'Nien", "Daniel Ballard", "Dennis Cirkin", "Dan Neil", "Jobe Bellingham", "Pierre Ekwah", "Patrick Roberts", "Jack Clarke", "Ross Stewart"],
-  Tottenham: ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"],
-  "Tottenham Hotspur": ["Guglielmo Vicario", "Pedro Porro", "Cristian Romero", "Micky van de Ven", "Destiny Udogie", "Yves Bissouma", "James Maddison", "Pape Matar Sarr", "Dejan Kulusevski", "Heung-min Son"]
-};
-const TEAM_NAME_ALIASES = {
-  "Brighton & Hove Albion": "Brighton",
-  "Leeds United": "Leeds",
-  "Newcastle United": "Newcastle",
-  "Tottenham Hotspur": "Tottenham"
-};
 
 const state = {
   client: null,
@@ -82,7 +58,7 @@ const state = {
   activeLeagueLeaderboard: [],
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
-  teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS], ...OPPONENT_REGISTERED_PLAYERS },
+  teamSquads: { Chelsea: [...CHELSEA_REGISTERED_PLAYERS] },
   teamSquadFetchedAt: {},
   squadFetchInFlight: {},
   showAllUpcoming: false,
@@ -152,7 +128,7 @@ async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
   await syncUpcomingFixturesFromChelsea();
-  primeSquadsForUpcomingFixtures();
+  await maybeRefreshChelseaSquad();
   renderOverviewTabs();
   renderUpcomingFixtures();
   renderTopScorers();
@@ -223,7 +199,7 @@ async function onLogOut() {
 
 async function onRefreshAll() {
   await syncUpcomingFixturesFromChelsea(true);
-  primeSquadsForUpcomingFixtures(true);
+  await maybeRefreshChelseaSquad(true);
   await loadOverallLeaderboard();
   await reloadAuthedData();
   render();
@@ -274,7 +250,7 @@ async function reloadAuthedData() {
 
   if (state.activeLeagueId) {
     await loadActiveLeagueData();
-    primeSquadsForFixtureList(state.activeLeagueFixtures);
+    await maybeRefreshChelseaSquad();
   }
 }
 
@@ -849,8 +825,6 @@ function renderFixtures() {
     const chelseaMinusBtn = predictionForm.querySelector(".score-minus-chelsea");
     const chelseaPlusBtn = predictionForm.querySelector(".score-plus-chelsea");
     const scorerSelectedEl = predictionForm.querySelector(".selected-scorer-value");
-    const opponentGroupTitleEl = predictionForm.querySelector(".scorer-group-title-opponent");
-    const opponentChipWrap = predictionForm.querySelector(".player-chip-wrap-opponent");
     const chelseaChipWrap = predictionForm.querySelector(".player-chip-wrap-chelsea");
 
     titleEl.textContent = `Chelsea vs ${fixture.opponent}`;
@@ -881,21 +855,14 @@ function renderFixtures() {
     }
 
     opponentNameEl.textContent = fixture.opponent;
-    opponentGroupTitleEl.textContent = `${fixture.opponent} Players`;
-    const playerPools = getFixturePlayerPools(fixture.opponent);
-    renderScorerButtons(
-      opponentChipWrap,
-      playerPools.opponentPlayers,
-      predScorerInput,
-      scorerSelectedEl
-    );
+    const chelseaPlayers = getChelseaRegisteredPlayers();
     renderScorerButtons(
       chelseaChipWrap,
-      playerPools.chelseaPlayers,
+      chelseaPlayers,
       predScorerInput,
       scorerSelectedEl
     );
-    if (predScorerInput.value && !playerPools.allPlayers.includes(predScorerInput.value)) {
+    if (predScorerInput.value && !chelseaPlayers.includes(predScorerInput.value)) {
       appendCustomScorerButton(chelseaChipWrap, predScorerInput.value, predScorerInput, scorerSelectedEl);
     }
     refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl);
@@ -987,37 +954,12 @@ function refreshScorerState(formEl, selectedPlayer, selectedLabelEl) {
   selectedLabelEl.textContent = selectedPlayer || "None";
 }
 
-function getFixturePlayerPools(opponent) {
-  maybeRefreshTeamSquad("Chelsea");
-  maybeRefreshTeamSquad(opponent);
-  const opponentPlayers = state.teamSquads[opponent] || OPPONENT_REGISTERED_PLAYERS[opponent] || [];
-  const chelseaPlayers = state.teamSquads.Chelsea || CHELSEA_REGISTERED_PLAYERS;
-  return {
-    opponentPlayers,
-    chelseaPlayers,
-    allPlayers: [...opponentPlayers, ...chelseaPlayers]
-  };
+function getChelseaRegisteredPlayers() {
+  return state.teamSquads.Chelsea || CHELSEA_REGISTERED_PLAYERS;
 }
 
-function primeSquadsForUpcomingFixtures(force = false) {
-  maybeRefreshTeamSquad("Chelsea", force);
-  const opponents = getUpcomingFixturesForDisplay().map((fixture) => fixture.opponent);
-  opponents.forEach((name) => maybeRefreshTeamSquad(name, force));
-}
-
-function primeSquadsForFixtureList(fixtures) {
-  maybeRefreshTeamSquad("Chelsea");
-  fixtures.forEach((fixture) => maybeRefreshTeamSquad(fixture.opponent));
-}
-
-function maybeRefreshTeamSquad(teamName, force = false) {
-  if (!teamName || typeof teamName !== "string") {
-    return;
-  }
-  if (teamName === "Chelsea") {
-    state.teamSquads.Chelsea = [...CHELSEA_REGISTERED_PLAYERS];
-    return;
-  }
+async function maybeRefreshChelseaSquad(force = false) {
+  const teamName = "Chelsea";
   const fetchedAt = state.teamSquadFetchedAt[teamName] || 0;
   if (!force && fetchedAt && Date.now() - fetchedAt < SQUAD_CACHE_MAX_AGE_MS) {
     return;
@@ -1025,97 +967,45 @@ function maybeRefreshTeamSquad(teamName, force = false) {
   if (state.squadFetchInFlight[teamName]) {
     return;
   }
-
   state.squadFetchInFlight[teamName] = true;
-  fetchTeamSquad(teamName)
-    .then((players) => {
-      if (!Array.isArray(players) || players.length < 8) {
-        return;
-      }
-      state.teamSquads[teamName] = players;
+  try {
+    const players = await fetchChelseaSquadFromOfficial();
+    if (players.length >= 15) {
+      state.teamSquads.Chelsea = players;
       state.teamSquadFetchedAt[teamName] = Date.now();
       persistSquadCache();
       render();
-    })
-    .catch(() => {
-      // Keep fallback list on fetch errors.
-    })
-    .finally(() => {
-      delete state.squadFetchInFlight[teamName];
-    });
+    }
+  } catch {
+    // Keep fallback list if official fetch fails.
+  } finally {
+    delete state.squadFetchInFlight[teamName];
+  }
 }
 
-async function fetchTeamSquad(teamName) {
-  const searchName = TEAM_NAME_ALIASES[teamName] || teamName;
-  const searchResponse = await fetch(`${SPORTSDB_SEARCH_TEAMS_URL}${encodeURIComponent(searchName)}`);
-  if (!searchResponse.ok) {
-    throw new Error(`Search failed: ${searchResponse.status}`);
+async function fetchChelseaSquadFromOfficial() {
+  const response = await fetch(CHELSEA_SQUAD_PROXY_URL);
+  if (!response.ok) {
+    throw new Error(`Chelsea squad fetch failed: ${response.status}`);
   }
-  const searchJson = await searchResponse.json();
-  const teams = Array.isArray(searchJson?.teams) ? searchJson.teams : [];
-  const selectedTeam = pickBestTeamMatch(teamName, teams);
-  if (!selectedTeam?.idTeam) {
-    throw new Error("Team not found");
-  }
-
-  const playersResponse = await fetch(`${SPORTSDB_LOOKUP_ALL_PLAYERS_URL}${selectedTeam.idTeam}`);
-  if (!playersResponse.ok) {
-    throw new Error(`Player lookup failed: ${playersResponse.status}`);
-  }
-  const playersJson = await playersResponse.json();
-  const players = Array.isArray(playersJson?.player) ? playersJson.player : [];
-
-  const cleaned = [];
+  const text = await response.text();
+  const re = /\[([^\]]+)\]\(https:\/\/www\.chelseafc\.com\/en\/teams\/profile\/[^)]+\)/g;
+  const names = [];
   const seen = new Set();
-  players.forEach((row) => {
-    const name = (row?.strPlayer || "").trim();
-    if (!name) {
-      return;
-    }
-    const status = (row?.strStatus || "").toLowerCase();
-    const position = (row?.strPosition || "").toLowerCase();
-    if (status === "coaching" || position.includes("coach") || position.includes("manager")) {
-      return;
-    }
-    if (status && status !== "active") {
-      return;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const name = (match[1] || "").trim();
+    if (!name || name.length < 3) {
+      continue;
     }
     const key = name.toLowerCase();
     if (seen.has(key)) {
-      return;
+      continue;
     }
     seen.add(key);
-    cleaned.push(name);
-  });
-
-  return cleaned.sort((a, b) => a.localeCompare(b));
-}
-
-function pickBestTeamMatch(teamName, teams) {
-  if (!Array.isArray(teams) || teams.length === 0) {
-    return null;
+    names.push(name);
   }
-  const normalizedTarget = normalizeTeamName(teamName);
-  const exact = teams.find((team) => normalizeTeamName(team.strTeam) === normalizedTarget);
-  if (exact) {
-    return exact;
-  }
-
-  const premier = teams.find(
-    (team) =>
-      String(team.strSport || "").toLowerCase() === "soccer" &&
-      String(team.strLeague || "").toLowerCase().includes("premier")
-  );
-  return premier || teams[0];
-}
-
-function normalizeTeamName(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/fc/g, "")
-    .replace(/football club/g, "")
-    .replace(/[^a-z0-9]/g, "");
+  return names.sort((a, b) => a.localeCompare(b));
 }
 
 function summarizeMemberScore(userId) {
