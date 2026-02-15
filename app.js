@@ -200,6 +200,7 @@ const adminConsoleEl = document.getElementById("admin-console");
 const adminLeagueListEl = document.getElementById("admin-league-list");
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
+const predictSigninPromptEl = document.getElementById("predict-signin-prompt");
 
 const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
@@ -1298,6 +1299,7 @@ function render() {
   if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", isAuthed || !isConnected);
   if (accountEditProfileTopLink) accountEditProfileTopLink.classList.toggle("hidden", !isAuthed || !isConnected);
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !isAuthed || !isConnected);
+  if (predictSigninPromptEl) predictSigninPromptEl.classList.toggle("hidden", isAuthed);
 
   if (!isConnected) {
     if (sessionStatus) {
