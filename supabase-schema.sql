@@ -46,6 +46,7 @@ create table if not exists public.predictions (
   chelsea_goals integer not null check (chelsea_goals >= 0),
   opponent_goals integer not null check (opponent_goals >= 0),
   first_scorer text not null,
+  predicted_scorers text not null default '',
   submitted_at timestamptz not null default now(),
   primary key (fixture_id, user_id)
 );
@@ -55,9 +56,42 @@ create table if not exists public.results (
   chelsea_goals integer not null check (chelsea_goals >= 0),
   opponent_goals integer not null check (opponent_goals >= 0),
   first_scorer text not null,
+  chelsea_scorers text not null default '',
   saved_by uuid not null references auth.users(id) on delete cascade,
   saved_at timestamptz not null default now()
 );
+
+alter table public.predictions
+  add column if not exists predicted_scorers text;
+
+update public.predictions
+set predicted_scorers = case
+  when lower(trim(first_scorer)) in ('', 'none', 'unknown') then ''
+  else trim(first_scorer)
+end
+where predicted_scorers is null or trim(predicted_scorers) = '';
+
+alter table public.predictions
+  alter column predicted_scorers set default '';
+
+alter table public.predictions
+  alter column predicted_scorers set not null;
+
+alter table public.results
+  add column if not exists chelsea_scorers text;
+
+update public.results
+set chelsea_scorers = case
+  when lower(trim(first_scorer)) in ('', 'none', 'unknown') then ''
+  else trim(first_scorer)
+end
+where chelsea_scorers is null or trim(chelsea_scorers) = '';
+
+alter table public.results
+  alter column chelsea_scorers set default '';
+
+alter table public.results
+  alter column chelsea_scorers set not null;
 
 create or replace function public.is_league_member(p_league_id uuid)
 returns boolean
@@ -183,6 +217,31 @@ $$;
 
 grant execute on function public.can_submit_prediction(uuid) to authenticated;
 
+create or replace function public.count_matching_scorers(p_predicted text, p_actual text)
+returns integer
+language sql
+immutable
+set search_path = public
+as $$
+  with predicted as (
+    select lower(trim(token)) as name, count(*)::integer as cnt
+    from regexp_split_to_table(coalesce(p_predicted, ''), '\s*,\s*') as token
+    where trim(token) <> ''
+      and lower(trim(token)) not in ('unknown', 'none')
+    group by 1
+  ),
+  actual as (
+    select lower(trim(token)) as name, count(*)::integer as cnt
+    from regexp_split_to_table(coalesce(p_actual, ''), '\s*,\s*') as token
+    where trim(token) <> ''
+      and lower(trim(token)) not in ('unknown', 'none')
+    group by 1
+  )
+  select coalesce(sum(least(p.cnt, a.cnt)), 0)::integer
+  from predicted p
+  join actual a on a.name = p.name;
+$$;
+
 create or replace function public.get_overall_leaderboard(p_limit integer default 10)
 returns table (
   user_id uuid,
@@ -221,6 +280,8 @@ as $$
         (case when p.chelsea_goals = r.chelsea_goals then 1 else 0 end)
         +
         (case when p.opponent_goals = r.opponent_goals then 1 else 0 end)
+        +
+        public.count_matching_scorers(p.predicted_scorers, r.chelsea_scorers)
         +
         (case
           when r.chelsea_goals > 0
@@ -311,6 +372,8 @@ as $$
         (case when p.chelsea_goals = r.chelsea_goals then 1 else 0 end)
         +
         (case when p.opponent_goals = r.opponent_goals then 1 else 0 end)
+        +
+        public.count_matching_scorers(p.predicted_scorers, r.chelsea_scorers)
         +
         (case
           when r.chelsea_goals > 0

@@ -12,6 +12,7 @@ const SCORING = {
   correctResult: 2,
   correctChelseaGoals: 1,
   correctOpponentGoals: 1,
+  correctGoalscorer: 1,
   correctFirstScorer: 2,
   perfectBonus: 1
 };
@@ -454,6 +455,7 @@ async function onSavePrediction(fixture, form) {
   const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".pred-opponent").value);
   const selectedScorers = form.querySelector(".pred-scorer").value.trim();
+  const predictedScorers = expandScorerSelectionsForStorage(selectedScorers);
   const firstScorerSelect = form.querySelector(".pred-first-scorer");
   let firstScorer = firstScorerSelect?.value?.trim() || "";
   if (chelseaGoals === null || opponentGoals === null) {
@@ -473,6 +475,7 @@ async function onSavePrediction(fixture, form) {
       chelsea_goals: chelseaGoals,
       opponent_goals: opponentGoals,
       first_scorer: firstScorer,
+      predicted_scorers: predictedScorers,
       submitted_at: new Date().toISOString()
     },
     { onConflict: "fixture_id,user_id" }
@@ -507,6 +510,7 @@ async function onSaveResult(fixture, form) {
       chelsea_goals: chelseaGoals,
       opponent_goals: opponentGoals,
       first_scorer: firstScorer,
+      chelsea_scorers: expandScorerSelectionsForStorage(firstScorer),
       saved_by: state.session.user.id,
       saved_at: new Date().toISOString()
     },
@@ -555,7 +559,7 @@ async function loadActiveLeagueData() {
     state.client
       .from("fixtures")
       .select(
-        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer)"
+        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers)"
       )
       .eq("league_id", league.id)
       .order("kickoff", { ascending: true })
@@ -631,6 +635,7 @@ async function syncCompletedResultsFromChelsea() {
         chelsea_goals: match.resultChelsea,
         opponent_goals: match.resultOpponent,
         first_scorer: "Unknown",
+        chelsea_scorers: "",
         saved_by: state.session.user.id,
         saved_at: new Date().toISOString()
       });
@@ -652,7 +657,8 @@ async function syncCompletedResultsFromChelsea() {
         ? {
             chelsea_goals: scoreByFixture.get(fixture.id).chelsea_goals,
             opponent_goals: scoreByFixture.get(fixture.id).opponent_goals,
-            first_scorer: scoreByFixture.get(fixture.id).first_scorer
+            first_scorer: scoreByFixture.get(fixture.id).first_scorer,
+            chelsea_scorers: scoreByFixture.get(fixture.id).chelsea_scorers
           }
         : fixture.result
     }));
@@ -694,7 +700,7 @@ async function ensureUpcomingFixturesImported() {
   const { data } = await state.client
     .from("fixtures")
     .select(
-      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer)"
+      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers)"
     )
     .eq("league_id", league.id)
     .order("kickoff", { ascending: true });
@@ -714,7 +720,7 @@ async function loadMyPredictionsForActiveFixtures() {
   const fixtureIds = state.activeLeagueFixtures.map((fixture) => fixture.id);
   const { data, error } = await state.client
     .from("predictions")
-    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers")
     .eq("user_id", state.session.user.id)
     .in("fixture_id", fixtureIds);
 
@@ -1068,6 +1074,8 @@ function renderFixtures() {
       const cachedSelections = readCachedPredictionScorers(fixture.id, state.session.user.id);
       if (cachedSelections) {
         predScorerInput.value = cachedSelections;
+      } else if (myPrediction.predicted_scorers) {
+        predScorerInput.value = compressExpandedScorerStorage(myPrediction.predicted_scorers);
       } else if (looksLikeScorerSelections(myPrediction.first_scorer)) {
         predScorerInput.value = myPrediction.first_scorer;
         if (!initialFirstScorer) {
@@ -1430,6 +1438,13 @@ function scorePrediction(prediction, result) {
     getOutcome(result.chelsea_goals, result.opponent_goals);
   const predictedFirstScorer = normalizeFirstScorerValue(prediction.first_scorer);
   const resultFirstScorer = normalizeFirstScorerValue(result.first_scorer);
+  const predictedScorerSelections = prediction.predicted_scorers
+    ? parseScorerSelections(compressExpandedScorerStorage(prediction.predicted_scorers))
+    : parseScorerSelections(prediction.first_scorer);
+  const resultScorerSelections = result.chelsea_scorers
+    ? parseScorerSelections(compressExpandedScorerStorage(result.chelsea_scorers))
+    : parseScorerSelections(result.first_scorer);
+  const correctGoalscorers = countCorrectGoalscorers(predictedScorerSelections, resultScorerSelections);
   const correctScorer =
     result.chelsea_goals > 0 &&
     Boolean(predictedFirstScorer) &&
@@ -1451,6 +1466,9 @@ function scorePrediction(prediction, result) {
   if (correctOpponentGoals) {
     points += SCORING.correctOpponentGoals;
   }
+  if (correctGoalscorers > 0) {
+    points += correctGoalscorers * SCORING.correctGoalscorer;
+  }
   if (correctScorer) {
     points += SCORING.correctFirstScorer;
   }
@@ -1463,6 +1481,7 @@ function scorePrediction(prediction, result) {
     exact,
     correctResult,
     correctScorer,
+    correctGoalscorers,
     correctChelseaGoals,
     correctOpponentGoals,
     perfect
@@ -1587,6 +1606,54 @@ function normalizeFirstScorerValue(rawValue) {
     return value;
   }
   return parseScorerSelections(value)[0]?.name || "";
+}
+
+function countCorrectGoalscorers(predictedSelections, resultSelections) {
+  if (!Array.isArray(predictedSelections) || !Array.isArray(resultSelections)) {
+    return 0;
+  }
+  const resultCounts = new Map();
+  resultSelections.forEach((entry) => {
+    const key = String(entry.name || "").trim().toLowerCase();
+    if (!key || key === "unknown" || key === "none") {
+      return;
+    }
+    const current = resultCounts.get(key) || 0;
+    resultCounts.set(key, current + Math.max(1, Number.parseInt(entry.count, 10) || 1));
+  });
+
+  let matches = 0;
+  predictedSelections.forEach((entry) => {
+    const key = String(entry.name || "").trim().toLowerCase();
+    if (!key || key === "unknown" || key === "none") {
+      return;
+    }
+    const predictedCount = Math.max(1, Number.parseInt(entry.count, 10) || 1);
+    const available = resultCounts.get(key) || 0;
+    const hit = Math.min(predictedCount, available);
+    if (hit > 0) {
+      matches += hit;
+      resultCounts.set(key, available - hit);
+    }
+  });
+  return matches;
+}
+
+function expandScorerSelectionsForStorage(rawValue) {
+  const selections = parseScorerSelections(rawValue);
+  const expanded = [];
+  selections.forEach((entry) => {
+    const count = Math.max(1, Number.parseInt(entry.count, 10) || 1);
+    for (let i = 0; i < count; i += 1) {
+      expanded.push(entry.name);
+    }
+  });
+  return expanded.join(", ");
+}
+
+function compressExpandedScorerStorage(rawValue) {
+  const selections = parseScorerSelections(rawValue);
+  return serializeScorerSelections(selections);
 }
 
 function readCachedPredictionScorers(fixtureId, userId) {
