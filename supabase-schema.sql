@@ -183,7 +183,7 @@ begin
 
   v_password_hash := case
     when coalesce(p_is_public, true) then null
-    else crypt(trim(p_join_password), gen_salt('bf'))
+    else extensions.crypt(trim(p_join_password), extensions.gen_salt('bf'))
   end;
 
   loop
@@ -307,7 +307,7 @@ begin
   from public.leagues l
   where lower(trim(l.name)) = lower(trim(p_name))
     and l.is_public = false
-    and l.join_password_hash = crypt(trim(p_password), l.join_password_hash)
+    and l.join_password_hash = extensions.crypt(trim(p_password), l.join_password_hash)
   order by l.created_at desc
   limit 1;
 

@@ -927,6 +927,12 @@ async function onCreateLeague(event) {
     }
     if (!leagueData) {
       const message = String(error?.message || "");
+      if (/gen_salt|crypt\(/i.test(message)) {
+        alert(
+          "Private league password hashing is not enabled yet. In Supabase SQL Editor run: create extension if not exists pgcrypto with schema extensions;"
+        );
+        return;
+      }
       if (visibility === "private" && isMissingFunctionError(error, "create_league")) {
         alert(
           "Private leagues are not enabled in your current database schema yet. Run the latest supabase-schema.sql, then try again."
@@ -1006,6 +1012,12 @@ async function onJoinLeague(event) {
       p_country_code: getCurrentUserCountryCode()
     });
     if (error) {
+      if (/gen_salt|crypt\(/i.test(String(error.message || ""))) {
+        alert(
+          "Private league password hashing is not enabled yet. In Supabase SQL Editor run: create extension if not exists pgcrypto with schema extensions;"
+        );
+        return;
+      }
       alert(error.message);
       return;
     }
