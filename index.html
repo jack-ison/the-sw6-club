@@ -53,6 +53,9 @@
           <button id="overview-global-tab" type="button" class="tab-btn active" role="tab" aria-selected="true">
             Global Leaderboard
           </button>
+          <button id="overview-past-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
+            Past Games
+          </button>
           <button id="overview-leagues-tab" type="button" class="tab-btn" role="tab" aria-selected="false">
             My Leagues
           </button>
@@ -90,6 +93,12 @@
           <h2>Global Leaderboard (Top 10)</h2>
           <ul id="overall-leaderboard" class="leaderboard"></ul>
           <p id="overall-leaderboard-status" class="status no-margin"></p>
+        </div>
+
+        <div id="past-overview-panel" class="hidden">
+          <h2>Past Games</h2>
+          <ul id="past-games-list" class="past-games-list"></ul>
+          <p id="past-games-status" class="status no-margin"></p>
         </div>
 
         <div id="league-panel" class="hidden">

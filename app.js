@@ -71,10 +71,12 @@ const state = {
 const overviewFixturesTabBtn = document.getElementById("overview-fixtures-tab");
 const overviewScorersTabBtn = document.getElementById("overview-scorers-tab");
 const overviewGlobalTabBtn = document.getElementById("overview-global-tab");
+const overviewPastTabBtn = document.getElementById("overview-past-tab");
 const overviewLeaguesTabBtn = document.getElementById("overview-leagues-tab");
 const fixturesOverviewPanel = document.getElementById("fixtures-overview-panel");
 const scorersOverviewPanel = document.getElementById("scorers-overview-panel");
 const globalOverviewPanel = document.getElementById("global-overview-panel");
+const pastOverviewPanel = document.getElementById("past-overview-panel");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -82,6 +84,8 @@ const scorersTableBody = document.getElementById("scorers-table-body");
 const scorersSourceEl = document.getElementById("scorers-source");
 const overallLeaderboardEl = document.getElementById("overall-leaderboard");
 const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
+const pastGamesListEl = document.getElementById("past-games-list");
+const pastGamesStatusEl = document.getElementById("past-games-status");
 
 const authPanel = document.getElementById("auth-panel");
 const loginForm = document.getElementById("login-form");
@@ -115,6 +119,10 @@ overviewScorersTabBtn.addEventListener("click", () => {
 });
 overviewGlobalTabBtn.addEventListener("click", () => {
   state.overviewTab = "global";
+  renderOverviewTabs();
+});
+overviewPastTabBtn.addEventListener("click", () => {
+  state.overviewTab = "past";
   renderOverviewTabs();
 });
 overviewLeaguesTabBtn.addEventListener("click", () => {
@@ -723,6 +731,7 @@ function render() {
   renderUpcomingFixtures();
   renderTopScorers();
   renderOverallLeaderboard();
+  renderPastGames();
 
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
@@ -780,19 +789,88 @@ function renderOverviewTabs() {
   const showFixtures = state.overviewTab === "fixtures";
   const showScorers = state.overviewTab === "scorers";
   const showGlobal = state.overviewTab === "global";
+  const showPast = state.overviewTab === "past";
   const showLeagues = state.overviewTab === "leagues";
   overviewFixturesTabBtn.classList.toggle("active", showFixtures);
   overviewScorersTabBtn.classList.toggle("active", showScorers);
   overviewGlobalTabBtn.classList.toggle("active", showGlobal);
+  overviewPastTabBtn.classList.toggle("active", showPast);
   overviewLeaguesTabBtn.classList.toggle("active", showLeagues);
   overviewFixturesTabBtn.setAttribute("aria-selected", String(showFixtures));
   overviewScorersTabBtn.setAttribute("aria-selected", String(showScorers));
   overviewGlobalTabBtn.setAttribute("aria-selected", String(showGlobal));
+  overviewPastTabBtn.setAttribute("aria-selected", String(showPast));
   overviewLeaguesTabBtn.setAttribute("aria-selected", String(showLeagues));
   fixturesOverviewPanel.classList.toggle("hidden", !showFixtures);
   scorersOverviewPanel.classList.toggle("hidden", !showScorers);
   globalOverviewPanel.classList.toggle("hidden", !showGlobal);
+  pastOverviewPanel.classList.toggle("hidden", !showPast);
   leaguePanel.classList.toggle("hidden", !showLeagues || !state.session?.user);
+}
+
+function renderPastGames() {
+  if (!pastGamesListEl || !pastGamesStatusEl) {
+    return;
+  }
+
+  pastGamesListEl.textContent = "";
+  if (!state.session?.user) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "Log in to view your past predictions.";
+    pastGamesListEl.appendChild(li);
+    pastGamesStatusEl.textContent = "Your history appears here after you sign in.";
+    return;
+  }
+
+  const completedFixtures = state.activeLeagueFixtures
+    .filter((fixture) => fixture.result)
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+
+  if (completedFixtures.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No completed games yet.";
+    pastGamesListEl.appendChild(li);
+    pastGamesStatusEl.textContent = "Completed fixtures with your score will show here.";
+    return;
+  }
+
+  let totalPoints = 0;
+  completedFixtures.forEach((fixture) => {
+    const li = document.createElement("li");
+    li.className = "past-game-item";
+
+    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
+    const headline = document.createElement("p");
+    headline.className = "past-game-head";
+    headline.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent}`;
+    li.appendChild(headline);
+
+    const result = fixture.result;
+    const resultLine = document.createElement("p");
+    resultLine.className = "past-game-line";
+    resultLine.textContent = `Result: Chelsea ${result.chelsea_goals} - ${result.opponent_goals} ${fixture.opponent} | First scorer: ${result.first_scorer}`;
+    li.appendChild(resultLine);
+
+    if (myPrediction) {
+      const detail = scorePrediction(myPrediction, result);
+      totalPoints += detail.points;
+      const predictionLine = document.createElement("p");
+      predictionLine.className = "past-game-line";
+      predictionLine.textContent = `Your prediction: Chelsea ${myPrediction.chelsea_goals} - ${myPrediction.opponent_goals} ${fixture.opponent} | First scorer: ${myPrediction.first_scorer} | Match points: ${detail.points}`;
+      li.appendChild(predictionLine);
+    } else {
+      const missingLine = document.createElement("p");
+      missingLine.className = "past-game-line";
+      missingLine.textContent = "You did not submit a prediction for this game.";
+      li.appendChild(missingLine);
+    }
+
+    pastGamesListEl.appendChild(li);
+  });
+
+  pastGamesStatusEl.textContent = `Your completed games: ${completedFixtures.length} | Total points from completed games: ${totalPoints}`;
 }
 
 function renderUpcomingFixtures() {
