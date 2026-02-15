@@ -902,6 +902,7 @@ function renderFixtures() {
     const chelseaMinusBtn = predictionForm.querySelector(".score-minus-chelsea");
     const chelseaPlusBtn = predictionForm.querySelector(".score-plus-chelsea");
     const scorerSelectedEl = predictionForm.querySelector(".selected-scorer-value");
+    const scorerListEl = predictionForm.querySelector(".selected-scorer-list");
     const chelseaChipWrap = predictionForm.querySelector(".player-chip-wrap-chelsea");
 
     titleEl.textContent = `Chelsea vs ${fixture.opponent}`;
@@ -937,14 +938,15 @@ function renderFixtures() {
       chelseaChipWrap,
       chelseaPlayers,
       predScorerInput,
-      scorerSelectedEl
+      scorerSelectedEl,
+      scorerListEl
     );
     parseScorerList(predScorerInput.value).forEach((name) => {
       if (!chelseaPlayers.some((player) => player.toLowerCase() === name.toLowerCase())) {
-        appendCustomScorerButton(chelseaChipWrap, name, predScorerInput, scorerSelectedEl);
+        appendCustomScorerButton(chelseaChipWrap, name, predScorerInput, scorerSelectedEl, scorerListEl);
       }
     });
-    refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl);
+    refreshScorerState(predictionForm, predScorerInput.value, scorerSelectedEl, scorerListEl);
 
     const syncScoreDisplay = () => {
       const opponentValue = Number.parseInt(predOpponentInput.value || "0", 10);
@@ -997,7 +999,7 @@ function renderFixtures() {
   });
 }
 
-function renderScorerButtons(container, players, targetInput, selectedLabelEl) {
+function renderScorerButtons(container, players, targetInput, selectedLabelEl, selectedListEl) {
   container.textContent = "";
   players.forEach((player) => {
     const button = document.createElement("button");
@@ -1007,13 +1009,19 @@ function renderScorerButtons(container, players, targetInput, selectedLabelEl) {
     button.dataset.baseLabel = player;
     button.textContent = player;
     button.addEventListener("click", () => {
-      incrementScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
+      incrementScorerSelection(
+        container.closest(".prediction-form"),
+        targetInput,
+        player,
+        selectedLabelEl,
+        selectedListEl
+      );
     });
     container.appendChild(button);
   });
 }
 
-function appendCustomScorerButton(container, player, targetInput, selectedLabelEl) {
+function appendCustomScorerButton(container, player, targetInput, selectedLabelEl, selectedListEl) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "player-chip";
@@ -1021,12 +1029,18 @@ function appendCustomScorerButton(container, player, targetInput, selectedLabelE
   button.dataset.baseLabel = player;
   button.textContent = player;
   button.addEventListener("click", () => {
-    incrementScorerSelection(container.closest(".prediction-form"), targetInput, player, selectedLabelEl);
+    incrementScorerSelection(
+      container.closest(".prediction-form"),
+      targetInput,
+      player,
+      selectedLabelEl,
+      selectedListEl
+    );
   });
   container.appendChild(button);
 }
 
-function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl) {
+function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl, selectedListEl) {
   const current = parseScorerSelections(targetInput.value);
   const index = current.findIndex((entry) => entry.name.toLowerCase() === player.toLowerCase());
   const maxGoalsPerPlayer = 5;
@@ -1043,10 +1057,10 @@ function incrementScorerSelection(formEl, targetInput, player, selectedLabelEl) 
   }
 
   targetInput.value = serializeScorerSelections(current);
-  refreshScorerState(formEl, targetInput.value, selectedLabelEl);
+  refreshScorerState(formEl, targetInput.value, selectedLabelEl, selectedListEl);
 }
 
-function refreshScorerState(formEl, selectedRaw, selectedLabelEl) {
+function refreshScorerState(formEl, selectedRaw, selectedLabelEl, selectedListEl) {
   const selectedPlayers = parseScorerSelections(selectedRaw);
   formEl.querySelectorAll(".player-chip").forEach((chip) => {
     const match = selectedPlayers.find((entry) => entry.name.toLowerCase() === chip.dataset.player.toLowerCase());
@@ -1058,6 +1072,77 @@ function refreshScorerState(formEl, selectedRaw, selectedLabelEl) {
     selectedPlayers.length > 0
       ? selectedPlayers.map((entry) => (entry.count > 1 ? `${entry.name} x${entry.count}` : entry.name)).join(", ")
       : "None";
+  renderSelectedScorerList(formEl, selectedPlayers, selectedListEl);
+}
+
+function renderSelectedScorerList(formEl, selections, listEl) {
+  if (!listEl) {
+    return;
+  }
+  listEl.textContent = "";
+  if (selections.length === 0) {
+    const li = document.createElement("li");
+    li.className = "selected-scorer-item empty";
+    li.textContent = "No goalscorers selected yet.";
+    listEl.appendChild(li);
+    return;
+  }
+
+  const targetInput = formEl.querySelector(".pred-scorer");
+  const selectedLabelEl = formEl.querySelector(".selected-scorer-value");
+  selections.forEach((entry) => {
+    const li = document.createElement("li");
+    li.className = "selected-scorer-item";
+
+    const name = document.createElement("span");
+    name.textContent = entry.name;
+
+    const controls = document.createElement("div");
+    controls.className = "selected-scorer-controls";
+
+    const minusBtn = document.createElement("button");
+    minusBtn.type = "button";
+    minusBtn.className = "mini-step-btn";
+    minusBtn.textContent = "-";
+    minusBtn.addEventListener("click", () => {
+      adjustScorerCount(formEl, targetInput, entry.name, -1, selectedLabelEl, listEl);
+    });
+
+    const count = document.createElement("span");
+    count.className = "selected-scorer-count";
+    count.textContent = String(entry.count);
+
+    const plusBtn = document.createElement("button");
+    plusBtn.type = "button";
+    plusBtn.className = "mini-step-btn";
+    plusBtn.textContent = "+";
+    plusBtn.addEventListener("click", () => {
+      adjustScorerCount(formEl, targetInput, entry.name, 1, selectedLabelEl, listEl);
+    });
+
+    controls.appendChild(minusBtn);
+    controls.appendChild(count);
+    controls.appendChild(plusBtn);
+    li.appendChild(name);
+    li.appendChild(controls);
+    listEl.appendChild(li);
+  });
+}
+
+function adjustScorerCount(formEl, targetInput, player, delta, selectedLabelEl, selectedListEl) {
+  const current = parseScorerSelections(targetInput.value);
+  const index = current.findIndex((entry) => entry.name.toLowerCase() === player.toLowerCase());
+  if (index === -1) {
+    return;
+  }
+  current[index].count += delta;
+  if (current[index].count <= 0) {
+    current.splice(index, 1);
+  } else if (current[index].count > 5) {
+    current[index].count = 5;
+  }
+  targetInput.value = serializeScorerSelections(current);
+  refreshScorerState(formEl, targetInput.value, selectedLabelEl, selectedListEl);
 }
 
 function getChelseaRegisteredPlayers() {

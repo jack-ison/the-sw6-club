@@ -632,6 +632,61 @@ button:disabled {
   color: #fff;
 }
 
+.selected-scorer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.selected-scorer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #d8e6ff;
+  border-radius: 10px;
+  padding: 0.35rem 0.48rem;
+  background: #f8fbff;
+  color: #244879;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.selected-scorer-item.empty {
+  justify-content: center;
+  color: #5d769f;
+  font-weight: 600;
+}
+
+.selected-scorer-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mini-step-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid #b5caef;
+  background: #fff;
+  color: #22497f;
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.mini-step-btn:hover {
+  background: #e9f2ff;
+}
+
+.selected-scorer-count {
+  min-width: 12px;
+  text-align: center;
+}
+
 .prediction-form button,
 .result-form button {
   background: var(--success);
