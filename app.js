@@ -26,6 +26,7 @@ const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DRAFT_PREDICTION_STORAGE_PREFIX = "sw6:draftPrediction";
 const PREDICTION_CUTOFF_MINUTES = 90;
 const CHELSEA_TEAM_ID = "133610";
 const THE_SPORTS_DB_BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
@@ -183,6 +184,8 @@ const leagueLeaderboardRefreshPromises = new Map();
 let upcomingFixturesAbortController = null;
 let scorerStatsAbortController = null;
 let renderScheduled = false;
+const draftAutosaveTimers = new Map();
+let detachedAuthedFormsApplied = null;
 const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
   leagues: "./view-leagues.js",
@@ -240,7 +243,14 @@ const state = {
   visitorCount: null,
   adminLeagues: [],
   cardDeepLinkId: "",
-  pendingJoinCode: ""
+  pendingJoinCode: "",
+  user: null,
+  isAuthed: false,
+  draftModalOpen: false,
+  draftLoadedFixtureId: "",
+  draftNeedsReviewFixtureId: "",
+  previewTop10Loaded: false,
+  upcomingLastUpdatedAt: ""
 };
 
 function readRuntimeConfig() {
@@ -283,6 +293,13 @@ const resultsViewEl = document.getElementById("results-view");
 const cardsPanelEl = document.getElementById("cards-panel");
 const loginPanelEl = document.getElementById("login-panel");
 const predictAuthGateEl = document.getElementById("predict-auth-gate");
+const signedoutPreviewPanelEl = document.getElementById("signedout-preview-panel");
+const signedoutNextFixtureLineEl = document.getElementById("signedout-next-fixture-line");
+const signedoutNextFixtureMetaEl = document.getElementById("signedout-next-fixture-meta");
+const signedoutNextFixtureUpdatedEl = document.getElementById("signedout-next-fixture-updated");
+const signedoutLockCountdownEl = document.getElementById("signedout-lock-countdown");
+const signedoutTop10ListEl = document.getElementById("signedout-top10-list");
+const signedoutTop10StatusEl = document.getElementById("signedout-top10-status");
 const configErrorBannerEl = document.getElementById("config-error-banner");
 const leagueAuthGateEl = document.getElementById("league-auth-gate");
 const leagueAuthContentEl = document.getElementById("league-auth-content");
@@ -302,6 +319,8 @@ const cardDetailModalEl = document.getElementById("card-detail-modal");
 const closeCardDetailModalBtn = document.getElementById("close-card-detail-modal");
 const cardDetailBodyEl = document.getElementById("card-detail-body");
 const copyCardLinkBtn = document.getElementById("copy-card-link-btn");
+const draftSaveModalEl = document.getElementById("draft-save-modal");
+const closeDraftSaveModalBtn = document.getElementById("close-draft-save-modal");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -387,6 +406,21 @@ const forumReplyFormEl = document.getElementById("forum-reply-form");
 const forumReplyBodyInputEl = document.getElementById("forum-reply-body-input");
 const forumReplySubmitBtnEl = document.getElementById("forum-reply-submit-btn");
 
+const authOnlyFormMounts = [
+  createLeagueForm,
+  joinLeagueForm,
+  forumThreadFormEl,
+  forumReplyFormEl
+]
+  .filter(Boolean)
+  .map((node) => ({
+    node,
+    parent: node.parentNode,
+    nextSibling: node.nextSibling,
+    mounted: Boolean(node.parentNode),
+    placeholder: document.createComment(`auth-only:${node.id || "form"}`)
+  }));
+
 if (topnavPredictBtn) topnavPredictBtn.addEventListener("click", () => setTopView("predict"));
 if (topnavLeaguesBtn) topnavLeaguesBtn.addEventListener("click", () => setTopView("leagues"));
 if (topnavForumBtn) topnavForumBtn.addEventListener("click", () => setTopView("forum"));
@@ -425,6 +459,7 @@ if (cardsRarityRareBtn) cardsRarityRareBtn.addEventListener("click", () => setCa
 if (cardsRarityLegendaryBtn) cardsRarityLegendaryBtn.addEventListener("click", () => setCardsRarityFilter("legendary"));
 if (closeCardDetailModalBtn) closeCardDetailModalBtn.addEventListener("click", onCloseCardDetailModal);
 if (copyCardLinkBtn) copyCardLinkBtn.addEventListener("click", onCopyCardLink);
+if (closeDraftSaveModalBtn) closeDraftSaveModalBtn.addEventListener("click", onCloseDraftSaveModal);
 
 setInterval(renderDeadlineCountdown, 1000);
 window.addEventListener("hashchange", onRouteChange);
@@ -432,6 +467,28 @@ document.addEventListener("click", onDocumentClick);
 document.addEventListener("keydown", onDocumentKeydown);
 
 initializeApp();
+
+async function getAuthUser() {
+  if (!state.client) {
+    state.user = null;
+    state.session = null;
+    state.isAuthed = false;
+    state.draftNeedsReviewFixtureId = "";
+    return null;
+  }
+  const { data, error } = await state.client.auth.getUser();
+  if (error || !data?.user) {
+    state.user = null;
+    state.session = null;
+    state.isAuthed = false;
+    state.draftNeedsReviewFixtureId = "";
+    return null;
+  }
+  state.user = data.user;
+  state.session = { user: data.user };
+  state.isAuthed = true;
+  return data.user;
+}
 
 async function initializeApp() {
   setupTopNavPreload();
@@ -465,17 +522,15 @@ async function initializeApp() {
     return;
   }
 
-  const {
-    data: { session }
-  } = await state.client.auth.getSession();
-  state.session = session;
+  await getAuthUser();
   state.authResolved = true;
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   render();
   runPostAuthWarmup();
+  ensureOverallLeaderboardLoaded().then(render);
 
-  state.client.auth.onAuthStateChange(async (_event, sessionUpdate) => {
-    state.session = sessionUpdate;
+  state.client.auth.onAuthStateChange(async () => {
+    await getAuthUser();
     state.authResolved = true;
     state.isAdmin = false;
     authedDataInitialized = false;
@@ -719,6 +774,10 @@ function onDocumentClick(event) {
     onCloseRulesModal();
     return;
   }
+  if (state.draftModalOpen && draftSaveModalEl && event.target === draftSaveModalEl) {
+    onCloseDraftSaveModal();
+    return;
+  }
   if (state.activeCardId && cardDetailModalEl && event.target === cardDetailModalEl) {
     onCloseCardDetailModal();
     return;
@@ -741,6 +800,10 @@ function onDocumentClick(event) {
 
 function onDocumentKeydown(event) {
   if (event.key === "Escape") {
+    if (state.draftModalOpen) {
+      onCloseDraftSaveModal();
+      return;
+    }
     if (state.activeCardId) {
       onCloseCardDetailModal();
       return;
@@ -1113,7 +1176,9 @@ async function loadOverallLeaderboard() {
   const { data, error } = await state.client.rpc("get_overall_leaderboard", { p_limit: 10 });
   if (error) {
     state.overallLeaderboard = [];
-    state.overallLeaderboardStatus = "No global points data yet.";
+    state.overallLeaderboardStatus = state.isAuthed
+      ? "No global points data yet."
+      : "Sign in to view live standings.";
     state.overallLeaderboardLoaded = true;
     return;
   }
@@ -1894,6 +1959,9 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     updated: hadExistingPrediction,
     at: Date.now()
   };
+  state.draftNeedsReviewFixtureId = "";
+  state.draftLoadedFixtureId = "";
+  clearDraftPrediction(fixture.id);
   cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
   await loadActiveLeagueData();
   render();
@@ -2322,8 +2390,7 @@ function render() {
 
 function renderNow() {
   const isConnected = Boolean(state.client);
-  const isAuthed = Boolean(state.session?.user);
-  const signedIn = isConnected && isAuthed;
+  const signedIn = isConnected && Boolean(state.isAuthed && state.user);
   const cardsEnabled = FEATURE_CARDS_ENABLED;
   if (!signedIn && state.topView !== "predict") {
     state.topView = "predict";
@@ -2370,6 +2437,7 @@ function renderNow() {
 
   renderHeaderAuthState({ signedIn, isConnected });
   renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected, cardsEnabled });
+  renderSignedOutPredictPreview({ signedIn });
   renderConfigErrorBanner();
   if (!signedIn || !isAdminUser()) {
     removeAdminConsole();
@@ -2429,8 +2497,288 @@ function renderAuthGatedSections({ signedIn, authResolved, cardsEnabled }) {
   if (cardsAuthGateEl) cardsAuthGateEl.classList.toggle("hidden", !cardsEnabled || !showGate);
   if (cardsContentEl) cardsContentEl.classList.toggle("hidden", !cardsEnabled || !signedIn);
   if (leagueAuthContentEl) leagueAuthContentEl.classList.toggle("hidden", !signedIn);
-  if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !signedIn);
-  if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !signedIn);
+  applyAuthOnlyFormDomGate(signedIn);
+}
+
+function applyAuthOnlyFormDomGate(signedIn) {
+  if (detachedAuthedFormsApplied === signedIn) {
+    return;
+  }
+  detachedAuthedFormsApplied = signedIn;
+  authOnlyFormMounts.forEach((mount) => {
+    if (!mount?.node || !mount.placeholder) {
+      return;
+    }
+    if (signedIn) {
+      if (mount.placeholder.parentNode) {
+        mount.placeholder.parentNode.insertBefore(mount.node, mount.placeholder);
+        mount.placeholder.parentNode.removeChild(mount.placeholder);
+      } else if (mount.parent && !mount.node.parentNode) {
+        if (mount.nextSibling && mount.nextSibling.parentNode === mount.parent) {
+          mount.parent.insertBefore(mount.node, mount.nextSibling);
+        } else {
+          mount.parent.appendChild(mount.node);
+        }
+      }
+      mount.mounted = true;
+      return;
+    }
+    if (mount.node.parentNode) {
+      mount.node.parentNode.insertBefore(mount.placeholder, mount.node);
+      mount.node.parentNode.removeChild(mount.node);
+    }
+    mount.mounted = false;
+  });
+}
+
+function getDraftPredictionStorageKey(fixtureId) {
+  const safeFixtureId = String(fixtureId || "").trim();
+  if (!safeFixtureId) {
+    return "";
+  }
+  return `${DRAFT_PREDICTION_STORAGE_PREFIX}:${safeFixtureId}`;
+}
+
+function readDraftPrediction(fixtureId) {
+  const key = getDraftPredictionStorageKey(fixtureId);
+  if (!key) {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const chelseaGoals = parseGoals(parsed.chelseaGoals);
+    const opponentGoals = parseGoals(parsed.opponentGoals);
+    const scorerSelections = serializeScorerSelections(parseScorerSelections(parsed.scorerSelections));
+    const firstScorer = String(parsed.firstScorer || "").trim();
+    return {
+      chelseaGoals: chelseaGoals ?? 0,
+      opponentGoals: opponentGoals ?? 0,
+      scorerSelections,
+      firstScorer,
+      updatedAt: String(parsed.updatedAt || "")
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftPrediction(fixture, form) {
+  const key = getDraftPredictionStorageKey(fixture?.id);
+  if (!key || !form) {
+    return;
+  }
+  syncChelseaGoalsToScorerSelection(form);
+  const chelseaGoals = parseGoals(form.querySelector(".pred-chelsea")?.value) ?? 0;
+  const opponentGoals = parseGoals(form.querySelector(".pred-opponent")?.value) ?? 0;
+  const scorerSelections = serializeScorerSelections(
+    parseScorerSelections(form.querySelector(".pred-scorer")?.value || "")
+  );
+  const firstScorer = String(form.querySelector(".pred-first-scorer")?.value || "").trim();
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        fixtureId: String(fixture.id),
+        chelseaGoals,
+        opponentGoals,
+        scorerSelections,
+        firstScorer,
+        updatedAt: new Date().toISOString()
+      })
+    );
+  } catch {
+    // Ignore draft persistence failures.
+  }
+}
+
+function clearDraftPrediction(fixtureId) {
+  const key = getDraftPredictionStorageKey(fixtureId);
+  if (!key) {
+    return;
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function queueDraftAutosave(fixture, form) {
+  const fixtureId = String(fixture?.id || "");
+  if (!fixtureId || !form) {
+    return;
+  }
+  const existingTimer = draftAutosaveTimers.get(fixtureId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+  const nextTimer = setTimeout(() => {
+    draftAutosaveTimers.delete(fixtureId);
+    if (!state.isAuthed) {
+      writeDraftPrediction(fixture, form);
+      if (state.draftLoadedFixtureId !== fixtureId) {
+        state.draftLoadedFixtureId = fixtureId;
+        render();
+      }
+    }
+  }, 300);
+  draftAutosaveTimers.set(fixtureId, nextTimer);
+}
+
+function applyDraftPredictionToForm(form, draft) {
+  if (!form || !draft) {
+    return;
+  }
+  const predOpponentInput = form.querySelector(".pred-opponent");
+  const predChelseaInput = form.querySelector(".pred-chelsea");
+  const predScorerInput = form.querySelector(".pred-scorer");
+  const predFirstScorerSelect = form.querySelector(".pred-first-scorer");
+  if (predOpponentInput) predOpponentInput.value = String(draft.opponentGoals ?? 0);
+  if (predChelseaInput) predChelseaInput.value = String(draft.chelseaGoals ?? 0);
+  if (predScorerInput) predScorerInput.value = draft.scorerSelections || "";
+  if (predFirstScorerSelect) predFirstScorerSelect.dataset.initialValue = draft.firstScorer || "";
+}
+
+function upsertDraftNotice(form, fixture, mode) {
+  if (!form) {
+    return;
+  }
+  let notice = form.querySelector(".draft-notice");
+  if (!mode) {
+    if (notice) {
+      notice.remove();
+    }
+    return;
+  }
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.className = "draft-notice";
+    form.insertBefore(notice, form.firstChild);
+  }
+  notice.textContent = "";
+  const text = document.createElement("span");
+  text.textContent = mode === "review" ? "Draft loaded. Review and save." : "Draft loaded from this device.";
+  notice.appendChild(text);
+  if (mode === "loaded") {
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "ghost-btn";
+    clearBtn.textContent = "Clear draft";
+    clearBtn.addEventListener("click", () => {
+      clearDraftPrediction(fixture?.id);
+      state.draftLoadedFixtureId = "";
+      state.draftNeedsReviewFixtureId = "";
+      render();
+    });
+    notice.appendChild(clearBtn);
+  }
+}
+
+function openDraftSavedModal() {
+  state.draftModalOpen = true;
+  renderNavigation();
+}
+
+function onCloseDraftSaveModal() {
+  state.draftModalOpen = false;
+  renderNavigation();
+}
+
+function renderSignedOutPredictPreview({ signedIn }) {
+  if (!signedoutPreviewPanelEl) {
+    return;
+  }
+  const show = !signedIn;
+  signedoutPreviewPanelEl.classList.toggle("hidden", !show);
+  if (!show) {
+    return;
+  }
+
+  const fixture = getNextFixtureForPrediction() || getFallbackNextFixture();
+  if (!fixture) {
+    if (signedoutNextFixtureLineEl) signedoutNextFixtureLineEl.textContent = "No upcoming fixture available.";
+    if (signedoutNextFixtureMetaEl) signedoutNextFixtureMetaEl.textContent = "Kickoff: -- | Locks at: --";
+    if (signedoutLockCountdownEl) signedoutLockCountdownEl.textContent = "Lock time unavailable. Sign in to refresh data.";
+    if (signedoutNextFixtureUpdatedEl) signedoutNextFixtureUpdatedEl.textContent = "Last updated: --";
+  } else {
+    const fixtureLabel = `Chelsea vs ${fixture.opponent}`;
+    const kickoffLabel = formatKickoff(fixture.kickoff);
+    const kickoffMs = new Date(fixture.kickoff).getTime();
+    const lockMs = Number.isFinite(kickoffMs)
+      ? kickoffMs - PREDICTION_CUTOFF_MINUTES * 60 * 1000
+      : NaN;
+    const lockLabel = Number.isFinite(lockMs) ? formatKickoff(new Date(lockMs).toISOString()) : "--";
+    if (signedoutNextFixtureLineEl) {
+      signedoutNextFixtureLineEl.textContent = `${fixtureLabel} (${fixture.competition || "Competition"})`;
+    }
+    if (signedoutNextFixtureMetaEl) {
+      signedoutNextFixtureMetaEl.textContent = `Kickoff: ${kickoffLabel} | Locks at: ${lockLabel}`;
+    }
+    renderSignedOutLockCountdown(fixture);
+    if (signedoutNextFixtureUpdatedEl) {
+      signedoutNextFixtureUpdatedEl.textContent = state.upcomingLastUpdatedAt
+        ? `Last updated: ${formatKickoff(state.upcomingLastUpdatedAt)}`
+        : "Last updated: --";
+    }
+  }
+
+  if (signedoutTop10ListEl) {
+    signedoutTop10ListEl.textContent = "";
+    const topRows = (state.overallLeaderboard || []).slice(0, 10);
+    if (topRows.length > 0) {
+      topRows.forEach((row, index) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span>${index + 1}. ${escapeHtml(row.display_name || "Player")}</span><span>${Number(row.points || 0)} pts</span>`;
+        signedoutTop10ListEl.appendChild(li);
+      });
+      if (signedoutTop10StatusEl) {
+        signedoutTop10StatusEl.textContent = "Live top 10 preview.";
+      }
+      state.previewTop10Loaded = true;
+    } else {
+      const placeholders = 3;
+      for (let i = 0; i < placeholders; i += 1) {
+        const li = document.createElement("li");
+        li.className = "placeholder";
+        li.textContent = "—";
+        signedoutTop10ListEl.appendChild(li);
+      }
+      if (signedoutTop10StatusEl) {
+        signedoutTop10StatusEl.textContent = state.overallLeaderboardLoaded
+          ? "Sign in to view live standings."
+          : "Loading standings...";
+      }
+      state.previewTop10Loaded = false;
+    }
+  }
+}
+
+function renderSignedOutLockCountdown(fixtureOverride = null) {
+  if (!signedoutLockCountdownEl) {
+    return;
+  }
+  const fixture = fixtureOverride || getNextFixtureForPrediction() || getFallbackNextFixture();
+  if (!fixture) {
+    signedoutLockCountdownEl.textContent = "Lock time unavailable. Sign in to refresh data.";
+    return;
+  }
+  const kickoffMs = new Date(fixture.kickoff).getTime();
+  const lockMs = Number.isFinite(kickoffMs)
+    ? kickoffMs - PREDICTION_CUTOFF_MINUTES * 60 * 1000
+    : NaN;
+  const remainingMs = Number.isFinite(lockMs) ? lockMs - Date.now() : NaN;
+  signedoutLockCountdownEl.textContent = Number.isFinite(remainingMs)
+    ? remainingMs <= 0
+      ? "Prediction lock reached for this fixture."
+      : `${formatDuration(remainingMs)} until lock`
+    : "Lock time unavailable. Sign in to refresh data.";
 }
 
 function renderConfigErrorBanner() {
@@ -2444,7 +2792,7 @@ function renderProfileEditor() {
   if (!profileEditShellEl) {
     return;
   }
-  const isAuthed = Boolean(state.session?.user);
+  const isAuthed = Boolean(state.isAuthed && state.user);
   const isFormVisible = Boolean(profileEditForm && !profileEditForm.classList.contains("hidden"));
   const ack = state.profileAck;
   const isFresh = Boolean(ack) && Date.now() - ack.at < 7000;
@@ -2511,7 +2859,7 @@ function renderOverallLeaderboard() {
 }
 
 function renderNavigation() {
-  const signedIn = Boolean(state.client && state.session?.user);
+  const signedIn = Boolean(state.client && state.isAuthed && state.user);
   const cardsEnabled = FEATURE_CARDS_ENABLED;
   const showPredict = state.topView === "predict";
   const showLeagues = signedIn && state.topView === "leagues";
@@ -2589,6 +2937,7 @@ function renderNavigation() {
   }
   if (rulesModalEl) rulesModalEl.classList.toggle("hidden", !state.showRulesModal);
   if (cardDetailModalEl) cardDetailModalEl.classList.toggle("hidden", !Boolean(state.activeCardId));
+  if (draftSaveModalEl) draftSaveModalEl.classList.toggle("hidden", !state.draftModalOpen);
 }
 
 function renderPastGames() {
@@ -3063,7 +3412,7 @@ function renderCardsPanel() {
   if (!FEATURE_CARDS_ENABLED || !cardsPanelEl) {
     return;
   }
-  const signedIn = Boolean(state.client && state.session?.user);
+  const signedIn = Boolean(state.client && state.isAuthed && state.user);
   if (!signedIn) {
     return;
   }
@@ -3391,7 +3740,7 @@ function renderLeaderboard() {
 
 function renderFixtures() {
   fixturesListEl.textContent = "";
-  const isAuthed = Boolean(state.session?.user);
+  const isAuthed = Boolean(state.isAuthed && state.user);
 
   const realNextFixture = getNextFixtureForPrediction();
   const nextFixture = realNextFixture || getFallbackNextFixture();
@@ -3434,11 +3783,12 @@ function renderFixtures() {
     const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
     const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const predictionEnabled = isAuthed && isNextFixture && !locked && canWriteActions();
+    const predictionEnabled = isNextFixture && !locked && canWriteActions();
+    const canSubmitPrediction = isAuthed && predictionEnabled;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
     const myPrediction = isAuthed
-      ? fixture.predictions.find((row) => row.user_id === state.session.user.id)
+      ? fixture.predictions.find((row) => row.user_id === state.user.id)
       : null;
     if (!isAuthed) {
       badgeEl.classList.add("hidden");
@@ -3463,14 +3813,6 @@ function renderFixtures() {
       badgeEl.textContent = "Open";
     }
 
-    if (!isAuthed) {
-      if (predictionForm) {
-        predictionForm.remove();
-      }
-      fixturesListEl.appendChild(fragment);
-      return;
-    }
-
     predChelseaInput.value = "0";
     predOpponentInput.value = "0";
     predScorerInput.value = "";
@@ -3479,7 +3821,7 @@ function renderFixtures() {
       predChelseaInput.value = String(myPrediction.chelsea_goals);
       predOpponentInput.value = String(myPrediction.opponent_goals);
       initialFirstScorer = normalizeFirstScorerValue(myPrediction.first_scorer);
-      const cachedSelections = readCachedPredictionScorers(fixture.id, state.session.user.id);
+      const cachedSelections = readCachedPredictionScorers(fixture.id, state.user.id);
       if (cachedSelections) {
         predScorerInput.value = cachedSelections;
       } else if (myPrediction.predicted_scorers) {
@@ -3491,7 +3833,23 @@ function renderFixtures() {
         }
       }
     }
-    predFirstScorerSelect.dataset.initialValue = initialFirstScorer;
+    const storedDraft = readDraftPrediction(fixture.id);
+    const shouldApplySignedInDraft = Boolean(
+      isAuthed &&
+      storedDraft &&
+      predictionEnabled &&
+      state.draftNeedsReviewFixtureId !== fixture.id
+    );
+    if ((!isAuthed && storedDraft) || shouldApplySignedInDraft) {
+      applyDraftPredictionToForm(predictionForm, storedDraft);
+      state.draftLoadedFixtureId = fixture.id;
+      if (shouldApplySignedInDraft) {
+        state.draftNeedsReviewFixtureId = fixture.id;
+      }
+    }
+    if (!predFirstScorerSelect.dataset.initialValue) {
+      predFirstScorerSelect.dataset.initialValue = initialFirstScorer;
+    }
 
     opponentNameEl.textContent = fixture.opponent;
     const chelseaPlayers = getChelseaRegisteredPlayers();
@@ -3529,11 +3887,19 @@ function renderFixtures() {
     chelseaPlusBtn.disabled = true;
     chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
     chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+    const needsDraftReview = isAuthed && state.draftNeedsReviewFixtureId === fixture.id;
     if (savePredictionBtn) {
-      savePredictionBtn.textContent = myPrediction ? "Update Prediction" : "Save Prediction";
-      savePredictionBtn.title = predictionEnabled
+      savePredictionBtn.textContent = !isAuthed
+        ? "Sign in to submit"
+        : needsDraftReview
+          ? "Review and Save"
+          : myPrediction
+            ? "Update Prediction"
+            : "Save Prediction";
+      savePredictionBtn.title = canSubmitPrediction
         ? "You can edit your prediction until 90 minutes before kick-off."
         : "";
+      savePredictionBtn.classList.toggle("needs-review", Boolean(needsDraftReview));
     }
     const ack = state.lastPredictionAck;
     const isRecentAck =
@@ -3544,10 +3910,10 @@ function renderFixtures() {
       Boolean(ack) &&
       ack.fixtureId === fixture.id &&
       Date.now() - ack.at < 3500;
-    if (savePredictionBtn && predictionEnabled && isVeryRecentAck) {
+    if (savePredictionBtn && canSubmitPrediction && isVeryRecentAck) {
       savePredictionBtn.textContent = ack.updated ? "Prediction updated" : "Prediction saved";
     }
-    if (predictionAckEl && myPrediction) {
+    if (isAuthed && predictionAckEl && myPrediction) {
       // Button-level feedback now handles update confirmation; keep the banner for first-time saves only.
       const shouldShowAck = !(isRecentAck && ack?.updated);
       if (!shouldShowAck) {
@@ -3572,21 +3938,48 @@ function renderFixtures() {
       predictionAckEl.textContent = "";
     }
 
-    if (!predictionEnabled) {
-      predictionForm.querySelectorAll("input, button, select").forEach((node) => {
+    const allowSignedOutDraft = !isAuthed && predictionEnabled;
+    if (!predictionEnabled || (!isAuthed && !allowSignedOutDraft)) {
+      predictionForm.querySelectorAll("input, button:not([type='submit']), select").forEach((node) => {
         node.disabled = true;
       });
       if (!canWriteActions() && savePredictionBtn) {
         savePredictionBtn.textContent = "Configuration error";
       } else if (isFallbackFixture && savePredictionBtn) {
         savePredictionBtn.textContent = "Loading next fixture...";
-      } else if (!isAuthed && savePredictionBtn) {
-        savePredictionBtn.textContent = "Create account to submit";
+      } else if (locked && savePredictionBtn) {
+        savePredictionBtn.textContent = "Prediction locked";
       }
+    }
+    if (savePredictionBtn) {
+      savePredictionBtn.disabled = !predictionEnabled && isAuthed;
+    }
+
+    if (!isAuthed && state.draftLoadedFixtureId === fixture.id) {
+      upsertDraftNotice(predictionForm, fixture, "loaded");
+    } else if (needsDraftReview) {
+      upsertDraftNotice(predictionForm, fixture, "review");
+    } else {
+      upsertDraftNotice(predictionForm, fixture, "");
+    }
+
+    if (!isAuthed) {
+      const autosaveEvents = ["input", "change"];
+      autosaveEvents.forEach((eventName) => {
+        predictionForm.addEventListener(eventName, () => {
+          queueDraftAutosave(fixture, predictionForm);
+        });
+      });
     }
 
     predictionForm.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (!isAuthed) {
+        writeDraftPrediction(fixture, predictionForm);
+        state.draftLoadedFixtureId = fixture.id;
+        openDraftSavedModal();
+        return;
+      }
       onSavePrediction(fixture, predictionForm, savePredictionBtn);
     });
 
@@ -4703,6 +5096,7 @@ function hydrateFixtureCache() {
       return;
     }
     state.upcomingFixtures = parsed.fixtures;
+    state.upcomingLastUpdatedAt = parsed.syncedAt || "";
     state.upcomingSourceText = `Auto-updated from official fixtures feed (${new Date(parsed.syncedAt).toLocaleString()}).`;
   } catch {
     // Ignore cache parse errors.
@@ -4752,6 +5146,7 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     if (parsedFixtures.length >= 5) {
       state.upcomingFixtures = parsedFixtures;
       const syncedAt = new Date().toISOString();
+      state.upcomingLastUpdatedAt = syncedAt;
       state.upcomingSourceText = `Auto-updated from official fixtures feed (${new Date(syncedAt).toLocaleString()}).`;
       localStorage.setItem(
         FIXTURE_CACHE_KEY,
@@ -5000,6 +5395,9 @@ function renderDeadlineCountdown() {
   const nextFixture = getNextUpcomingFixtureFromSchedule();
   if (!nextFixture) {
     deadlineCountdownEl.textContent = "No upcoming fixture deadline.";
+    if (!state.isAuthed) {
+      renderSignedOutLockCountdown();
+    }
     return;
   }
 
@@ -5007,6 +5405,9 @@ function renderDeadlineCountdown() {
   const kickoffMs = new Date(kickoffIso).getTime();
   if (!Number.isFinite(kickoffMs)) {
     deadlineCountdownEl.textContent = `Next fixture: Chelsea vs ${nextFixture.opponent}. Kickoff time TBC.`;
+    if (!state.isAuthed) {
+      renderSignedOutLockCountdown();
+    }
     return;
   }
 
@@ -5016,10 +5417,16 @@ function renderDeadlineCountdown() {
 
   if (remainingMs <= 0) {
     deadlineCountdownEl.textContent = `Prediction deadline passed for ${fixtureLabel}.`;
+    if (!state.isAuthed) {
+      renderSignedOutLockCountdown();
+    }
     return;
   }
 
   deadlineCountdownEl.textContent = `Next deadline (${fixtureLabel}): ${formatDuration(remainingMs)} remaining`;
+  if (!state.isAuthed) {
+    renderSignedOutLockCountdown();
+  }
 }
 
 function renderMatchdayAttendance() {
