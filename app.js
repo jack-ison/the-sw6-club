@@ -560,7 +560,7 @@ function setTopView(view) {
 
 function setResultsTab(tab) {
   state.topView = "results";
-  state.resultsTab = tab;
+  state.resultsTab = tab === "past" ? "past" : "fixtures";
   state.showRulesModal = false;
   syncRouteHash();
   render();
@@ -715,7 +715,7 @@ function getRouteIntentFromUrl() {
     return { topView: "results", resultsTab: "past" };
   }
   if (token === "resultsstats" || token === "scorers" || token === "stats" || token === "scorersoverviewpanel") {
-    return { topView: "results", resultsTab: "stats" };
+    return { topView: "results", resultsTab: "fixtures" };
   }
   if (
     token === "resultsleaderboards" ||
@@ -773,9 +773,9 @@ function parseUuidLike(value) {
 function applyRouteIntent(intent, options = {}) {
   const nextTop = ["predict", "leagues", "forum", "results"].includes(intent.topView) ? intent.topView : state.topView;
   state.topView = nextTop || "predict";
-  state.resultsTab = ["fixtures", "past", "stats"].includes(intent.resultsTab)
-    ? intent.resultsTab
-    : state.resultsTab || "fixtures";
+  state.resultsTab = intent.resultsTab === "past"
+    ? "past"
+    : "fixtures";
   state.leaderboardScope = intent.leaderboardScope === "league" ? "league" : state.leaderboardScope || "global";
   state.showRulesModal = Boolean(intent.showRulesModal);
   if (nextTop === "forum") {
