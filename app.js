@@ -23,6 +23,9 @@ const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const LEAGUE_PAYLOAD_CACHE_KEY = "cfc-league-payload-cache-v1";
 const LEAGUE_PAYLOAD_CACHE_VERSION = 1;
 const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
+const OVERALL_LEADERBOARD_CACHE_VERSION = 1;
+const OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS = 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -187,7 +190,7 @@ let renderScheduled = false;
 const draftAutosaveTimers = new Map();
 let detachedAuthedFormsApplied = null;
 const TOP_VIEW_MODULE_URLS = {
-  predict: "./view-predict.js",
+  predict: "",
   leagues: "./view-leagues.js",
   forum: "./view-forum.js",
   results: "./view-results.js",
@@ -270,6 +273,33 @@ function readRuntimeConfig() {
       cards: featureCards
     }
   };
+}
+
+function hydrateOverallLeaderboardCache() {
+  const cached = readObjectCache(
+    OVERALL_LEADERBOARD_CACHE_KEY,
+    OVERALL_LEADERBOARD_CACHE_VERSION,
+    OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS
+  );
+  if (!cached || typeof cached !== "object") {
+    return;
+  }
+  const rows = Array.isArray(cached.rows) ? cached.rows : [];
+  const status = typeof cached.status === "string" ? cached.status : "";
+  state.overallLeaderboard = rows;
+  state.overallLeaderboardStatus = status || (rows.length > 0 ? "Top players across all leagues." : "No completed match results yet.");
+  state.overallLeaderboardLoaded = true;
+}
+
+function persistOverallLeaderboardCache(rows, status) {
+  writeObjectCache(
+    OVERALL_LEADERBOARD_CACHE_KEY,
+    OVERALL_LEADERBOARD_CACHE_VERSION,
+    {
+      rows: Array.isArray(rows) ? rows : [],
+      status: String(status || "")
+    }
+  );
 }
 
 function hasRuntimeSupabaseConfig() {
@@ -495,6 +525,7 @@ async function initializeApp() {
   hydrateSquadCache();
   hydrateFixtureCache();
   hydrateScorerStatsCache();
+  hydrateOverallLeaderboardCache();
   onLeagueVisibilityChange();
   onJoinModeChange();
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: true });
@@ -527,7 +558,6 @@ async function initializeApp() {
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
   render();
   runPostAuthWarmup();
-  ensureOverallLeaderboardLoaded().then(render);
 
   state.client.auth.onAuthStateChange(async () => {
     await getAuthUser();
@@ -1187,6 +1217,7 @@ async function loadOverallLeaderboard() {
   state.overallLeaderboardStatus =
     state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players across all leagues.";
   state.overallLeaderboardLoaded = true;
+  persistOverallLeaderboardCache(state.overallLeaderboard, state.overallLeaderboardStatus);
 }
 
 async function ensureOverallLeaderboardLoaded(force = false) {
@@ -2699,6 +2730,9 @@ function renderSignedOutPredictPreview({ signedIn }) {
   signedoutPreviewPanelEl.classList.toggle("hidden", !show);
   if (!show) {
     return;
+  }
+  if (!state.overallLeaderboardLoaded && !overallLeaderboardLoadPromise && state.client) {
+    ensureOverallLeaderboardLoaded().then(render);
   }
 
   const fixture = getNextFixtureForPrediction() || getFallbackNextFixture();
@@ -5136,8 +5170,18 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     }
   }
 
+  let fetchTimeoutId = null;
   try {
+    fetchTimeoutId = setTimeout(() => {
+      if (!fixturesSignal.aborted) {
+        upcomingFixturesAbortController?.abort();
+      }
+    }, 7000);
     const response = await fetch(CHELSEA_FIXTURES_PROXY_URL, { signal: fixturesSignal });
+    if (fetchTimeoutId) {
+      clearTimeout(fetchTimeoutId);
+      fetchTimeoutId = null;
+    }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -5161,6 +5205,10 @@ async function syncUpcomingFixturesFromChelsea(force = false) {
     }
     throw new Error("Could not parse sufficient fixtures");
   } catch (error) {
+    // Guard against timeout handles leaking on throw paths.
+    if (fetchTimeoutId) {
+      clearTimeout(fetchTimeoutId);
+    }
     if (error?.name === "AbortError") {
       return;
     }
