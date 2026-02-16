@@ -424,6 +424,9 @@ const forumThreadTitleInputEl = document.getElementById("forum-thread-title-inpu
 const forumThreadBodyInputEl = document.getElementById("forum-thread-body-input");
 const forumThreadSubmitBtnEl = document.getElementById("forum-thread-submit-btn");
 const forumStatusEl = document.getElementById("forum-status");
+const forumSortToolbarEl = document.getElementById("forum-sort-toolbar");
+const forumSortNewBtnEl = document.getElementById("forum-sort-new");
+const forumSortTopBtnEl = document.getElementById("forum-sort-top");
 const forumThreadListEl = document.getElementById("forum-thread-list");
 const forumThreadDetailEl = document.getElementById("forum-thread-detail");
 const forumBackBtnEl = document.getElementById("forum-back-btn");
@@ -720,6 +723,9 @@ function getForumViewContext() {
       forumThreadBodyInputEl,
       forumThreadSubmitBtnEl,
       forumStatusEl,
+      forumSortToolbarEl,
+      forumSortNewBtnEl,
+      forumSortTopBtnEl,
       forumThreadListEl,
       forumThreadDetailEl,
       forumBackBtnEl,

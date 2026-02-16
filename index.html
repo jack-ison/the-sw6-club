@@ -226,6 +226,10 @@
             <button id="forum-thread-submit-btn" type="submit">Post Thread</button>
           </form>
           <p id="forum-status" class="status no-margin"></p>
+          <div id="forum-sort-toolbar" class="overview-tabs">
+            <button id="forum-sort-new" type="button" class="tab-btn active" aria-pressed="true">New</button>
+            <button id="forum-sort-top" type="button" class="tab-btn" aria-pressed="false">Top</button>
+          </div>
           <ul id="forum-thread-list" class="prediction-list"></ul>
 
           <article id="forum-thread-detail" class="subpanel hidden">
@@ -236,13 +240,13 @@
             <h3 id="forum-thread-detail-title">Thread</h3>
             <p id="forum-thread-detail-meta" class="status no-margin"></p>
             <p id="forum-thread-detail-body" class="no-margin"></p>
-            <ul id="forum-reply-list" class="prediction-list"></ul>
+            <ul id="forum-reply-list" class="prediction-list forum-comment-list"></ul>
             <form id="forum-reply-form" class="mini-form">
               <label>
-                Reply
+                Add comment
                 <textarea id="forum-reply-body-input" rows="3" maxlength="1500" required></textarea>
               </label>
-              <button id="forum-reply-submit-btn" type="submit">Post Reply</button>
+              <button id="forum-reply-submit-btn" type="submit">Post Comment</button>
             </form>
           </article>
       </section>

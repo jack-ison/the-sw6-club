@@ -1394,10 +1394,92 @@ button:disabled {
   margin-bottom: 0.55rem;
 }
 
+.forum-thread-row {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.forum-thread-title {
+  font-weight: 800;
+}
+
 #forum-thread-detail-body {
   white-space: pre-wrap;
   color: #294a79;
   margin: 0.45rem 0 0.65rem;
+}
+
+.forum-comment-list {
+  gap: 0.5rem;
+}
+
+.forum-comment {
+  border: 1px solid #c6d8f8;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff, #f6faff);
+  padding: 0.52rem 0.6rem;
+  display: grid;
+  gap: 0.36rem;
+}
+
+.forum-comment.depth-2 {
+  margin-left: 0.7rem;
+}
+
+.forum-comment.depth-3 {
+  margin-left: 1.4rem;
+}
+
+.forum-comment-body {
+  white-space: pre-wrap;
+  color: #274777;
+}
+
+.forum-comment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.forum-vote-btn {
+  min-width: 38px;
+  padding: 0.36rem 0.54rem;
+  font-size: 0.78rem;
+}
+
+.forum-vote-btn.active {
+  background: #dbeaff;
+  border: 1px solid #9fbef2;
+  color: #0f3f84;
+}
+
+.forum-comment-score {
+  min-width: 32px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #294a79;
+}
+
+.forum-comment-children {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.forum-inline-reply-form {
+  margin-top: 0.2rem;
+  border: 1px solid #ccdefa;
+  border-radius: 10px;
+  padding: 0.44rem;
+  background: #f8fbff;
+}
+
+.forum-inline-reply-actions {
+  display: flex;
+  gap: 0.42rem;
 }
 
 .error-text {
