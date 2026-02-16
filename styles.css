@@ -1243,12 +1243,15 @@ button:disabled {
   color: #294a79;
   display: grid;
   gap: 0.55rem;
+  text-align: center;
+  justify-items: center;
 }
 
 .auth-gate-actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .auth-gate-card-inline {

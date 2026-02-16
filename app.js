@@ -2066,6 +2066,15 @@ function render() {
 }
 
 function renderNow() {
+  const isConnected = Boolean(state.client);
+  const isAuthed = Boolean(state.session?.user);
+  const signedIn = isConnected && isAuthed;
+  if (!signedIn && state.topView !== "predict") {
+    state.topView = "predict";
+    state.resultsTab = "fixtures";
+    syncRouteHash("predict");
+  }
+
   renderNavigation();
   renderProfileEditor();
   const showPredict = state.topView === "predict";
@@ -2095,9 +2104,6 @@ function renderNow() {
     renderForumPanel();
   }
 
-  const isConnected = Boolean(state.client);
-  const isAuthed = Boolean(state.session?.user);
-  const signedIn = isConnected && isAuthed;
   renderHeaderAuthState({ signedIn, isConnected });
   renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected });
   if (!signedIn || !isAdminUser()) {
@@ -2213,23 +2219,27 @@ function renderOverallLeaderboard() {
 }
 
 function renderNavigation() {
+  const signedIn = Boolean(state.client && state.session?.user);
   const showPredict = state.topView === "predict";
-  const showLeagues = state.topView === "leagues";
-  const showForum = state.topView === "forum";
-  const showResults = state.topView === "results";
+  const showLeagues = signedIn && state.topView === "leagues";
+  const showForum = signedIn && state.topView === "forum";
+  const showResults = signedIn && state.topView === "results";
   if (topnavPredictBtn) {
     topnavPredictBtn.classList.toggle("active", showPredict);
     topnavPredictBtn.setAttribute("aria-selected", String(showPredict));
   }
   if (topnavLeaguesBtn) {
+    topnavLeaguesBtn.classList.toggle("hidden", !signedIn);
     topnavLeaguesBtn.classList.toggle("active", showLeagues);
     topnavLeaguesBtn.setAttribute("aria-selected", String(showLeagues));
   }
   if (topnavForumBtn) {
+    topnavForumBtn.classList.toggle("hidden", !signedIn);
     topnavForumBtn.classList.toggle("active", showForum);
     topnavForumBtn.setAttribute("aria-selected", String(showForum));
   }
   if (topnavResultsBtn) {
+    topnavResultsBtn.classList.toggle("hidden", !signedIn);
     topnavResultsBtn.classList.toggle("active", showResults);
     topnavResultsBtn.setAttribute("aria-selected", String(showResults));
   }
