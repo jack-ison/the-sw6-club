@@ -56,6 +56,32 @@
           <h2 class="fixtures-title">Next Chelsea Match Prediction</h2>
           <button id="open-rules-inline" type="button" class="inline-rules-link">Rules</button>
         </div>
+        <section id="signedout-preview-panel" class="signedout-preview hidden" aria-live="polite">
+          <article class="signedout-preview-card">
+            <h3>Next Fixture</h3>
+            <p id="signedout-next-fixture-line" class="no-margin">Chelsea vs ...</p>
+            <p id="signedout-next-fixture-meta" class="status no-margin">Kickoff: -- | Locks at: --</p>
+            <p id="signedout-next-fixture-updated" class="status no-margin">Last updated: --</p>
+          </article>
+          <article class="signedout-preview-card">
+            <h3>Lock Countdown</h3>
+            <p id="signedout-lock-countdown" class="no-margin">Loading countdown...</p>
+          </article>
+          <article class="signedout-preview-card">
+            <h3>Global Top 10 Preview</h3>
+            <ul id="signedout-top10-list" class="leaderboard"></ul>
+            <p id="signedout-top10-status" class="status no-margin">Loading standings...</p>
+            <a class="ghost-btn signedout-cta-link" href="login.html?redirect=%2F%23predict">See full leaderboard (sign in)</a>
+          </article>
+          <article class="signedout-preview-card">
+            <h3>Why sign in</h3>
+            <ul class="rules-list">
+              <li>Submit predictions</li>
+              <li>Compete in leagues</li>
+              <li>Earn Matchday Moments</li>
+            </ul>
+          </article>
+        </section>
         <div id="config-error-banner" class="config-error-banner hidden" role="status" aria-live="polite">
           Configuration error. Some features are temporarily unavailable.
         </div>
@@ -98,9 +124,10 @@
           <h2>My Leagues</h2>
           <div id="league-auth-gate" class="auth-gate-card hidden">
             <p class="no-margin"><strong>Sign in to start playing.</strong></p>
+            <p class="status no-margin">Join the Global League and compete with other Chelsea fans.</p>
             <div class="auth-gate-actions">
-              <a href="login.html" class="account-auth-btn">Sign in</a>
-              <a href="signup.html" class="account-auth-btn">Sign up</a>
+              <a href="login.html?redirect=%2F%23leagues" class="account-auth-btn">Sign in</a>
+              <a href="signup.html?redirect=%2F%23leagues" class="account-auth-btn">Sign up</a>
             </div>
           </div>
           <div id="league-auth-content">
@@ -181,9 +208,10 @@
           <h2>The Concourse</h2>
           <div id="forum-auth-gate" class="auth-gate-card hidden">
             <p class="no-margin"><strong>Sign in to start playing.</strong></p>
+            <p class="status no-margin">Share matchday thoughts and join the post-match chat.</p>
             <div class="auth-gate-actions">
-              <a href="login.html" class="account-auth-btn">Sign in</a>
-              <a href="signup.html" class="account-auth-btn">Sign up</a>
+              <a href="login.html?redirect=%2F%23forum" class="account-auth-btn">Sign in</a>
+              <a href="signup.html?redirect=%2F%23forum" class="account-auth-btn">Sign up</a>
             </div>
           </div>
           <form id="forum-thread-form" class="mini-form">
@@ -222,10 +250,29 @@
       <section class="panel hidden" id="cards-panel" data-view="cards">
         <h2>Matchday Collectables</h2>
         <div id="cards-auth-gate" class="auth-gate-card hidden">
-          <p class="no-margin"><strong>Sign in to start collecting.</strong></p>
+          <p class="no-margin"><strong>Sign in to start playing.</strong></p>
+          <p class="status no-margin">Earn limited matchday collectables from your predictions.</p>
+          <div class="cards-grid" aria-hidden="true">
+            <article class="moment-card rarity-common is-locked">
+              <div class="moment-card-hit">
+                <div class="moment-card-head"><span class="moment-rarity-pill">Common</span></div>
+                <h3 class="moment-card-title">Correct Result</h3>
+                <p class="moment-card-context">Chelsea vs Opponent</p>
+                <p class="moment-card-score">2-1</p>
+              </div>
+            </article>
+            <article class="moment-card rarity-rare is-locked">
+              <div class="moment-card-hit">
+                <div class="moment-card-head"><span class="moment-rarity-pill">Rare</span></div>
+                <h3 class="moment-card-title">First Chelsea Scorer</h3>
+                <p class="moment-card-context">Chelsea vs Opponent</p>
+                <p class="moment-card-score">1-0</p>
+              </div>
+            </article>
+          </div>
           <div class="auth-gate-actions">
-            <a href="login.html" class="account-auth-btn">Sign in</a>
-            <a href="signup.html" class="account-auth-btn">Sign up</a>
+            <a href="login.html?redirect=%2F%23cards" class="account-auth-btn">Sign in</a>
+            <a href="signup.html?redirect=%2F%23cards" class="account-auth-btn">Sign up</a>
           </div>
         </div>
         <div id="cards-content">
@@ -260,6 +307,20 @@
           <div id="card-detail-body"></div>
           <div class="card-detail-actions">
             <button id="copy-card-link-btn" type="button" class="ghost-btn">Copy link</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="draft-save-modal" class="rules-modal hidden" role="dialog" aria-modal="true" aria-labelledby="draft-save-title">
+        <section class="panel rules-modal-content">
+          <div class="rules-modal-head">
+            <h2 id="draft-save-title">Draft Saved</h2>
+            <button id="close-draft-save-modal" type="button" class="ghost-btn">Close</button>
+          </div>
+          <p>Your picks are saved on this device. Sign in to submit before the lock.</p>
+          <div class="auth-gate-actions">
+            <a class="account-auth-btn" href="login.html?redirect=%2F%23predict">Sign in</a>
+            <a class="account-auth-btn" href="signup.html?redirect=%2F%23predict">Sign up</a>
           </div>
         </section>
       </div>
