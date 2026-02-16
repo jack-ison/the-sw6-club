@@ -239,7 +239,8 @@ const state = {
   registeredUserCount: undefined,
   visitorCount: null,
   adminLeagues: [],
-  cardDeepLinkId: ""
+  cardDeepLinkId: "",
+  pendingJoinCode: ""
 };
 
 function readRuntimeConfig() {
@@ -356,7 +357,9 @@ const joinPrivatePasswordWrap = document.getElementById("join-private-password-w
 const joinPrivatePasswordInput = document.getElementById("join-private-password-input");
 const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
+const copyInviteLinkBtn = document.getElementById("copy-invite-link-btn");
 const leagueMetaNoteEl = document.getElementById("league-meta-note");
+const leagueLeaderboardStatusEl = document.getElementById("league-leaderboard-status");
 let adminConsoleEl = null;
 let adminLeagueListEl = null;
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
@@ -411,6 +414,7 @@ if (leagueVisibilityInput) leagueVisibilityInput.addEventListener("change", onLe
 if (joinModeInput) joinModeInput.addEventListener("change", onJoinModeChange);
 if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
+if (copyInviteLinkBtn) copyInviteLinkBtn.addEventListener("click", onCopyInviteLink);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
 if (cardsFilterAllBtn) cardsFilterAllBtn.addEventListener("click", () => setCardsFixtureFilter("all"));
@@ -532,6 +536,7 @@ function runPostAuthWarmup() {
     ]);
     await loadAdminAccess();
     await loadVisitorCount();
+    await maybeHandleJoinDeepLink();
   })().then(() => {
     if (runId !== authWarmupRunId) {
       return;
@@ -810,6 +815,62 @@ function onJoinModeChange() {
   }
 }
 
+function clearJoinParamFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  params.delete("join");
+  const nextSearch = params.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl !== nextUrl) {
+    window.history.replaceState(null, "", nextUrl);
+  }
+}
+
+async function maybeHandleJoinDeepLink() {
+  const code = String(state.pendingJoinCode || "").trim().toUpperCase();
+  if (!code || !state.client || !state.session?.user) {
+    return;
+  }
+
+  state.pendingJoinCode = "";
+  const confirmed = window.confirm(`Join league ${code}?`);
+  if (!confirmed) {
+    clearJoinParamFromUrl();
+    return;
+  }
+
+  await ensureAuthedDataLoaded();
+  const existing = state.leagues.find((league) => String(league.code || "").toUpperCase() === code);
+  if (existing) {
+    state.activeLeagueId = existing.id;
+    state.topView = "leagues";
+    await loadActiveLeagueData();
+    clearJoinParamFromUrl();
+    return;
+  }
+
+  const { data, error } = await state.client.rpc("join_league_by_code", {
+    p_code: code,
+    p_display_name: getCurrentUserDisplayName(),
+    p_country_code: getCurrentUserCountryCode()
+  });
+  if (error) {
+    alert(error.message || "Could not join league from invite link.");
+    clearJoinParamFromUrl();
+    return;
+  }
+
+  await reloadAuthedData();
+  const joinedLeague = state.leagues.find((league) => league.id === data) || state.leagues.find((league) => league.code === code);
+  if (joinedLeague) {
+    state.activeLeagueId = joinedLeague.id;
+  }
+  state.topView = "leagues";
+  await loadActiveLeagueData();
+  clearJoinParamFromUrl();
+  alert(`Joined ${joinedLeague?.name || "league"} successfully.`);
+}
+
 function getRouteIntentFromUrl() {
   const rawHash = String(window.location.hash || "").replace(/^#/, "").trim();
   const hashThreadId = extractForumThreadIdFromRoute(rawHash);
@@ -820,6 +881,7 @@ function getRouteIntentFromUrl() {
   const hashToken = normalizeRouteToken(rawHash);
   const search = new URLSearchParams(window.location.search);
   const queryCardId = String(search.get("card") || "").trim();
+  const queryJoinCode = String(search.get("join") || "").trim().toUpperCase();
   const queryRaw = String(search.get("tab") || search.get("view") || search.get("section") || "").trim();
   const queryThreadId = extractForumThreadIdFromRoute(queryRaw) || parseUuidLike(search.get("thread"));
   if (queryThreadId) {
@@ -836,7 +898,7 @@ function getRouteIntentFromUrl() {
     return { topView: "predict" };
   }
   if (token === "leagues" || token === "myleagues") {
-    return { topView: "leagues" };
+    return { topView: "leagues", joinCode: queryJoinCode };
   }
   if (token === "forum" || token === "threads" || token === "community" || token === "forumpanel") {
     return { topView: "forum" };
@@ -876,7 +938,7 @@ function getRouteIntentFromUrl() {
   if (token === "leaguepanel") {
     return { topView: "leagues" };
   }
-  return { topView: "predict", cardId: queryCardId };
+  return { topView: "predict", cardId: queryCardId, joinCode: queryJoinCode };
 }
 
 function normalizeRouteToken(value) {
@@ -913,6 +975,12 @@ function parseUuidLike(value) {
 
 function applyRouteIntent(intent, options = {}) {
   const nextTop = ["predict", "leagues", "forum", "results", "cards"].includes(intent.topView) ? intent.topView : state.topView;
+  if (intent.joinCode) {
+    state.pendingJoinCode = intent.joinCode;
+    if (joinModeInput) joinModeInput.value = "public";
+    if (joinCodeInput) joinCodeInput.value = intent.joinCode;
+    onJoinModeChange();
+  }
   state.topView = nextTop || "predict";
   state.resultsTab = intent.resultsTab === "past"
     ? "past"
@@ -1631,6 +1699,20 @@ async function onCopyLeagueCode() {
   }
 }
 
+async function onCopyInviteLink() {
+  const league = getActiveLeague();
+  if (!league || isGlobalLeague(league)) {
+    return;
+  }
+  const url = `${window.location.origin}${window.location.pathname}?tab=leagues&join=${encodeURIComponent(league.code)}#leagues`;
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("Invite link copied.");
+  } catch {
+    alert(url);
+  }
+}
+
 function onCancelProfileEdit() {
   if (profileEditForm) profileEditForm.classList.add("hidden");
   if (profileEditStatus) profileEditStatus.classList.add("hidden");
@@ -1863,7 +1945,7 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData();
-  alert("Result saved. Leaderboards updated.");
+  alert("Result saved. Leaderboards and collectables updated.");
   render();
 }
 
@@ -1933,7 +2015,7 @@ async function loadActiveLeagueData() {
     state.client
       .from("fixtures")
       .select(
-        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers)"
+        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
       )
       .eq("league_id", league.id)
       .order("kickoff", { ascending: true })
@@ -2044,7 +2126,8 @@ async function syncCompletedResultsFromChelsea() {
             chelsea_goals: scoreByFixture.get(fixture.id).chelsea_goals,
             opponent_goals: scoreByFixture.get(fixture.id).opponent_goals,
             first_scorer: scoreByFixture.get(fixture.id).first_scorer,
-            chelsea_scorers: scoreByFixture.get(fixture.id).chelsea_scorers
+            chelsea_scorers: scoreByFixture.get(fixture.id).chelsea_scorers,
+            saved_at: scoreByFixture.get(fixture.id).saved_at
           }
         : fixture.result
     }));
@@ -2086,7 +2169,7 @@ async function ensureUpcomingFixturesImported() {
   const { data } = await state.client
     .from("fixtures")
     .select(
-      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers)"
+      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
     )
     .eq("league_id", league.id)
     .order("kickoff", { ascending: true });
@@ -2305,6 +2388,7 @@ function renderNow() {
   const activeLeague = getActiveLeague();
   const isGlobalActive = isGlobalLeague(activeLeague);
   if (copyCodeBtn) copyCodeBtn.classList.toggle("hidden", !signedIn || isGlobalActive);
+  if (copyInviteLinkBtn) copyInviteLinkBtn.classList.toggle("hidden", !signedIn || isGlobalActive);
   if (leagueMetaNoteEl) leagueMetaNoteEl.classList.toggle("hidden", !signedIn || !isGlobalActive);
 
   if (signedIn) {
@@ -2376,6 +2460,20 @@ function renderProfileEditor() {
   }
 }
 
+function getLeaderboardTrustMeta() {
+  const completedFixtures = state.activeLeagueFixtures.filter((fixture) => fixture.result);
+  const completedCount = completedFixtures.length;
+  let latestSavedAt = null;
+  completedFixtures.forEach((fixture) => {
+    const savedAt = fixture?.result?.saved_at ? new Date(fixture.result.saved_at).getTime() : NaN;
+    if (Number.isFinite(savedAt) && (!latestSavedAt || savedAt > latestSavedAt)) {
+      latestSavedAt = savedAt;
+    }
+  });
+  const latestLabel = latestSavedAt ? formatKickoff(new Date(latestSavedAt).toISOString()) : "n/a";
+  return `Last updated: ${latestLabel} | Completed fixtures: ${completedCount}`;
+}
+
 function renderOverallLeaderboard() {
   if (!overallLeaderboardEl || !overallLeaderboardStatusEl) {
     return;
@@ -2406,7 +2504,10 @@ function renderOverallLeaderboard() {
     });
   }
 
-  overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus;
+  const trustMeta = getLeaderboardTrustMeta();
+  overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus
+    ? `${state.overallLeaderboardStatus} | ${trustMeta}`
+    : trustMeta;
 }
 
 function renderNavigation() {
@@ -3254,6 +3355,9 @@ async function onAdminLeagueListClick(event) {
 }
 
 function renderLeaderboard() {
+  if (leagueLeaderboardStatusEl) {
+    leagueLeaderboardStatusEl.textContent = getLeaderboardTrustMeta();
+  }
   leaderboardEl.textContent = "";
   const activeLeague = getActiveLeague();
   const useGlobalTopTen = isGlobalLeague(activeLeague);
