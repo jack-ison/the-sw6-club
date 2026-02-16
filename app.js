@@ -2804,19 +2804,26 @@ function renderFixtures() {
     const myPrediction = isAuthed
       ? fixture.predictions.find((row) => row.user_id === state.session.user.id)
       : null;
-    if (isFallbackFixture) {
+    if (!isAuthed) {
+      badgeEl.classList.add("hidden");
+      badgeEl.textContent = "";
+    } else if (isFallbackFixture) {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Loading fixture...";
-    } else if (!isAuthed) {
-      badgeEl.textContent = "Log in to submit";
     } else if (fixture.result) {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Result Saved";
     } else if (hasStarted) {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Closed";
     } else if (locked) {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Locked (90m cutoff)";
     } else if (myPrediction) {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Saved (editable)";
     } else {
+      badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Open";
     }
 
