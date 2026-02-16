@@ -506,10 +506,6 @@ async function onDeleteForumThread(ctx) {
   if (!state.client || !getCurrentUserId(state) || !activeThread) {
     return;
   }
-  const canDelete = ctx.isAdminUser() || activeThread.user_id === getCurrentUserId(state) || activeThread.created_by === getCurrentUserId(state);
-  if (!canDelete) {
-    return;
-  }
   const confirmed = window.confirm("Delete this thread and all comments? This cannot be undone.");
   if (!confirmed) {
     return;
@@ -766,12 +762,7 @@ export function render(ctx) {
     els.forumThreadDetailBodyEl.textContent = activeThread.body || "";
   }
   if (els.forumDeleteThreadBtnEl) {
-    const canDelete = isAuthed && (
-      ctx.isAdminUser() ||
-      activeThread.user_id === getCurrentUserId(state) ||
-      activeThread.created_by === getCurrentUserId(state)
-    );
-    els.forumDeleteThreadBtnEl.classList.toggle("hidden", !canDelete);
+    els.forumDeleteThreadBtnEl.classList.toggle("hidden", !isAuthed);
   }
 
   if (els.forumReplyListEl) {
