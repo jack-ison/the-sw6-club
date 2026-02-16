@@ -1,0 +1,7 @@
+{
+  "name": "sw6-club",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  }
+}

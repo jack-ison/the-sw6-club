@@ -55,6 +55,9 @@
           <h2 class="fixtures-title">Next Chelsea Match Prediction</h2>
           <button id="open-rules-inline" type="button" class="inline-rules-link">Rules</button>
         </div>
+        <div id="config-error-banner" class="config-error-banner hidden" role="status" aria-live="polite">
+          Configuration error. Some features are temporarily unavailable.
+        </div>
         <div id="predict-auth-gate" class="auth-gate-card hidden">
           <p class="no-margin"><strong>Sign in to start playing.</strong></p>
           <div class="auth-gate-actions">
@@ -306,6 +309,8 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js"></script>
+    <script src="/build-meta.js"></script>
+    <script src="/runtime-config.js"></script>
+    <script src="/app.js"></script>
   </body>
 </html>
