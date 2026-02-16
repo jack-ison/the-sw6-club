@@ -248,7 +248,7 @@ function readRuntimeConfig() {
     config?.features?.cards ??
     config?.SW6_FEATURE_CARDS ??
     config?.sw6FeatureCards ??
-    false;
+    true;
   const featureCards = [true, "true", "1", 1, "yes", "on"].includes(
     typeof featureCardsRaw === "string" ? featureCardsRaw.trim().toLowerCase() : featureCardsRaw
   );
@@ -2815,7 +2815,7 @@ async function loadMyCards(options = {}) {
     state.cards = [];
     state.cardTemplates = [];
     state.cardsLoaded = false;
-    state.cardsStatus = "Sign in to view cards.";
+    state.cardsStatus = "Sign in to view collectables.";
     return;
   }
   if (!force && background && state.cardsLoaded) {
@@ -2844,7 +2844,7 @@ async function loadMyCards(options = {}) {
 
     if (cardsResult.error) {
       state.cards = [];
-      state.cardsStatus = "Cards unavailable right now.";
+      state.cardsStatus = "Collectables unavailable right now.";
       state.cardsLoaded = true;
       return;
     }
@@ -2853,7 +2853,7 @@ async function loadMyCards(options = {}) {
     }
     state.cards = normalizeCardRows(cardsResult.data || []);
     state.cardsLoaded = true;
-    state.cardsStatus = state.cards.length > 0 ? "" : "No cards earned yet.";
+    state.cardsStatus = state.cards.length > 0 ? "" : "No collectables earned yet.";
   })();
 
   try {
@@ -2973,7 +2973,7 @@ function renderCardsPanel() {
   const visibleCards = getVisibleCards();
   const counts = getCardRarityCounts(state.cards);
   if (cardsSummaryEl) {
-    cardsSummaryEl.textContent = `Total: ${state.cards.length} | Common: ${counts.common} | Rare: ${counts.rare} | Legendary: ${counts.legendary}`;
+    cardsSummaryEl.textContent = `Total collectables: ${state.cards.length} | Common: ${counts.common} | Rare: ${counts.rare} | Legendary: ${counts.legendary}`;
   }
 
   if (cardsFilterAllBtn) {
@@ -3041,7 +3041,7 @@ function renderCardGridItem(card) {
   const earnedAtMs = card.earnedAt ? new Date(card.earnedAt).getTime() : NaN;
   const isNew = card.earned && Number.isFinite(earnedAtMs) && Date.now() - earnedAtMs < 24 * 60 * 60 * 1000;
   li.innerHTML = `
-    <button type="button" class="moment-card-hit" aria-label="${card.templateName} card">
+    <button type="button" class="moment-card-hit" aria-label="${card.templateName} collectable">
       <div class="moment-card-head">
         <span class="moment-rarity-pill">${capitalize(card.rarity)}</span>
         <span class="moment-competition-pill">${card.competition}</span>
