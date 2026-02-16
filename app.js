@@ -463,13 +463,15 @@ function setupTopNavPreload() {
 
 function runPostAuthWarmup() {
   const runId = ++authWarmupRunId;
-  Promise.allSettled([
-    loadAdminAccess(),
-    trackSiteVisit(),
-    loadRegisteredUserCount(),
-    loadVisitorCount(),
-    runTopViewEnterEffects()
-  ]).then(() => {
+  (async () => {
+    await Promise.allSettled([
+      trackSiteVisit(),
+      loadRegisteredUserCount(),
+      runTopViewEnterEffects()
+    ]);
+    await loadAdminAccess();
+    await loadVisitorCount();
+  })().then(() => {
     if (runId !== authWarmupRunId) {
       return;
     }
