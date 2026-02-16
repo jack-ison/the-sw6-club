@@ -2149,8 +2149,8 @@ function renderHeaderAuthState({ signedIn, isConnected }) {
   if (loginBtn) loginBtn.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
 
-  if (accountSignInLink) accountSignInLink.classList.toggle("hidden", signedIn);
-  if (accountSignUpLink) accountSignUpLink.classList.toggle("hidden", signedIn);
+  if (accountSignInLink) accountSignInLink.classList.add("hidden");
+  if (accountSignUpLink) accountSignUpLink.classList.add("hidden");
   if (accountEditProfileTopLink) accountEditProfileTopLink.classList.toggle("hidden", !signedIn || !isConnected);
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !signedIn || !isConnected);
 }
