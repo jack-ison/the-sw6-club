@@ -37,6 +37,7 @@
             <button id="topnav-predict" type="button" class="tab-btn active" role="tab" aria-selected="true">Predict</button>
             <button id="topnav-leagues" type="button" class="tab-btn" role="tab" aria-selected="false">Leagues</button>
             <button id="topnav-results" type="button" class="tab-btn" role="tab" aria-selected="false">Fixtures &amp; Stats</button>
+            <button id="topnav-cards" type="button" class="tab-btn" role="tab" aria-selected="false">Cards</button>
             <button id="topnav-forum" type="button" class="tab-btn" role="tab" aria-selected="false">The Concourse</button>
           </div>
           <div class="account-actions">
@@ -215,6 +216,51 @@
             </form>
           </article>
       </section>
+
+      <section class="panel hidden" id="cards-panel" data-view="cards">
+        <h2>Matchday Moments</h2>
+        <div id="cards-auth-gate" class="auth-gate-card hidden">
+          <p class="no-margin"><strong>Sign in to start collecting.</strong></p>
+          <div class="auth-gate-actions">
+            <a href="login.html" class="account-auth-btn">Sign in</a>
+            <a href="signup.html" class="account-auth-btn">Sign up</a>
+          </div>
+        </div>
+        <div id="cards-content">
+          <div class="cards-toolbar">
+            <p id="cards-summary" class="status no-margin">Loading cards...</p>
+            <div class="cards-filter-row">
+              <div class="cards-filter-group" role="tablist" aria-label="Cards fixture filter">
+                <button id="cards-filter-all" type="button" class="tab-btn active" role="tab" aria-selected="true">All</button>
+                <button id="cards-filter-match" type="button" class="tab-btn" role="tab" aria-selected="false">This Match</button>
+              </div>
+              <div class="cards-filter-group" role="tablist" aria-label="Cards rarity filter">
+                <button id="cards-rarity-all" type="button" class="tab-btn active" role="tab" aria-selected="true">All Rarities</button>
+                <button id="cards-rarity-common" type="button" class="tab-btn" role="tab" aria-selected="false">Common</button>
+                <button id="cards-rarity-rare" type="button" class="tab-btn" role="tab" aria-selected="false">Rare</button>
+                <button id="cards-rarity-legendary" type="button" class="tab-btn" role="tab" aria-selected="false">Legendary</button>
+              </div>
+            </div>
+          </div>
+          <div id="cards-empty" class="empty-state hidden">
+            No cards yet. Submit predictions and score well to earn your first Matchday Moment.
+          </div>
+          <ul id="cards-grid" class="cards-grid" aria-live="polite"></ul>
+        </div>
+      </section>
+
+      <div id="card-detail-modal" class="rules-modal hidden" role="dialog" aria-modal="true" aria-labelledby="card-detail-title">
+        <section class="panel rules-modal-content card-detail-modal-content">
+          <div class="rules-modal-head">
+            <h2 id="card-detail-title">Card</h2>
+            <button id="close-card-detail-modal" type="button" class="ghost-btn">Close</button>
+          </div>
+          <div id="card-detail-body"></div>
+          <div class="card-detail-actions">
+            <button id="copy-card-link-btn" type="button" class="ghost-btn">Copy link</button>
+          </div>
+        </section>
+      </div>
 
       <div id="rules-modal" class="rules-modal hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">
         <section class="panel rules-modal-content">

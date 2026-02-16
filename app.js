@@ -1,6 +1,7 @@
 const RUNTIME_CONFIG = readRuntimeConfig();
 const SUPABASE_URL = RUNTIME_CONFIG.supabaseUrl;
 const SUPABASE_ANON_KEY = RUNTIME_CONFIG.supabaseAnonKey;
+const FEATURE_CARDS_ENABLED = RUNTIME_CONFIG.features.cards;
 const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
@@ -168,6 +169,7 @@ let overallLeaderboardLoadPromise = null;
 let reloadAuthedDataPromise = null;
 let loadActiveLeagueDataPromise = null;
 let loadActiveLeagueDataLeagueId = null;
+let cardsLoadPromise = null;
 let upcomingFixturesSyncPromise = null;
 let scorerStatsSyncPromise = null;
 let registeredUserCountPromise = null;
@@ -185,7 +187,8 @@ const TOP_VIEW_MODULE_URLS = {
   predict: "./view-predict.js",
   leagues: "./view-leagues.js",
   forum: "./view-forum.js",
-  results: "./view-results.js"
+  results: "./view-results.js",
+  cards: ""
 };
 const topViewModuleCache = new Map();
 const topViewModuleLoadPromises = new Map();
@@ -211,6 +214,13 @@ const state = {
   showAllUpcoming: false,
   topView: "predict",
   resultsTab: "fixtures",
+  cardsFixtureFilter: "all",
+  cardsRarityFilter: "all",
+  cards: [],
+  cardTemplates: [],
+  cardsLoaded: false,
+  cardsStatus: "Loading cards...",
+  activeCardId: "",
   forumThreads: [],
   forumReplies: [],
   activeForumThreadId: null,
@@ -228,14 +238,26 @@ const state = {
   predictionButtonFlashTimeoutId: null,
   registeredUserCount: undefined,
   visitorCount: null,
-  adminLeagues: []
+  adminLeagues: [],
+  cardDeepLinkId: ""
 };
 
 function readRuntimeConfig() {
   const config = window.__SW6_CONFIG__ || {};
+  const featureCardsRaw =
+    config?.features?.cards ??
+    config?.SW6_FEATURE_CARDS ??
+    config?.sw6FeatureCards ??
+    false;
+  const featureCards = [true, "true", "1", 1, "yes", "on"].includes(
+    typeof featureCardsRaw === "string" ? featureCardsRaw.trim().toLowerCase() : featureCardsRaw
+  );
   return {
     supabaseUrl: String(config.supabaseUrl || "").trim(),
-    supabaseAnonKey: String(config.supabaseAnonKey || "").trim()
+    supabaseAnonKey: String(config.supabaseAnonKey || "").trim(),
+    features: {
+      cards: featureCards
+    }
   };
 }
 
@@ -247,6 +269,7 @@ const topnavPredictBtn = document.getElementById("topnav-predict");
 const topnavLeaguesBtn = document.getElementById("topnav-leagues");
 const topnavForumBtn = document.getElementById("topnav-forum");
 const topnavResultsBtn = document.getElementById("topnav-results");
+const topnavCardsBtn = document.getElementById("topnav-cards");
 const resultsFixturesTabBtn = document.getElementById("results-fixtures-tab");
 const resultsPastTabBtn = document.getElementById("results-past-tab");
 const resultsStatsTabBtn = document.getElementById("results-stats-tab");
@@ -256,12 +279,28 @@ const pastOverviewPanel = document.getElementById("past-overview-panel");
 const predictViewEl = document.getElementById("predict-view");
 const forumPanelEl = document.getElementById("forum-panel");
 const resultsViewEl = document.getElementById("results-view");
+const cardsPanelEl = document.getElementById("cards-panel");
 const loginPanelEl = document.getElementById("login-panel");
 const predictAuthGateEl = document.getElementById("predict-auth-gate");
 const configErrorBannerEl = document.getElementById("config-error-banner");
 const leagueAuthGateEl = document.getElementById("league-auth-gate");
 const leagueAuthContentEl = document.getElementById("league-auth-content");
 const forumAuthGateEl = document.getElementById("forum-auth-gate");
+const cardsAuthGateEl = document.getElementById("cards-auth-gate");
+const cardsContentEl = document.getElementById("cards-content");
+const cardsSummaryEl = document.getElementById("cards-summary");
+const cardsEmptyEl = document.getElementById("cards-empty");
+const cardsGridEl = document.getElementById("cards-grid");
+const cardsFilterAllBtn = document.getElementById("cards-filter-all");
+const cardsFilterMatchBtn = document.getElementById("cards-filter-match");
+const cardsRarityAllBtn = document.getElementById("cards-rarity-all");
+const cardsRarityCommonBtn = document.getElementById("cards-rarity-common");
+const cardsRarityRareBtn = document.getElementById("cards-rarity-rare");
+const cardsRarityLegendaryBtn = document.getElementById("cards-rarity-legendary");
+const cardDetailModalEl = document.getElementById("card-detail-modal");
+const closeCardDetailModalBtn = document.getElementById("close-card-detail-modal");
+const cardDetailBodyEl = document.getElementById("card-detail-body");
+const copyCardLinkBtn = document.getElementById("copy-card-link-btn");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
 const upcomingListEl = document.getElementById("upcoming-list");
 const upcomingSourceEl = document.getElementById("upcoming-source");
@@ -349,6 +388,7 @@ if (topnavPredictBtn) topnavPredictBtn.addEventListener("click", () => setTopVie
 if (topnavLeaguesBtn) topnavLeaguesBtn.addEventListener("click", () => setTopView("leagues"));
 if (topnavForumBtn) topnavForumBtn.addEventListener("click", () => setTopView("forum"));
 if (topnavResultsBtn) topnavResultsBtn.addEventListener("click", () => setTopView("results"));
+if (topnavCardsBtn) topnavCardsBtn.addEventListener("click", () => setTopView("cards"));
 if (resultsFixturesTabBtn) resultsFixturesTabBtn.addEventListener("click", () => setResultsTab("fixtures"));
 if (resultsPastTabBtn) resultsPastTabBtn.addEventListener("click", () => setResultsTab("past"));
 if (resultsStatsTabBtn) resultsStatsTabBtn.addEventListener("click", () => setResultsTab("stats"));
@@ -373,6 +413,14 @@ if (leagueSelect) leagueSelect.addEventListener("change", onSwitchLeague);
 if (copyCodeBtn) copyCodeBtn.addEventListener("click", onCopyLeagueCode);
 if (cancelProfileBtn) cancelProfileBtn.addEventListener("click", onCancelProfileEdit);
 if (profileEditForm) profileEditForm.addEventListener("submit", onSaveProfileSettings);
+if (cardsFilterAllBtn) cardsFilterAllBtn.addEventListener("click", () => setCardsFixtureFilter("all"));
+if (cardsFilterMatchBtn) cardsFilterMatchBtn.addEventListener("click", () => setCardsFixtureFilter("match"));
+if (cardsRarityAllBtn) cardsRarityAllBtn.addEventListener("click", () => setCardsRarityFilter("all"));
+if (cardsRarityCommonBtn) cardsRarityCommonBtn.addEventListener("click", () => setCardsRarityFilter("common"));
+if (cardsRarityRareBtn) cardsRarityRareBtn.addEventListener("click", () => setCardsRarityFilter("rare"));
+if (cardsRarityLegendaryBtn) cardsRarityLegendaryBtn.addEventListener("click", () => setCardsRarityFilter("legendary"));
+if (closeCardDetailModalBtn) closeCardDetailModalBtn.addEventListener("click", onCloseCardDetailModal);
+if (copyCardLinkBtn) copyCardLinkBtn.addEventListener("click", onCopyCardLink);
 
 setInterval(renderDeadlineCountdown, 1000);
 window.addEventListener("hashchange", onRouteChange);
@@ -439,11 +487,23 @@ function canWriteActions() {
   return !state.configError && Boolean(state.client);
 }
 
+function trackEvent(name, payload = {}) {
+  try {
+    if (window?.__SW6_META__) {
+      // Dev-friendly lightweight instrumentation hook.
+      console.debug("[sw6-event]", name, payload);
+    }
+  } catch {
+    // Keep analytics optional.
+  }
+}
+
 function setupTopNavPreload() {
   const entries = [
     [topnavPredictBtn, "predict"],
     [topnavLeaguesBtn, "leagues"],
     [topnavResultsBtn, "results"],
+    [topnavCardsBtn, "cards"],
     [topnavForumBtn, "forum"]
   ];
   entries.forEach(([btn, view]) => {
@@ -467,6 +527,7 @@ function runPostAuthWarmup() {
     await Promise.allSettled([
       trackSiteVisit(),
       loadRegisteredUserCount(),
+      loadMyCards({ background: true }),
       runTopViewEnterEffects()
     ]);
     await loadAdminAccess();
@@ -486,7 +547,7 @@ function onRouteChange() {
 }
 
 async function ensureTopViewModule(topView) {
-  const key = ["predict", "leagues", "forum", "results"].includes(topView) ? topView : "predict";
+  const key = ["predict", "leagues", "forum", "results", "cards"].includes(topView) ? topView : "predict";
   if (topViewModuleCache.has(key)) {
     return topViewModuleCache.get(key);
   }
@@ -495,6 +556,11 @@ async function ensureTopViewModule(topView) {
   }
 
   const moduleUrl = TOP_VIEW_MODULE_URLS[key];
+  if (!moduleUrl) {
+    const emptyModule = {};
+    topViewModuleCache.set(key, emptyModule);
+    return emptyModule;
+  }
   const loadPromise = import(moduleUrl)
     .then((moduleNs) => {
       topViewModuleCache.set(key, moduleNs);
@@ -511,6 +577,13 @@ async function ensureTopViewModule(topView) {
 }
 
 async function runTopViewEnterEffects() {
+  if (state.topView === "cards") {
+    if (state.session?.user) {
+      await ensureAuthedDataLoaded();
+      await loadMyCards({ background: false });
+    }
+    return;
+  }
   try {
     const moduleNs = await ensureTopViewModule(state.topView);
     const onEnter = moduleNs && typeof moduleNs.onEnter === "function" ? moduleNs.onEnter : null;
@@ -577,12 +650,19 @@ function setTopView(view) {
     state.activeForumThreadId = null;
     state.forumReplies = [];
   }
+  if (view !== "cards") {
+    state.activeCardId = "";
+    state.cardDeepLinkId = "";
+  }
   state.topView = view;
   if (view !== "results") {
     state.showRulesModal = false;
   }
   if (view !== "predict") {
     state.loginPanelOpen = false;
+  }
+  if (view === "cards") {
+    trackEvent("cards_tab_opened");
   }
   syncRouteHash();
   runTopViewEnterEffects().then(render);
@@ -601,6 +681,18 @@ function setScorerCompetition(competition) {
   state.scorerCompetition = SCORER_COMPETITION_KEYS.includes(competition) ? competition : "all";
   renderTopScorers();
   renderNavigation();
+}
+
+function setCardsFixtureFilter(filter) {
+  state.cardsFixtureFilter = filter === "match" ? "match" : "all";
+  trackEvent("card_filter_used", { filter: `fixture:${state.cardsFixtureFilter}` });
+  renderCardsPanel();
+}
+
+function setCardsRarityFilter(rarity) {
+  state.cardsRarityFilter = ["common", "rare", "legendary"].includes(rarity) ? rarity : "all";
+  trackEvent("card_filter_used", { filter: `rarity:${state.cardsRarityFilter}` });
+  renderCardsPanel();
 }
 
 function setLeaderboardScope(scope) {
@@ -622,6 +714,10 @@ function onDocumentClick(event) {
     onCloseRulesModal();
     return;
   }
+  if (state.activeCardId && cardDetailModalEl && event.target === cardDetailModalEl) {
+    onCloseCardDetailModal();
+    return;
+  }
   if (!state.accountMenuOpen) {
     return;
   }
@@ -640,6 +736,10 @@ function onDocumentClick(event) {
 
 function onDocumentKeydown(event) {
   if (event.key === "Escape") {
+    if (state.activeCardId) {
+      onCloseCardDetailModal();
+      return;
+    }
     if (state.showRulesModal) {
       onCloseRulesModal();
       return;
@@ -649,6 +749,12 @@ function onDocumentKeydown(event) {
       renderNavigation();
     }
   }
+}
+
+function onCloseCardDetailModal() {
+  state.activeCardId = "";
+  syncRouteHash();
+  render();
 }
 
 function onOpenProfileFromAccount() {
@@ -713,6 +819,7 @@ function getRouteIntentFromUrl() {
 
   const hashToken = normalizeRouteToken(rawHash);
   const search = new URLSearchParams(window.location.search);
+  const queryCardId = String(search.get("card") || "").trim();
   const queryRaw = String(search.get("tab") || search.get("view") || search.get("section") || "").trim();
   const queryThreadId = extractForumThreadIdFromRoute(queryRaw) || parseUuidLike(search.get("thread"));
   if (queryThreadId) {
@@ -733,6 +840,9 @@ function getRouteIntentFromUrl() {
   }
   if (token === "forum" || token === "threads" || token === "community" || token === "forumpanel") {
     return { topView: "forum" };
+  }
+  if (token === "cards" || token === "binder" || token === "moments") {
+    return { topView: "cards", cardId: queryCardId };
   }
   if (
     token === "results" ||
@@ -766,7 +876,7 @@ function getRouteIntentFromUrl() {
   if (token === "leaguepanel") {
     return { topView: "leagues" };
   }
-  return { topView: "predict" };
+  return { topView: "predict", cardId: queryCardId };
 }
 
 function normalizeRouteToken(value) {
@@ -802,7 +912,7 @@ function parseUuidLike(value) {
 }
 
 function applyRouteIntent(intent, options = {}) {
-  const nextTop = ["predict", "leagues", "forum", "results"].includes(intent.topView) ? intent.topView : state.topView;
+  const nextTop = ["predict", "leagues", "forum", "results", "cards"].includes(intent.topView) ? intent.topView : state.topView;
   state.topView = nextTop || "predict";
   state.resultsTab = intent.resultsTab === "past"
     ? "past"
@@ -813,6 +923,9 @@ function applyRouteIntent(intent, options = {}) {
     state.activeForumThreadId = parseUuidLike(intent.forumThreadId) || state.activeForumThreadId;
   } else if (intent.forumThreadId) {
     state.activeForumThreadId = parseUuidLike(intent.forumThreadId);
+  }
+  if (intent.cardId) {
+    state.cardDeepLinkId = intent.cardId;
   }
   if (intent.openProfileEditor && state.session?.user && profileEditForm) {
     state.accountMenuOpen = true;
@@ -837,11 +950,26 @@ function syncRouteHash(forcedToken = "") {
       token = state.activeForumThreadId ? `forum-thread/${state.activeForumThreadId}` : "forum";
     } else if (state.topView === "results") {
       token = `results-${state.resultsTab}`;
+    } else if (state.topView === "cards") {
+      token = "cards";
     }
   }
   const nextHash = token ? `#${token}` : "";
-  if (window.location.hash !== nextHash) {
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+  const params = new URLSearchParams(window.location.search);
+  if (state.topView === "cards" && state.activeCardId) {
+    params.set("card", state.activeCardId);
+    params.set("tab", "cards");
+  } else {
+    params.delete("card");
+    if (params.get("tab") === "cards") {
+      params.delete("tab");
+    }
+  }
+  const nextSearch = params.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${nextHash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl !== nextUrl) {
+    window.history.replaceState(null, "", nextUrl);
   }
 }
 
@@ -2113,9 +2241,14 @@ function renderNow() {
   const isConnected = Boolean(state.client);
   const isAuthed = Boolean(state.session?.user);
   const signedIn = isConnected && isAuthed;
+  const cardsEnabled = FEATURE_CARDS_ENABLED;
   if (!signedIn && state.topView !== "predict") {
     state.topView = "predict";
     state.resultsTab = "fixtures";
+    syncRouteHash("predict");
+  }
+  if (!cardsEnabled && state.topView === "cards") {
+    state.topView = "predict";
     syncRouteHash("predict");
   }
 
@@ -2125,6 +2258,7 @@ function renderNow() {
   const showLeagues = state.topView === "leagues";
   const showForum = state.topView === "forum";
   const showResults = state.topView === "results";
+  const showCards = state.topView === "cards";
   const showResultsFixtures = showResults && state.resultsTab === "fixtures";
   const showResultsPast = showResults && state.resultsTab === "past";
   const showResultsStats = showResults && state.resultsTab === "stats";
@@ -2147,9 +2281,12 @@ function renderNow() {
   if (showForum) {
     renderForumPanel();
   }
+  if (showCards) {
+    renderCardsPanel();
+  }
 
   renderHeaderAuthState({ signedIn, isConnected });
-  renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected });
+  renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected, cardsEnabled });
   renderConfigErrorBanner();
   if (!signedIn || !isAdminUser()) {
     removeAdminConsole();
@@ -2200,11 +2337,13 @@ function renderHeaderAuthState({ signedIn, isConnected }) {
   if (accountQuickSignOutBtn) accountQuickSignOutBtn.classList.toggle("hidden", !signedIn || !isConnected);
 }
 
-function renderAuthGatedSections({ signedIn, authResolved }) {
+function renderAuthGatedSections({ signedIn, authResolved, cardsEnabled }) {
   const showGate = !signedIn && authResolved;
   if (predictAuthGateEl) predictAuthGateEl.classList.toggle("hidden", !showGate);
   if (leagueAuthGateEl) leagueAuthGateEl.classList.toggle("hidden", !showGate);
   if (forumAuthGateEl) forumAuthGateEl.classList.toggle("hidden", !showGate);
+  if (cardsAuthGateEl) cardsAuthGateEl.classList.toggle("hidden", !cardsEnabled || !showGate);
+  if (cardsContentEl) cardsContentEl.classList.toggle("hidden", !cardsEnabled || !signedIn);
   if (leagueAuthContentEl) leagueAuthContentEl.classList.toggle("hidden", !signedIn);
   if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !signedIn);
   if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !signedIn);
@@ -2272,10 +2411,12 @@ function renderOverallLeaderboard() {
 
 function renderNavigation() {
   const signedIn = Boolean(state.client && state.session?.user);
+  const cardsEnabled = FEATURE_CARDS_ENABLED;
   const showPredict = state.topView === "predict";
   const showLeagues = signedIn && state.topView === "leagues";
   const showForum = signedIn && state.topView === "forum";
   const showResults = signedIn && state.topView === "results";
+  const showCards = cardsEnabled && signedIn && state.topView === "cards";
   if (topnavPredictBtn) {
     topnavPredictBtn.classList.toggle("active", showPredict);
     topnavPredictBtn.setAttribute("aria-selected", String(showPredict));
@@ -2295,10 +2436,16 @@ function renderNavigation() {
     topnavResultsBtn.classList.toggle("active", showResults);
     topnavResultsBtn.setAttribute("aria-selected", String(showResults));
   }
+  if (topnavCardsBtn) {
+    topnavCardsBtn.classList.toggle("hidden", !cardsEnabled || !signedIn);
+    topnavCardsBtn.classList.toggle("active", showCards);
+    topnavCardsBtn.setAttribute("aria-selected", String(showCards));
+  }
   if (predictViewEl) predictViewEl.classList.toggle("hidden", !showPredict);
   if (resultsViewEl) resultsViewEl.classList.toggle("hidden", !showResults);
   if (leaguePanel) leaguePanel.classList.toggle("hidden", !showLeagues);
   if (forumPanelEl) forumPanelEl.classList.toggle("hidden", !showForum);
+  if (cardsPanelEl) cardsPanelEl.classList.toggle("hidden", !cardsEnabled || !showCards);
 
   const showFixtures = state.resultsTab === "fixtures";
   const showPast = state.resultsTab === "past";
@@ -2340,6 +2487,7 @@ function renderNavigation() {
     statsFaTabBtn.setAttribute("aria-selected", String(active));
   }
   if (rulesModalEl) rulesModalEl.classList.toggle("hidden", !state.showRulesModal);
+  if (cardDetailModalEl) cardDetailModalEl.classList.toggle("hidden", !Boolean(state.activeCardId));
 }
 
 function renderPastGames() {
@@ -2651,6 +2799,338 @@ function renderForumPanel() {
     state,
     ...getForumViewContext()
   });
+}
+
+async function loadMyCards(options = {}) {
+  const background = Boolean(options.background);
+  const force = Boolean(options.force);
+  if (!FEATURE_CARDS_ENABLED) {
+    state.cards = [];
+    state.cardTemplates = [];
+    state.cardsLoaded = true;
+    state.cardsStatus = "";
+    return;
+  }
+  if (!state.client || !state.session?.user) {
+    state.cards = [];
+    state.cardTemplates = [];
+    state.cardsLoaded = false;
+    state.cardsStatus = "Sign in to view cards.";
+    return;
+  }
+  if (!force && background && state.cardsLoaded) {
+    return;
+  }
+  if (!force && cardsLoadPromise) {
+    await cardsLoadPromise;
+    return;
+  }
+
+  cardsLoadPromise = (async () => {
+    const [cardsResult, templatesResult] = await Promise.all([
+      state.client
+        .from("user_fixture_cards")
+        .select(
+          "user_id, fixture_card_id, serial_number, earned_at, meta, fixture_cards(id, fixture_id, title, subtitle, created_at, card_templates(id, slug, name, description, rarity), fixtures(opponent, kickoff, competition), results(chelsea_goals, opponent_goals, first_scorer))"
+        )
+        .eq("user_id", state.session.user.id)
+        .order("earned_at", { ascending: false }),
+      state.client
+        .from("card_templates")
+        .select("id, slug, name, description, rarity, active")
+        .eq("active", true)
+        .order("id", { ascending: true })
+    ]);
+
+    if (cardsResult.error) {
+      state.cards = [];
+      state.cardsStatus = "Cards unavailable right now.";
+      state.cardsLoaded = true;
+      return;
+    }
+    if (!templatesResult.error) {
+      state.cardTemplates = Array.isArray(templatesResult.data) ? templatesResult.data : [];
+    }
+    state.cards = normalizeCardRows(cardsResult.data || []);
+    state.cardsLoaded = true;
+    state.cardsStatus = state.cards.length > 0 ? "" : "No cards earned yet.";
+  })();
+
+  try {
+    await cardsLoadPromise;
+  } finally {
+    cardsLoadPromise = null;
+  }
+}
+
+function normalizeCardRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const fixtureCard = row.fixture_cards || {};
+    const templateRaw = fixtureCard.card_templates;
+    const template = Array.isArray(templateRaw) ? templateRaw[0] || {} : templateRaw || {};
+    const fixtureRaw = fixtureCard.fixtures;
+    const fixture = Array.isArray(fixtureRaw) ? fixtureRaw[0] || {} : fixtureRaw || {};
+    const resultRaw = fixtureCard.results;
+    const result = Array.isArray(resultRaw) ? resultRaw[0] || null : resultRaw || null;
+    return {
+      id: String(row.fixture_card_id),
+      userId: row.user_id,
+      fixtureCardId: row.fixture_card_id,
+      fixtureId: fixtureCard.fixture_id || "",
+      title: fixtureCard.title || template.name || "Matchday Moment",
+      subtitle: fixtureCard.subtitle || "",
+      templateSlug: template.slug || "",
+      templateName: template.name || "Card",
+      templateDescription: template.description || "",
+      rarity: ["common", "rare", "legendary"].includes(template.rarity) ? template.rarity : "common",
+      opponent: fixture.opponent || "Opponent",
+      kickoff: fixture.kickoff || "",
+      competition: fixture.competition || "Competition",
+      scoreLine: result ? `${result.chelsea_goals}-${result.opponent_goals}` : "",
+      firstScorer: result?.first_scorer || "",
+      serialNumber: row.serial_number,
+      earnedAt: row.earned_at || "",
+      meta: row.meta || {},
+      earned: true
+    };
+  });
+}
+
+function getCardsFixtureTarget() {
+  const completed = [...state.activeLeagueFixtures]
+    .filter((fixture) => Boolean(fixture.result))
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())[0];
+  if (completed) {
+    return completed;
+  }
+  return getNextFixtureForPrediction() || null;
+}
+
+function getVisibleCards() {
+  const rarityFilter = state.cardsRarityFilter;
+  const fixtureFilter = state.cardsFixtureFilter;
+  const baseCards = state.cards.filter((card) => {
+    if (rarityFilter !== "all" && card.rarity !== rarityFilter) {
+      return false;
+    }
+    return true;
+  });
+
+  if (fixtureFilter !== "match") {
+    return baseCards;
+  }
+
+  const fixtureTarget = getCardsFixtureTarget();
+  if (!fixtureTarget) {
+    return baseCards;
+  }
+  const earnedForFixture = baseCards.filter((card) => card.fixtureId === fixtureTarget.id);
+  const placeholders = buildLockedCardsForFixture(fixtureTarget, earnedForFixture, rarityFilter);
+  return [...earnedForFixture, ...placeholders];
+}
+
+function buildLockedCardsForFixture(fixture, earnedCards, rarityFilter) {
+  const earnedSlugs = new Set(earnedCards.map((card) => card.templateSlug));
+  return state.cardTemplates
+    .filter((template) => template.active !== false)
+    .filter((template) => !earnedSlugs.has(template.slug))
+    .filter((template) => rarityFilter === "all" || template.rarity === rarityFilter)
+    .map((template) => ({
+      id: `locked-${fixture.id}-${template.slug}`,
+      userId: state.session?.user?.id || "",
+      fixtureCardId: null,
+      fixtureId: fixture.id,
+      title: template.name,
+      subtitle: `Chelsea vs ${fixture.opponent}`,
+      templateSlug: template.slug,
+      templateName: template.name,
+      templateDescription: template.description,
+      rarity: template.rarity,
+      opponent: fixture.opponent,
+      kickoff: fixture.kickoff,
+      competition: fixture.competition || "Competition",
+      scoreLine: fixture.result ? `${fixture.result.chelsea_goals}-${fixture.result.opponent_goals}` : "",
+      firstScorer: fixture.result?.first_scorer || "",
+      serialNumber: null,
+      earnedAt: "",
+      meta: {},
+      earned: false
+    }));
+}
+
+function renderCardsPanel() {
+  if (!FEATURE_CARDS_ENABLED || !cardsPanelEl) {
+    return;
+  }
+  const signedIn = Boolean(state.client && state.session?.user);
+  if (!signedIn) {
+    return;
+  }
+  if (!state.cardsLoaded && !cardsLoadPromise) {
+    loadMyCards({ background: true }).then(render);
+  }
+
+  const visibleCards = getVisibleCards();
+  const counts = getCardRarityCounts(state.cards);
+  if (cardsSummaryEl) {
+    cardsSummaryEl.textContent = `Total: ${state.cards.length} | Common: ${counts.common} | Rare: ${counts.rare} | Legendary: ${counts.legendary}`;
+  }
+
+  if (cardsFilterAllBtn) {
+    const active = state.cardsFixtureFilter === "all";
+    cardsFilterAllBtn.classList.toggle("active", active);
+    cardsFilterAllBtn.setAttribute("aria-selected", String(active));
+  }
+  if (cardsFilterMatchBtn) {
+    const active = state.cardsFixtureFilter === "match";
+    cardsFilterMatchBtn.classList.toggle("active", active);
+    cardsFilterMatchBtn.setAttribute("aria-selected", String(active));
+  }
+  const rarityButtons = [
+    [cardsRarityAllBtn, "all"],
+    [cardsRarityCommonBtn, "common"],
+    [cardsRarityRareBtn, "rare"],
+    [cardsRarityLegendaryBtn, "legendary"]
+  ];
+  rarityButtons.forEach(([btn, key]) => {
+    if (!btn) return;
+    const active = state.cardsRarityFilter === key;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", String(active));
+  });
+
+  if (cardsGridEl) {
+    cardsGridEl.textContent = "";
+    visibleCards.forEach((card) => {
+      cardsGridEl.appendChild(renderCardGridItem(card));
+    });
+  }
+  if (cardsEmptyEl) {
+    cardsEmptyEl.classList.toggle("hidden", visibleCards.length > 0);
+  }
+
+  if (state.cardDeepLinkId && !state.activeCardId) {
+    const target = visibleCards.find((card) => card.id === state.cardDeepLinkId || String(card.fixtureCardId) === state.cardDeepLinkId);
+    if (target) {
+      state.activeCardId = target.id;
+      state.cardDeepLinkId = "";
+    }
+  }
+
+  renderCardDetailModal();
+}
+
+function getCardRarityCounts(cards) {
+  return cards.reduce(
+    (acc, card) => {
+      if (card.rarity === "rare") acc.rare += 1;
+      else if (card.rarity === "legendary") acc.legendary += 1;
+      else acc.common += 1;
+      return acc;
+    },
+    { common: 0, rare: 0, legendary: 0 }
+  );
+}
+
+function renderCardGridItem(card) {
+  const li = document.createElement("li");
+  li.className = `moment-card rarity-${card.rarity}`;
+  if (!card.earned) {
+    li.classList.add("is-locked");
+  }
+  const earnedAtMs = card.earnedAt ? new Date(card.earnedAt).getTime() : NaN;
+  const isNew = card.earned && Number.isFinite(earnedAtMs) && Date.now() - earnedAtMs < 24 * 60 * 60 * 1000;
+  li.innerHTML = `
+    <button type="button" class="moment-card-hit" aria-label="${card.templateName} card">
+      <div class="moment-card-head">
+        <span class="moment-rarity-pill">${capitalize(card.rarity)}</span>
+        <span class="moment-competition-pill">${card.competition}</span>
+      </div>
+      <h3 class="moment-card-title">${escapeHtml(card.templateName)}</h3>
+      <p class="moment-card-context">${escapeHtml(card.subtitle || `Chelsea vs ${card.opponent}`)}</p>
+      <p class="moment-card-score">${card.scoreLine ? escapeHtml(card.scoreLine) : "—"}</p>
+      <p class="moment-card-reason">${escapeHtml(card.meta?.reason || card.templateDescription || "Not earned yet")}</p>
+      <div class="moment-card-footer">
+        <span>${card.serialNumber ? `#${card.serialNumber}` : "Not earned"}</span>
+        <span>${card.earnedAt ? formatKickoff(card.earnedAt) : "—"}</span>
+      </div>
+      ${isNew ? '<span class="moment-new-pill">New</span>' : ""}
+      ${!card.earned ? '<span class="moment-locked-pill">Not earned</span>' : ""}
+    </button>
+  `;
+  const hit = li.querySelector(".moment-card-hit");
+  if (hit) {
+    hit.addEventListener("click", () => {
+      state.activeCardId = card.id;
+      trackEvent("card_opened", {
+        fixture_id: card.fixtureId,
+        template_slug: card.templateSlug,
+        rarity: card.rarity
+      });
+      syncRouteHash();
+      renderCardDetailModal();
+    });
+  }
+  return li;
+}
+
+function renderCardDetail(card) {
+  const wrapper = document.createElement("article");
+  wrapper.className = `moment-card-detail rarity-${card.rarity}${card.earned ? "" : " is-locked"}`;
+  const reason = card.meta?.reason || card.templateDescription || "Not earned yet.";
+  wrapper.innerHTML = `
+    <div class="moment-card-head">
+      <span class="moment-rarity-pill">${capitalize(card.rarity)}</span>
+      <span class="moment-competition-pill">${card.competition}</span>
+    </div>
+    <h3 class="moment-card-title">${escapeHtml(card.templateName)}</h3>
+    <p class="moment-card-context">${escapeHtml(card.subtitle || `Chelsea vs ${card.opponent}`)}</p>
+    <p class="moment-card-score">${card.scoreLine ? escapeHtml(card.scoreLine) : "—"}</p>
+    <p class="moment-card-reason">${escapeHtml(reason)}</p>
+    <p class="moment-card-help"><strong>How to earn:</strong> ${escapeHtml(card.templateDescription || "Complete fixture criteria.")}</p>
+    <div class="moment-card-footer">
+      <span>${card.serialNumber ? `Serial #${card.serialNumber}` : "Not earned"}</span>
+      <span>${card.earnedAt ? `Earned ${formatKickoff(card.earnedAt)}` : "Awaiting unlock"}</span>
+    </div>
+  `;
+  return wrapper;
+}
+
+function renderCardDetailModal() {
+  if (!cardDetailModalEl || !cardDetailBodyEl) {
+    return;
+  }
+  const visibleCards = getVisibleCards();
+  const active = visibleCards.find((card) => card.id === state.activeCardId);
+  const show = Boolean(active);
+  cardDetailModalEl.classList.toggle("hidden", !show);
+  if (!show) {
+    cardDetailBodyEl.textContent = "";
+    return;
+  }
+  cardDetailBodyEl.textContent = "";
+  cardDetailBodyEl.appendChild(renderCardDetail(active));
+}
+
+async function onCopyCardLink() {
+  const visibleCards = getVisibleCards();
+  const active = visibleCards.find((card) => card.id === state.activeCardId);
+  if (!active) {
+    return;
+  }
+  const targetId = active.fixtureCardId ? String(active.fixtureCardId) : active.id;
+  const url = `${window.location.origin}${window.location.pathname}?tab=cards&card=${encodeURIComponent(targetId)}#cards`;
+  try {
+    await navigator.clipboard.writeText(url);
+    if (copyCardLinkBtn) {
+      copyCardLinkBtn.textContent = "Copied";
+      setTimeout(() => {
+        if (copyCardLinkBtn) copyCardLinkBtn.textContent = "Copy link";
+      }, 1500);
+    }
+  } catch {
+    // Clipboard may be unavailable in some contexts.
+  }
 }
 
 function getNextPendingResultFixture() {
@@ -4482,6 +4962,20 @@ function formatDuration(ms) {
     return `${days}d ${hours}h ${minutes}m ${seconds}s`;
   }
   return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+function capitalize(value) {
+  const text = String(value || "").trim();
+  return text ? `${text[0].toUpperCase()}${text.slice(1)}` : "";
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function getNextUpcomingFixtureFromSchedule() {
