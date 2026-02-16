@@ -572,11 +572,12 @@ function renderInlineReplyForm(ctx, parentId) {
 
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
+  submitBtn.className = "forum-action-link";
   submitBtn.textContent = "Reply";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
-  cancelBtn.className = "ghost-btn";
+  cancelBtn.className = "forum-action-link";
   cancelBtn.dataset.cancelReplyParentId = parentId;
   cancelBtn.textContent = "Cancel";
 
@@ -590,6 +591,12 @@ function renderInlineReplyForm(ctx, parentId) {
 function renderCommentNode(ctx, comment, byParent, depth) {
   const li = document.createElement("li");
   li.className = `forum-comment depth-${Math.min(depth, 3)}`;
+
+  const shell = document.createElement("div");
+  shell.className = "forum-comment-shell";
+
+  const voteRail = document.createElement("div");
+  voteRail.className = "forum-vote-rail";
 
   const meta = document.createElement("p");
   meta.className = "status no-margin";
@@ -608,7 +615,7 @@ function renderCommentNode(ctx, comment, byParent, depth) {
 
   const upvoteBtn = document.createElement("button");
   upvoteBtn.type = "button";
-  upvoteBtn.className = "ghost-btn forum-vote-btn";
+  upvoteBtn.className = "forum-vote-btn";
   upvoteBtn.dataset.voteCommentId = comment.id;
   upvoteBtn.dataset.voteValue = "1";
   upvoteBtn.textContent = "▲";
@@ -617,29 +624,35 @@ function renderCommentNode(ctx, comment, byParent, depth) {
 
   const downvoteBtn = document.createElement("button");
   downvoteBtn.type = "button";
-  downvoteBtn.className = "ghost-btn forum-vote-btn";
+  downvoteBtn.className = "forum-vote-btn";
   downvoteBtn.dataset.voteCommentId = comment.id;
   downvoteBtn.dataset.voteValue = "-1";
   downvoteBtn.textContent = "▼";
   downvoteBtn.disabled = comment.is_deleted || votePendingByComment.has(comment.id);
   downvoteBtn.classList.toggle("active", comment.my_vote === -1);
 
-  actions.appendChild(upvoteBtn);
-  actions.appendChild(score);
-  actions.appendChild(downvoteBtn);
+  voteRail.appendChild(upvoteBtn);
+  voteRail.appendChild(score);
+  voteRail.appendChild(downvoteBtn);
 
   if (!comment.is_deleted && depth < 3) {
     const replyBtn = document.createElement("button");
     replyBtn.type = "button";
-    replyBtn.className = "ghost-btn";
+    replyBtn.className = "forum-action-link";
     replyBtn.dataset.replyParentId = comment.id;
     replyBtn.textContent = "Reply";
     actions.appendChild(replyBtn);
   }
 
-  li.appendChild(meta);
-  li.appendChild(body);
-  li.appendChild(actions);
+  const content = document.createElement("div");
+  content.className = "forum-comment-content";
+  content.appendChild(meta);
+  content.appendChild(body);
+  content.appendChild(actions);
+
+  shell.appendChild(voteRail);
+  shell.appendChild(content);
+  li.appendChild(shell);
 
   if (activeReplyParentId === comment.id) {
     li.appendChild(renderInlineReplyForm(ctx, comment.id));
@@ -734,7 +747,7 @@ export function render(ctx) {
 
       const openBtn = document.createElement("button");
       openBtn.type = "button";
-      openBtn.className = "ghost-btn";
+      openBtn.className = "forum-action-link";
       openBtn.dataset.threadId = thread.id;
       openBtn.textContent = "Open Thread";
 
