@@ -212,6 +212,7 @@ using (auth.uid() = user_id);
 
 -- 5) Triggers/functions.
 
+drop trigger if exists trg_forum_vote_set_updated_at on public.forum_comment_votes;
 drop function if exists public.forum_vote_set_updated_at();
 create or replace function public.forum_vote_set_updated_at()
 returns trigger
@@ -223,12 +224,12 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_forum_vote_set_updated_at on public.forum_comment_votes;
 create trigger trg_forum_vote_set_updated_at
 before update on public.forum_comment_votes
 for each row
 execute function public.forum_vote_set_updated_at();
 
+drop trigger if exists trg_validate_forum_comment_parent_thread on public.forum_comments;
 drop function if exists public.validate_forum_comment_parent_thread();
 create or replace function public.validate_forum_comment_parent_thread()
 returns trigger
@@ -266,13 +267,14 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_validate_forum_comment_parent_thread on public.forum_comments;
 create trigger trg_validate_forum_comment_parent_thread
 before insert or update of parent_comment_id, thread_id
 on public.forum_comments
 for each row
 execute function public.validate_forum_comment_parent_thread();
 
+drop trigger if exists trg_forum_comments_sync_thread_counts_insert on public.forum_comments;
+drop trigger if exists trg_forum_comments_sync_thread_counts_update on public.forum_comments;
 drop function if exists public.forum_comments_sync_thread_counts();
 create or replace function public.forum_comments_sync_thread_counts()
 returns trigger
@@ -326,18 +328,19 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_forum_comments_sync_thread_counts_insert on public.forum_comments;
 create trigger trg_forum_comments_sync_thread_counts_insert
 after insert on public.forum_comments
 for each row
 execute function public.forum_comments_sync_thread_counts();
 
-drop trigger if exists trg_forum_comments_sync_thread_counts_update on public.forum_comments;
 create trigger trg_forum_comments_sync_thread_counts_update
 after update of is_deleted on public.forum_comments
 for each row
 execute function public.forum_comments_sync_thread_counts();
 
+drop trigger if exists trg_forum_comment_votes_apply_insert on public.forum_comment_votes;
+drop trigger if exists trg_forum_comment_votes_apply_update on public.forum_comment_votes;
+drop trigger if exists trg_forum_comment_votes_apply_delete on public.forum_comment_votes;
 drop function if exists public.forum_comment_votes_apply_deltas();
 create or replace function public.forum_comment_votes_apply_deltas()
 returns trigger
@@ -377,19 +380,16 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_forum_comment_votes_apply_insert on public.forum_comment_votes;
 create trigger trg_forum_comment_votes_apply_insert
 after insert on public.forum_comment_votes
 for each row
 execute function public.forum_comment_votes_apply_deltas();
 
-drop trigger if exists trg_forum_comment_votes_apply_update on public.forum_comment_votes;
 create trigger trg_forum_comment_votes_apply_update
 after update of vote on public.forum_comment_votes
 for each row
 execute function public.forum_comment_votes_apply_deltas();
 
-drop trigger if exists trg_forum_comment_votes_apply_delete on public.forum_comment_votes;
 create trigger trg_forum_comment_votes_apply_delete
 after delete on public.forum_comment_votes
 for each row
