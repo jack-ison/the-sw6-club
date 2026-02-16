@@ -43,9 +43,13 @@ for (const dir of optionalDirs) {
   }
 }
 
+const defaultSupabaseUrl = "https://kderojinorznwtfkizxx.supabase.co";
+const defaultSupabaseAnonKey = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+
 const runtimeConfig = {
-  supabaseUrl: process.env.SUPABASE_URL || "",
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ""
+  supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || defaultSupabaseUrl,
+  supabaseAnonKey:
+    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || defaultSupabaseAnonKey
 };
 
 const buildMeta = {
