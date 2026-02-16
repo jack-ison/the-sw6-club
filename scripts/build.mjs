@@ -49,7 +49,15 @@ const defaultSupabaseAnonKey = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
 const runtimeConfig = {
   supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || defaultSupabaseUrl,
   supabaseAnonKey:
-    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || defaultSupabaseAnonKey
+    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || defaultSupabaseAnonKey,
+  SW6_FEATURE_CARDS: process.env.SW6_FEATURE_CARDS || process.env.NEXT_PUBLIC_SW6_FEATURE_CARDS || "true",
+  features: {
+    cards: ["true", "1", "yes", "on"].includes(
+      String(process.env.SW6_FEATURE_CARDS || process.env.NEXT_PUBLIC_SW6_FEATURE_CARDS || "true")
+        .trim()
+        .toLowerCase()
+    )
+  }
 };
 
 const buildMeta = {

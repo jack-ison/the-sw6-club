@@ -1347,6 +1347,196 @@ button:disabled {
   text-align: center;
 }
 
+/* Matchday Moments */
+.cards-toolbar {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+.cards-filter-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cards-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.cards-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.moment-card {
+  border: 1px solid #c8dcfb;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f5f9ff);
+  aspect-ratio: 3 / 4;
+}
+
+.moment-card-hit {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #163462;
+  text-align: left;
+  padding: 0.58rem;
+  display: grid;
+  gap: 0.38rem;
+  position: relative;
+}
+
+.moment-card-hit:focus-visible,
+.card-detail-actions .ghost-btn:focus-visible,
+.cards-filter-group .tab-btn:focus-visible {
+  outline: 3px solid #1f5db2;
+  outline-offset: 2px;
+}
+
+.moment-card.rarity-common {
+  box-shadow: inset 0 0 0 2px rgb(126 154 197 / 34%);
+}
+
+.moment-card.rarity-rare {
+  box-shadow: inset 0 0 0 2px rgb(39 99 186 / 40%);
+}
+
+.moment-card.rarity-legendary {
+  box-shadow: inset 0 0 0 2px rgb(148 116 25 / 55%);
+}
+
+.moment-card.rarity-rare .moment-card-hit:hover::after,
+.moment-card.rarity-legendary .moment-card-hit:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: linear-gradient(120deg, transparent 20%, rgb(255 255 255 / 20%) 50%, transparent 80%);
+  animation: sheen 1.1s linear;
+  pointer-events: none;
+}
+
+.moment-card.is-locked,
+.moment-card-detail.is-locked {
+  filter: grayscale(0.9);
+  opacity: 0.75;
+}
+
+.moment-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.moment-rarity-pill,
+.moment-competition-pill,
+.moment-new-pill,
+.moment-locked-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #aac4ef;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #1d467d;
+  background: #edf4ff;
+}
+
+.moment-rarity-pill {
+  text-transform: uppercase;
+}
+
+.moment-new-pill {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #0f7d4a;
+  border-color: #0f7d4a;
+  color: #fff;
+}
+
+.moment-locked-pill {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  background: #5f708d;
+  border-color: #5f708d;
+  color: #fff;
+}
+
+.moment-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #102f5d;
+}
+
+.moment-card-context {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #335586;
+}
+
+.moment-card-score {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #113668;
+}
+
+.moment-card-reason {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #2e4f7f;
+  min-height: 2.2em;
+}
+
+.moment-card-footer {
+  margin-top: 0.08rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.3rem;
+  font-size: 0.66rem;
+  color: #3a5d8f;
+}
+
+.card-detail-modal-content {
+  max-width: 620px;
+}
+
+.moment-card-detail {
+  border: 1px solid #c8dcfb;
+  border-radius: 14px;
+  padding: 0.72rem;
+  background: linear-gradient(180deg, #fff, #f5f9ff);
+  display: grid;
+  gap: 0.44rem;
+}
+
+.moment-card-help {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #264a7b;
+}
+
+.card-detail-actions {
+  margin-top: 0.6rem;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -1474,6 +1664,16 @@ button:disabled {
   .hero-attendance {
     text-align: left;
     padding-left: 0.04rem;
+  }
+
+  .cards-filter-group .tab-btn {
+    min-height: 42px;
+  }
+}
+
+@media (min-width: 901px) {
+  .cards-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
