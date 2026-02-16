@@ -1,5 +1,6 @@
-const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+const RUNTIME_CONFIG = readRuntimeConfig();
+const SUPABASE_URL = RUNTIME_CONFIG.supabaseUrl;
+const SUPABASE_ANON_KEY = RUNTIME_CONFIG.supabaseAnonKey;
 const GLOBAL_LEAGUE_NAME = "Global League";
 const FIXTURE_CACHE_KEY = "cfc-upcoming-fixtures-cache-v1";
 const FIXTURE_CACHE_VERSION = 3;
@@ -194,6 +195,7 @@ const state = {
   session: null,
   authResolved: false,
   isAdmin: false,
+  configError: false,
   leagues: [],
   activeLeagueId: null,
   activeLeagueMembers: [],
@@ -229,6 +231,18 @@ const state = {
   adminLeagues: []
 };
 
+function readRuntimeConfig() {
+  const config = window.__SW6_CONFIG__ || {};
+  return {
+    supabaseUrl: String(config.supabaseUrl || "").trim(),
+    supabaseAnonKey: String(config.supabaseAnonKey || "").trim()
+  };
+}
+
+function hasRuntimeSupabaseConfig() {
+  return Boolean(SUPABASE_URL) && Boolean(SUPABASE_ANON_KEY);
+}
+
 const topnavPredictBtn = document.getElementById("topnav-predict");
 const topnavLeaguesBtn = document.getElementById("topnav-leagues");
 const topnavForumBtn = document.getElementById("topnav-forum");
@@ -244,6 +258,7 @@ const forumPanelEl = document.getElementById("forum-panel");
 const resultsViewEl = document.getElementById("results-view");
 const loginPanelEl = document.getElementById("login-panel");
 const predictAuthGateEl = document.getElementById("predict-auth-gate");
+const configErrorBannerEl = document.getElementById("config-error-banner");
 const leagueAuthGateEl = document.getElementById("league-auth-gate");
 const leagueAuthContentEl = document.getElementById("league-auth-content");
 const forumAuthGateEl = document.getElementById("forum-auth-gate");
@@ -380,8 +395,17 @@ async function initializeApp() {
     render();
   });
 
+  if (!hasRuntimeSupabaseConfig()) {
+    state.configError = true;
+    state.authResolved = true;
+    render();
+    await backgroundSync;
+    return;
+  }
+
   if (!initSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY)) {
     state.authResolved = true;
+    state.configError = true;
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     await backgroundSync;
     await runTopViewEnterEffects();
@@ -411,6 +435,10 @@ async function initializeApp() {
   await backgroundSync;
 }
 
+function canWriteActions() {
+  return !state.configError && Boolean(state.client);
+}
+
 function setupTopNavPreload() {
   const entries = [
     [topnavPredictBtn, "predict"],
@@ -435,13 +463,15 @@ function setupTopNavPreload() {
 
 function runPostAuthWarmup() {
   const runId = ++authWarmupRunId;
-  Promise.allSettled([
-    loadAdminAccess(),
-    trackSiteVisit(),
-    loadRegisteredUserCount(),
-    loadVisitorCount(),
-    runTopViewEnterEffects()
-  ]).then(() => {
+  (async () => {
+    await Promise.allSettled([
+      trackSiteVisit(),
+      loadRegisteredUserCount(),
+      runTopViewEnterEffects()
+    ]);
+    await loadAdminAccess();
+    await loadVisitorCount();
+  })().then(() => {
     if (runId !== authWarmupRunId) {
       return;
     }
@@ -508,6 +538,7 @@ function getForumViewContext() {
   return {
     formatKickoff,
     getCurrentUserDisplayName,
+    canWriteActions,
     syncRouteHash,
     readObjectCache,
     writeObjectCache,
@@ -1264,7 +1295,10 @@ async function ensureGlobalLeagueMembership() {
 
 async function onCreateLeague(event) {
   event.preventDefault();
-  if (!state.session?.user) {
+  if (!state.session?.user || !canWriteActions()) {
+    if (state.configError) {
+      alert("Configuration error. Please contact the site admin.");
+    }
     return;
   }
 
@@ -1380,7 +1414,10 @@ async function createLeagueLegacyPublic(name, ownerId) {
 
 async function onJoinLeague(event) {
   event.preventDefault();
-  if (!state.session?.user) {
+  if (!state.session?.user || !canWriteActions()) {
+    if (state.configError) {
+      alert("Configuration error. Please contact the site admin.");
+    }
     return;
   }
 
@@ -1577,6 +1614,13 @@ function hydrateProfileEditorFields() {
 }
 
 async function onSavePrediction(fixture, form, submitBtn = null) {
+  if (!canWriteActions()) {
+    if (state.configError) {
+      alert("Configuration error. Please contact the site admin.");
+    }
+    return;
+  }
+
   if (state.session?.user && (!state.activeLeagueId || String(fixture?.id || "").startsWith("fallback-"))) {
     await ensureAuthedDataLoaded();
   }
@@ -2106,6 +2150,7 @@ function renderNow() {
 
   renderHeaderAuthState({ signedIn, isConnected });
   renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected });
+  renderConfigErrorBanner();
   if (!signedIn || !isAdminUser()) {
     removeAdminConsole();
   } else if (showLeagues) {
@@ -2163,6 +2208,13 @@ function renderAuthGatedSections({ signedIn, authResolved }) {
   if (leagueAuthContentEl) leagueAuthContentEl.classList.toggle("hidden", !signedIn);
   if (createLeagueForm) createLeagueForm.classList.toggle("hidden", !signedIn);
   if (joinLeagueForm) joinLeagueForm.classList.toggle("hidden", !signedIn);
+}
+
+function renderConfigErrorBanner() {
+  if (!configErrorBannerEl) {
+    return;
+  }
+  configErrorBannerEl.classList.toggle("hidden", !state.configError);
 }
 
 function renderProfileEditor() {
@@ -2798,7 +2850,7 @@ function renderFixtures() {
     const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
     const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const predictionEnabled = isAuthed && isNextFixture && !locked;
+    const predictionEnabled = isAuthed && isNextFixture && !locked && canWriteActions();
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
     const myPrediction = isAuthed
@@ -2940,7 +2992,9 @@ function renderFixtures() {
       predictionForm.querySelectorAll("input, button, select").forEach((node) => {
         node.disabled = true;
       });
-      if (isFallbackFixture && savePredictionBtn) {
+      if (!canWriteActions() && savePredictionBtn) {
+        savePredictionBtn.textContent = "Configuration error";
+      } else if (isFallbackFixture && savePredictionBtn) {
         savePredictionBtn.textContent = "Loading next fixture...";
       } else if (!isAuthed && savePredictionBtn) {
         savePredictionBtn.textContent = "Create account to submit";

@@ -149,7 +149,9 @@ function onForumBackToList(ctx) {
 async function onCreateForumThread(ctx, event) {
   event.preventDefault();
   const { state, els } = ctx;
-  if (!state.client || !state.session?.user) {
+  if (!state.client || !state.session?.user || (typeof ctx.canWriteActions === "function" && !ctx.canWriteActions())) {
+    state.forumStatus = "Configuration error. Posting is temporarily unavailable.";
+    ctx.render();
     return;
   }
   const title = String(els.forumThreadTitleInputEl?.value || "").trim();
@@ -205,7 +207,14 @@ async function onCreateForumThread(ctx, event) {
 async function onCreateForumReply(ctx, event) {
   event.preventDefault();
   const { state, els } = ctx;
-  if (!state.client || !state.session?.user || !state.activeForumThreadId) {
+  if (
+    !state.client ||
+    !state.session?.user ||
+    !state.activeForumThreadId ||
+    (typeof ctx.canWriteActions === "function" && !ctx.canWriteActions())
+  ) {
+    state.forumStatus = "Configuration error. Posting is temporarily unavailable.";
+    ctx.render();
     return;
   }
   const body = String(els.forumReplyBodyInputEl?.value || "").trim();

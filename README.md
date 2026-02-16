@@ -2,10 +2,11 @@
 
 ## Local Run
 
-Run a simple static server from this folder:
+Build the deployable output, then run a static server from `dist/`:
 
 ```bash
-npx serve .
+npm run build
+npx serve dist
 ```
 
 ## Auth Gating Verification Checklist
@@ -29,4 +30,3 @@ npx serve .
 Admin users are controlled in `/Users/jackison/Documents/First Codex Project/Web Apps/app.js` with:
 
 - `ADMIN_EMAILS`
-
