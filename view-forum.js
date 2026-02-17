@@ -240,6 +240,9 @@ async function openForumThreadById(ctx, threadId) {
   inlineReplyDraftByParent.clear();
   ctx.syncRouteHash();
   await loadForumReplies(ctx, threadId);
+  if (typeof ctx.markForumNotificationsRead === "function") {
+    await ctx.markForumNotificationsRead(threadId);
+  }
   ctx.render();
 }
 
@@ -798,9 +801,15 @@ export function render(ctx) {
 
 export async function onEnter(ctx) {
   bindListeners(ctx);
+  if (typeof ctx.loadForumUnreadCount === "function") {
+    await ctx.loadForumUnreadCount();
+  }
   await loadForumThreads(ctx, { background: true });
   if (ctx.state.activeForumThreadId) {
     await loadForumReplies(ctx, ctx.state.activeForumThreadId);
+    if (typeof ctx.markForumNotificationsRead === "function") {
+      await ctx.markForumNotificationsRead(ctx.state.activeForumThreadId);
+    }
   }
   ctx.render();
 }

@@ -231,6 +231,7 @@ const state = {
   forumReplies: [],
   activeForumThreadId: null,
   forumStatus: "",
+  forumUnreadCount: 0,
   scorerCompetition: "all",
   scorerDataByCompetition: cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION),
   leaderboardScope: "global",
@@ -309,6 +310,7 @@ function hasRuntimeSupabaseConfig() {
 const topnavPredictBtn = document.getElementById("topnav-predict");
 const topnavLeaguesBtn = document.getElementById("topnav-leagues");
 const topnavForumBtn = document.getElementById("topnav-forum");
+const forumUnreadBadgeEl = document.getElementById("forum-unread-badge");
 const topnavResultsBtn = document.getElementById("topnav-results");
 const topnavCardsBtn = document.getElementById("topnav-cards");
 const resultsFixturesTabBtn = document.getElementById("results-fixtures-tab");
@@ -506,6 +508,7 @@ async function getAuthUser() {
     state.user = null;
     state.session = null;
     state.isAuthed = false;
+    state.forumUnreadCount = 0;
     state.draftNeedsReviewFixtureId = "";
     return null;
   }
@@ -514,6 +517,7 @@ async function getAuthUser() {
     state.user = null;
     state.session = null;
     state.isAuthed = false;
+    state.forumUnreadCount = 0;
     state.draftNeedsReviewFixtureId = "";
     return null;
   }
@@ -619,6 +623,7 @@ function runPostAuthWarmup() {
     await Promise.allSettled([
       trackSiteVisit(),
       loadRegisteredUserCount(),
+      loadForumUnreadCount(),
       loadMyCards({ background: true }),
       runTopViewEnterEffects()
     ]);
@@ -705,6 +710,8 @@ function getForumViewContext() {
     formatKickoff,
     getCurrentUserDisplayName,
     canWriteActions,
+    loadForumUnreadCount,
+    markForumNotificationsRead,
     syncRouteHash,
     readObjectCache,
     writeObjectCache,
@@ -739,6 +746,30 @@ function getForumViewContext() {
       forumReplySubmitBtnEl
     }
   };
+}
+
+async function loadForumUnreadCount() {
+  if (!state.client || !state.session?.user) {
+    state.forumUnreadCount = 0;
+    return;
+  }
+  const { data, error } = await state.client.rpc("get_unread_forum_notification_count");
+  if (error) {
+    state.forumUnreadCount = 0;
+    return;
+  }
+  const count = Number.parseInt(String(data ?? "0"), 10);
+  state.forumUnreadCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
+async function markForumNotificationsRead(threadId) {
+  if (!state.client || !state.session?.user) {
+    return;
+  }
+  await state.client.rpc("mark_forum_notifications_read", {
+    p_thread_id: threadId || null
+  });
+  await loadForumUnreadCount();
 }
 
 function setTopView(view) {
@@ -1187,6 +1218,7 @@ async function onLogOut() {
   state.accountMenuOpen = false;
   state.loginPanelOpen = false;
   state.isAdmin = false;
+  state.forumUnreadCount = 0;
   authedDataInitialized = false;
   if (profileEditForm) profileEditForm.classList.add("hidden");
   syncRouteHash();
@@ -2049,8 +2081,19 @@ async function onSaveResult(fixture, form) {
     return;
   }
 
+  let settlementNote = "Settlement complete.";
+  const settlementResult = await state.client.rpc("get_fixture_settlement", { p_fixture_id: fixture.id });
+  if (!settlementResult.error && Array.isArray(settlementResult.data) && settlementResult.data[0]) {
+    const row = settlementResult.data[0];
+    const status = String(row.status || "settled");
+    const predCount = Number.parseInt(String(row.predictions_count ?? "0"), 10) || 0;
+    settlementNote = status === "settled"
+      ? `Settlement complete (${predCount} predictions processed).`
+      : "Settlement encountered an issue. Please retry.";
+  }
+
   await loadActiveLeagueData();
-  alert("Result saved. Leaderboards and collectables updated.");
+  alert(`Result saved. Leaderboards and collectables updated. ${settlementNote}`);
   render();
 }
 
@@ -2919,6 +2962,11 @@ function renderNavigation() {
     topnavForumBtn.classList.toggle("hidden", !signedIn);
     topnavForumBtn.classList.toggle("active", showForum);
     topnavForumBtn.setAttribute("aria-selected", String(showForum));
+  }
+  if (forumUnreadBadgeEl) {
+    const unread = Number.isFinite(state.forumUnreadCount) ? Math.max(0, state.forumUnreadCount) : 0;
+    forumUnreadBadgeEl.textContent = unread > 99 ? "99+" : String(unread);
+    forumUnreadBadgeEl.classList.toggle("hidden", !signedIn || unread <= 0);
   }
   if (topnavResultsBtn) {
     topnavResultsBtn.classList.toggle("hidden", !signedIn);

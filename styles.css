@@ -482,6 +482,22 @@ button:disabled {
   font-size: 0.86rem;
 }
 
+.nav-unread-badge {
+  margin-left: 0.36rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #d73737;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .tab-btn:not(.active):hover,
 .ghost-btn:hover {
   background: #dbe9ff;
