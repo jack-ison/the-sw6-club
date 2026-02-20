@@ -1,22 +1,32 @@
-const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+const RUNTIME_CONFIG = readRuntimeConfig();
+const SUPABASE_URL = RUNTIME_CONFIG.supabaseUrl;
+const SUPABASE_ANON_KEY = RUNTIME_CONFIG.supabaseAnonKey;
 
 const signinForm = document.getElementById("signin-form");
 const signinEmailInput = document.getElementById("signin-email-input");
 const signinPasswordInput = document.getElementById("signin-password-input");
 const signinStatus = document.getElementById("signin-status");
 const signinSubmitBtn = document.getElementById("signin-submit-btn");
-const REDIRECT_AFTER_LOGIN = "index.html#predict";
+const DEFAULT_REDIRECT_AFTER_LOGIN = "index.html#predict";
+const REDIRECT_AFTER_LOGIN = getPostAuthRedirect();
 
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const client = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
-if (signinForm) {
+if (!client && signinStatus) {
+  signinStatus.textContent = "Configuration error. Please try again shortly.";
+}
+
+if (signinForm && client) {
   signinForm.addEventListener("submit", onSignIn);
 }
-handleAuthCallback();
+if (client) {
+  handleAuthCallback();
+}
 
 async function handleAuthCallback() {
-  if (!signinStatus) {
+  if (!signinStatus || !client) {
     return;
   }
 
@@ -69,6 +79,10 @@ async function handleAuthCallback() {
 
 async function onSignIn(event) {
   event.preventDefault();
+  if (!client) {
+    if (signinStatus) signinStatus.textContent = "Configuration error. Please try again shortly.";
+    return;
+  }
   const email = signinEmailInput.value.trim();
   const password = signinPasswordInput.value;
 
@@ -88,4 +102,28 @@ async function onSignIn(event) {
 
   if (signinStatus) signinStatus.textContent = "Signed in. Redirecting...";
   window.location.href = REDIRECT_AFTER_LOGIN;
+}
+
+function readRuntimeConfig() {
+  const cfg = window.__SW6_CONFIG__ || {};
+  return {
+    supabaseUrl: String(cfg.supabaseUrl || "").trim(),
+    supabaseAnonKey: String(cfg.supabaseAnonKey || "").trim()
+  };
+}
+
+function getPostAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const redirect = params.get("redirect") || params.get("next") || "";
+  if (!redirect) {
+    return DEFAULT_REDIRECT_AFTER_LOGIN;
+  }
+  // Avoid open redirects.
+  if (redirect.startsWith("http://") || redirect.startsWith("https://") || redirect.startsWith("//")) {
+    return DEFAULT_REDIRECT_AFTER_LOGIN;
+  }
+  if (redirect.startsWith("#")) {
+    return `index.html${redirect}`;
+  }
+  return redirect.startsWith("/") ? redirect : DEFAULT_REDIRECT_AFTER_LOGIN;
 }

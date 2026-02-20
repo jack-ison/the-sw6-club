@@ -1,5 +1,6 @@
-const SUPABASE_URL = "https://kderojinorznwtfkizxx.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_FQAcQUAtj31Ij3s0Zll6VQ_mLcucB69";
+const RUNTIME_CONFIG = readRuntimeConfig();
+const SUPABASE_URL = RUNTIME_CONFIG.supabaseUrl;
+const SUPABASE_ANON_KEY = RUNTIME_CONFIG.supabaseAnonKey;
 const BANNED_USERNAME_TOKENS = [
   "fuck", "shit", "bitch", "cunt", "nigger", "nigga", "fag", "faggot", "wank", "twat",
   "prick", "dick", "cock", "pussy", "asshole", "arsehole", "whore", "slut"
@@ -53,10 +54,17 @@ const signupEmailInput = document.getElementById("signup-email-input");
 const signupPasswordInput = document.getElementById("signup-password-input");
 const signupStatus = document.getElementById("signup-status");
 
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const client = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 populateCountries();
-signupForm.addEventListener("submit", onSignUp);
+if (!client) {
+  signupStatus.textContent = "Configuration error. Please try again shortly.";
+}
+if (signupForm && client) {
+  signupForm.addEventListener("submit", onSignUp);
+}
 
 function populateCountries() {
   const current = signupCountryInput.value;
@@ -72,6 +80,10 @@ function populateCountries() {
 
 async function onSignUp(event) {
   event.preventDefault();
+  if (!client) {
+    signupStatus.textContent = "Configuration error. Please try again shortly.";
+    return;
+  }
   const displayName = signupNameInput.value.trim();
   const countryCode = signupCountryInput.value.trim().toUpperCase();
   const countryName = signupCountryInput.options[signupCountryInput.selectedIndex]?.text || "";
@@ -89,6 +101,10 @@ async function onSignUp(event) {
   signupStatus.textContent = "Creating account...";
   const emailRedirectTo = new URL("login.html", window.location.href);
   emailRedirectTo.searchParams.set("auth", "confirm");
+  const redirectTarget = getPostAuthRedirect();
+  if (redirectTarget) {
+    emailRedirectTo.searchParams.set("next", redirectTarget);
+  }
   const { error } = await client.auth.signUp({
     email,
     password,
@@ -99,14 +115,24 @@ async function onSignUp(event) {
   });
 
   if (error) {
-    signupStatus.textContent = error.message;
+    const message = String(error.message || "Sign up failed.");
+    if (/rate|too many|email.*limit/i.test(message)) {
+      signupStatus.textContent = "Too many signup emails sent recently. Please wait a few minutes and try again.";
+    } else {
+      signupStatus.textContent = message;
+    }
     return;
   }
 
   signupStatus.textContent = "Account created. Check your verification email (including spam/junk), then continue.";
   signupForm.reset();
   setTimeout(() => {
-    window.location.href = "login.html";
+    const redirectTarget = getPostAuthRedirect();
+    const loginUrl = new URL("login.html", window.location.href);
+    if (redirectTarget) {
+      loginUrl.searchParams.set("redirect", redirectTarget);
+    }
+    window.location.href = loginUrl.toString();
   }, 1200);
 }
 
@@ -128,4 +154,27 @@ function normalizeForModeration(value) {
     .replace(/[5$]/g, "s")
     .replace(/[7]/g, "t")
     .replace(/[^a-z]/g, "");
+}
+
+function readRuntimeConfig() {
+  const cfg = window.__SW6_CONFIG__ || {};
+  return {
+    supabaseUrl: String(cfg.supabaseUrl || "").trim(),
+    supabaseAnonKey: String(cfg.supabaseAnonKey || "").trim()
+  };
+}
+
+function getPostAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const redirect = params.get("redirect") || "";
+  if (!redirect) {
+    return "/#predict";
+  }
+  if (redirect.startsWith("http://") || redirect.startsWith("https://") || redirect.startsWith("//")) {
+    return "/#predict";
+  }
+  if (redirect.startsWith("#")) {
+    return `/${redirect}`;
+  }
+  return redirect.startsWith("/") ? redirect : "/#predict";
 }
