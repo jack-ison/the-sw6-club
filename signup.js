@@ -87,10 +87,15 @@ async function onSignUp(event) {
   }
 
   signupStatus.textContent = "Creating account...";
+  const emailRedirectTo = new URL("login.html", window.location.href);
+  emailRedirectTo.searchParams.set("auth", "confirm");
   const { error } = await client.auth.signUp({
     email,
     password,
-    options: { data: { display_name: displayName, country_code: countryCode, country_name: countryName } }
+    options: {
+      emailRedirectTo: emailRedirectTo.toString(),
+      data: { display_name: displayName, country_code: countryCode, country_name: countryName }
+    }
   });
 
   if (error) {
@@ -101,8 +106,8 @@ async function onSignUp(event) {
   signupStatus.textContent = "Account created. Check your verification email (including spam/junk), then continue.";
   signupForm.reset();
   setTimeout(() => {
-    window.location.href = "index.html#predict";
-  }, 900);
+    window.location.href = "login.html";
+  }, 1200);
 }
 
 function containsBlockedUsernameLanguage(value) {
