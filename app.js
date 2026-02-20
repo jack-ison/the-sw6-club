@@ -560,6 +560,7 @@ async function initializeApp() {
     return;
   }
 
+  await processAuthCallbackIfPresent();
   await getAuthUser();
   state.authResolved = true;
   applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
@@ -577,6 +578,65 @@ async function initializeApp() {
   });
 
   await backgroundSync;
+}
+
+async function processAuthCallbackIfPresent() {
+  if (!state.client) {
+    return false;
+  }
+
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+  let handled = false;
+
+  try {
+    if (params.has("code")) {
+      handled = true;
+      const { error } = await state.client.auth.exchangeCodeForSession(params.get("code"));
+      if (error) {
+        console.error("[auth-callback] exchangeCodeForSession failed:", error.message);
+      }
+    } else if (params.has("token_hash") && params.has("type")) {
+      handled = true;
+      const { error } = await state.client.auth.verifyOtp({
+        token_hash: params.get("token_hash"),
+        type: params.get("type")
+      });
+      if (error) {
+        console.error("[auth-callback] verifyOtp failed:", error.message);
+      }
+    } else if (
+      hashParams.has("access_token") ||
+      hashParams.has("refresh_token") ||
+      hashParams.get("type") === "signup"
+    ) {
+      handled = true;
+      const { error } = await state.client.auth.getSession();
+      if (error) {
+        console.error("[auth-callback] getSession failed:", error.message);
+      }
+    }
+  } catch (error) {
+    handled = true;
+    console.error("[auth-callback] processing failed:", error?.message || error);
+  }
+
+  if (!handled) {
+    return false;
+  }
+
+  params.delete("code");
+  params.delete("token_hash");
+  params.delete("type");
+  params.delete("auth");
+  params.delete("next");
+  url.search = params.toString();
+  if (hashParams.has("access_token") || hashParams.has("refresh_token") || hashParams.get("type") === "signup") {
+    url.hash = "#predict";
+  }
+  window.history.replaceState({}, document.title, url.toString());
+  return true;
 }
 
 function canWriteActions() {
