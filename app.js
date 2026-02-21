@@ -2025,16 +2025,30 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     return;
   }
 
-  if (state.session?.user && (!state.activeLeagueId || String(fixture?.id || "").startsWith("fallback-"))) {
+  const isFallbackFixture = String(fixture?.id || "").startsWith("fallback-");
+  if (state.session?.user && (!state.activeLeagueId || isFallbackFixture)) {
     await ensureAuthedDataLoaded();
   }
 
-  if (!state.session?.user || !canPredictFixture(fixture)) {
+  let targetFixture = fixture;
+  if (isFallbackFixture) {
+    const materialized = await materializeFixtureForPrediction(fixture);
+    if (!materialized) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Save Prediction";
+      }
+      return;
+    }
+    targetFixture = materialized;
+  }
+
+  if (!state.session?.user || !canPredictFixture(targetFixture)) {
     alert("Only the next fixture can be predicted, and it locks 90 minutes before kickoff.");
     return;
   }
 
-  const hadExistingPrediction = fixture.predictions.some((row) => row.user_id === state.session.user.id);
+  const hadExistingPrediction = targetFixture.predictions.some((row) => row.user_id === state.session.user.id);
   const idleLabel = hadExistingPrediction ? "Update Prediction" : "Save Prediction";
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -2059,7 +2073,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
 
   const { error } = await state.client.from("predictions").upsert(
     {
-      fixture_id: fixture.id,
+      fixture_id: targetFixture.id,
       user_id: state.session.user.id,
       chelsea_goals: chelseaGoals,
       opponent_goals: opponentGoals,
@@ -2084,14 +2098,14 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     submitBtn.textContent = hadExistingPrediction ? "Prediction updated" : "Prediction saved";
   }
   state.lastPredictionAck = {
-    fixtureId: fixture.id,
+    fixtureId: targetFixture.id,
     updated: hadExistingPrediction,
     at: Date.now()
   };
   state.draftNeedsReviewFixtureId = "";
   state.draftLoadedFixtureId = "";
-  clearDraftPrediction(fixture.id);
-  cachePredictionScorers(fixture.id, state.session.user.id, selectedScorers);
+  clearDraftPrediction(targetFixture.id);
+  cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
   await loadActiveLeagueData();
   render();
   if (state.predictionButtonFlashTimeoutId) {
@@ -2101,6 +2115,59 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     state.predictionButtonFlashTimeoutId = null;
     render();
   }, 5000);
+}
+
+async function materializeFixtureForPrediction(fallbackFixture) {
+  if (!state.client || !state.session?.user || !state.activeLeagueId) {
+    alert("Please choose a league first.");
+    return null;
+  }
+
+  const league = getActiveLeague();
+  if (!league) {
+    alert("No active league selected.");
+    return null;
+  }
+
+  const kickoff = fallbackFixture.kickoff;
+  const opponent = fallbackFixture.opponent;
+  const competition = fallbackFixture.competition;
+
+  const existing = await state.client
+    .from("fixtures")
+    .select("id")
+    .eq("league_id", league.id)
+    .eq("kickoff", kickoff)
+    .eq("opponent", opponent)
+    .eq("competition", competition)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existing.error && existing.data?.id) {
+    await loadActiveLeagueData();
+    return getNextFixtureForPrediction();
+  }
+
+  const { error: insertError } = await state.client.from("fixtures").insert({
+    league_id: league.id,
+    kickoff,
+    opponent,
+    competition,
+    created_by: state.session.user.id
+  });
+
+  if (insertError) {
+    const message = String(insertError.message || "Could not prepare fixture.");
+    if (/policy|permission|row-level security|rls/i.test(message)) {
+      alert("Fixture sync permissions are still blocked in Supabase. Please run the latest fixtures policy SQL.");
+    } else {
+      alert(message);
+    }
+    return null;
+  }
+
+  await loadActiveLeagueData();
+  return getNextFixtureForPrediction();
 }
 
 async function onSaveResult(fixture, form) {
@@ -3988,7 +4055,8 @@ function renderFixtures() {
     const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
     const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const predictionEnabled = isNextFixture && !locked && canWriteActions();
+    const fallbackPredictable = isAuthed && isFallbackFixture && !locked && Boolean(state.activeLeagueId);
+    const predictionEnabled = (isNextFixture || fallbackPredictable) && !locked && canWriteActions();
     const canSubmitPrediction = isAuthed && predictionEnabled;
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
