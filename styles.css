@@ -723,6 +723,21 @@ button:disabled {
   white-space: nowrap;
 }
 
+.leader-submitted-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: #0d9a54;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
 .leader-points {
   background: #edf4ff;
   border: 1px solid #d4e4ff;

@@ -2069,7 +2069,18 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     return;
   }
 
-  const hadExistingPrediction = targetFixture.predictions.some((row) => row.user_id === state.session.user.id);
+  const requestedUpdate = String(submitBtn?.textContent || "").toLowerCase().includes("update");
+  const existingPredictionCheck = await state.client
+    .from("predictions")
+    .select("fixture_id")
+    .eq("fixture_id", targetFixture.id)
+    .eq("user_id", state.session.user.id)
+    .limit(1)
+    .maybeSingle();
+  const hadExistingPrediction =
+    requestedUpdate ||
+    Boolean(existingPredictionCheck.data) ||
+    targetFixture.predictions.some((row) => row.user_id === state.session.user.id);
   const idleLabel = hadExistingPrediction ? "Update Prediction" : "Save Prediction";
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -2120,7 +2131,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
 
   const verify = await state.client
     .from("predictions")
-    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
     .eq("fixture_id", targetFixture.id)
     .eq("user_id", state.session.user.id)
     .limit(1)
@@ -2139,6 +2150,10 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     submitBtn.disabled = false;
     submitBtn.textContent = hadExistingPrediction ? "Prediction updated" : "Prediction saved";
   }
+  const scoreOpponentEl = form.querySelector(".score-value-opponent");
+  const scoreChelseaEl = form.querySelector(".score-value-chelsea");
+  if (scoreOpponentEl) scoreOpponentEl.textContent = String(opponentGoals);
+  if (scoreChelseaEl) scoreChelseaEl.textContent = String(chelseaGoals);
   state.lastPredictionAck = {
     fixtureId: targetFixture.id,
     updated: hadExistingPrediction,
@@ -2165,8 +2180,23 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         }
       : row
   );
+  state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
+    ...row,
+    has_prediction:
+      row?.user_id === state.session.user.id
+        ? true
+        : Boolean(row?.has_prediction)
+  }));
+  state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
+    ...row,
+    has_prediction:
+      row?.user_id === state.session.user.id
+        ? true
+        : Boolean(row?.has_prediction)
+  }));
   render();
   await loadActiveLeagueData();
+  await refreshLeaderboardPredictionFlags(state.activeLeagueId);
   render();
   if (state.predictionButtonFlashTimeoutId) {
     clearTimeout(state.predictionButtonFlashTimeoutId);
@@ -2443,6 +2473,7 @@ async function loadActiveLeagueData() {
   await syncCompletedResultsFromChelsea();
   await loadMyPredictionsForActiveFixtures();
   await loadLeagueLeaderboard({ background: true });
+  await refreshLeaderboardPredictionFlags(league.id);
   writeLeaguePayloadCache(league.id, userId, {
     members: state.activeLeagueMembers,
     fixtures: state.activeLeagueFixtures
@@ -2455,6 +2486,27 @@ async function loadActiveLeagueData() {
     loadActiveLeagueDataPromise = null;
     loadActiveLeagueDataLeagueId = null;
   }
+}
+
+async function refreshLeaderboardPredictionFlags(leagueId) {
+  if (!state.client || !leagueId) {
+    return;
+  }
+  const { data, error } = await state.client.rpc("get_next_fixture_prediction_status", {
+    p_league_id: leagueId
+  });
+  if (error) {
+    return;
+  }
+  const submitted = new Set((Array.isArray(data) ? data : []).map((row) => row.user_id).filter(Boolean));
+  state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
+    ...row,
+    has_prediction: submitted.has(row.user_id)
+  }));
+  state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
+    ...row,
+    has_prediction: submitted.has(row.user_id)
+  }));
 }
 
 async function fetchLeagueFixturesWithResults(leagueId) {
@@ -3242,7 +3294,13 @@ function renderOverallLeaderboard() {
   } else {
     state.overallLeaderboard.forEach((row, index) => {
       const li = document.createElement("li");
-      const left = createLeaderboardIdentity(index, row.display_name || "Player", row.country_code || "GB", row.avatar_url);
+      const left = createLeaderboardIdentity(
+        index,
+        row.display_name || "Player",
+        row.country_code || "GB",
+        row.avatar_url,
+        Boolean(row.has_prediction)
+      );
       li.appendChild(left);
       const pts = document.createElement("span");
       pts.className = "leader-points";
@@ -4133,7 +4191,13 @@ function renderLeaderboard() {
     const li = document.createElement("li");
     const safeName = row.display_name || "Player";
     const suffix = !useGlobalTopTen && row.role === "owner" ? " (Owner)" : "";
-    const left = createLeaderboardIdentity(index, `${safeName}${suffix}`.trim(), row.country_code, row.avatar_url);
+    const left = createLeaderboardIdentity(
+      index,
+      `${safeName}${suffix}`.trim(),
+      row.country_code,
+      row.avatar_url,
+      Boolean(row.has_prediction)
+    );
     li.appendChild(left);
     const right = document.createElement("span");
     right.className = "leader-points";
@@ -4909,7 +4973,7 @@ function formatMemberName(displayName, countryCode) {
   return flag ? `${flag} ${displayName}` : displayName;
 }
 
-function createLeaderboardIdentity(index, displayName, countryCode, avatarUrl) {
+function createLeaderboardIdentity(index, displayName, countryCode, avatarUrl, hasPrediction = false) {
   const wrap = document.createElement("div");
   wrap.className = "leader-identity";
 
@@ -4926,6 +4990,14 @@ function createLeaderboardIdentity(index, displayName, countryCode, avatarUrl) {
   wrap.appendChild(rank);
   wrap.appendChild(avatar);
   wrap.appendChild(name);
+  if (hasPrediction) {
+    const tick = document.createElement("span");
+    tick.className = "leader-submitted-tick";
+    tick.textContent = "✓";
+    tick.title = "Prediction submitted";
+    tick.setAttribute("aria-label", "Prediction submitted");
+    wrap.appendChild(tick);
+  }
   return wrap;
 }
 
