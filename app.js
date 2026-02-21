@@ -2043,8 +2043,19 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     targetFixture = materialized;
   }
 
-  if (!state.session?.user || !canPredictFixture(targetFixture)) {
-    alert("Only the next fixture can be predicted, and it locks 90 minutes before kickoff.");
+  if (!state.session?.user) {
+    alert("Please sign in to submit.");
+    return;
+  }
+
+  if (isFixtureLockedForPrediction(targetFixture)) {
+    alert("Prediction is locked for this fixture (90 minutes before kickoff).");
+    return;
+  }
+
+  const nextRealFixture = getNextFixtureForPrediction();
+  if (nextRealFixture && nextRealFixture.id !== targetFixture.id) {
+    alert("Only the next fixture can be predicted.");
     return;
   }
 
@@ -2118,14 +2129,18 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
 }
 
 async function materializeFixtureForPrediction(fallbackFixture) {
-  if (!state.client || !state.session?.user || !state.activeLeagueId) {
-    alert("Please choose a league first.");
+  if (!state.client || !state.session?.user) {
+    alert("Please sign in first.");
     return null;
+  }
+
+  if (!state.activeLeagueId) {
+    await ensureAuthedDataLoaded(true);
   }
 
   const league = getActiveLeague();
   if (!league) {
-    alert("No active league selected.");
+    alert("Could not find your active league. Refresh and try again.");
     return null;
   }
 
@@ -4055,9 +4070,9 @@ function renderFixtures() {
     const isFallbackFixture = String(fixture.id || "").startsWith("fallback-");
     const isNextFixture = Boolean(realNextFixture && fixture.id === realNextFixture.id);
     const locked = isFixtureLockedForPrediction(fixture);
-    const fallbackPredictable = isAuthed && isFallbackFixture && !locked && Boolean(state.activeLeagueId);
+    const fallbackPredictable = isAuthed && isFallbackFixture && !locked;
     const predictionEnabled = (isNextFixture || fallbackPredictable) && !locked && canWriteActions();
-    const canSubmitPrediction = isAuthed && predictionEnabled;
+    const canSubmitPrediction = isAuthed && !locked && canWriteActions();
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
     const myPrediction = isAuthed
@@ -4212,20 +4227,46 @@ function renderFixtures() {
     }
 
     const allowSignedOutDraft = !isAuthed && predictionEnabled;
-    if (!predictionEnabled || (!isAuthed && !allowSignedOutDraft)) {
+    if (!isAuthed && !allowSignedOutDraft) {
       predictionForm.querySelectorAll("input, button:not([type='submit']), select").forEach((node) => {
         node.disabled = true;
       });
-      if (!canWriteActions() && savePredictionBtn) {
+    } else if (!isAuthed && allowSignedOutDraft) {
+      predictionForm.querySelectorAll("input, button:not([type='submit']), select").forEach((node) => {
+        node.disabled = false;
+      });
+      chelseaMinusBtn.disabled = true;
+      chelseaPlusBtn.disabled = true;
+      chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+      chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+    } else if (!canWriteActions() || locked) {
+      predictionForm.querySelectorAll("input, button:not([type='submit']), select").forEach((node) => {
+        node.disabled = true;
+      });
+    } else {
+      predictionForm.querySelectorAll("input, button:not([type='submit']), select").forEach((node) => {
+        node.disabled = false;
+      });
+      chelseaMinusBtn.disabled = true;
+      chelseaPlusBtn.disabled = true;
+      chelseaMinusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+      chelseaPlusBtn.title = "Chelsea goals are auto-set from selected goalscorers.";
+    }
+    if (savePredictionBtn) {
+      if (!canWriteActions()) {
         savePredictionBtn.textContent = "Configuration error";
-      } else if (isFallbackFixture && savePredictionBtn) {
-        savePredictionBtn.textContent = "Loading next fixture...";
-      } else if (locked && savePredictionBtn) {
+      } else if (locked) {
         savePredictionBtn.textContent = "Prediction locked";
+      } else if (isAuthed && isFallbackFixture) {
+        savePredictionBtn.textContent = myPrediction ? "Update Prediction" : "Save Prediction";
+      } else if (!isAuthed && !allowSignedOutDraft) {
+        savePredictionBtn.textContent = "Loading next fixture...";
       }
     }
     if (savePredictionBtn) {
-      savePredictionBtn.disabled = !predictionEnabled && isAuthed;
+      savePredictionBtn.disabled = !isAuthed
+        ? false
+        : !canSubmitPrediction;
     }
 
     if (!isAuthed && state.draftLoadedFixtureId === fixture.id) {
