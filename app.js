@@ -2553,7 +2553,7 @@ async function ensureUpcomingFixturesImported() {
   }
 
   const existingKeys = new Set(
-    state.activeLeagueFixtures.map((fixture) => fixtureKey(fixture.kickoff, fixture.opponent, fixture.competition))
+    state.activeLeagueFixtures.map((fixture) => fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition))
   );
 
   const sourceUpcoming = getUpcomingFixturesForDisplay();
@@ -2563,7 +2563,7 @@ async function ensureUpcomingFixturesImported() {
     opponent: f.opponent,
     competition: f.competition,
     created_by: state.session.user.id
-  })).filter((row) => !existingKeys.has(fixtureKey(row.kickoff, row.opponent, row.competition)));
+  })).filter((row) => !existingKeys.has(fixtureScheduleKey(row.kickoff, row.opponent, row.competition)));
 
   if (missing.length === 0) {
     return;
@@ -5732,15 +5732,52 @@ function fixtureKey(kickoff, opponent, competition) {
   return `${new Date(kickoff).toISOString().slice(0, 10)}::${opponent.toLowerCase()}::${competition.toLowerCase()}`;
 }
 
+function fixtureScheduleKey(kickoff, opponent, competition) {
+  const dateKey = Number.isFinite(new Date(kickoff).getTime())
+    ? new Date(kickoff).toISOString().slice(0, 10)
+    : "";
+  return `${dateKey}::${String(opponent || "").trim().toLowerCase()}::${String(competition || "").trim().toLowerCase()}`;
+}
+
 function getNextFixtureForPrediction() {
-  return (
-    state.activeLeagueFixtures
-      .filter((fixture) => !fixture.result)
-      .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
-      .filter((fixture) => new Date(fixture.kickoff).getTime() > Date.now())
+  const upcoming = state.activeLeagueFixtures
+    .filter((fixture) => !fixture.result)
+    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
+    .filter((fixture) => new Date(fixture.kickoff).getTime() > Date.now());
+
+  if (upcoming.length === 0) {
+    return null;
+  }
+
+  const grouped = new Map();
+  upcoming.forEach((fixture) => {
+    const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const bucket = grouped.get(key) || [];
+    bucket.push(fixture);
+    grouped.set(key, bucket);
+  });
+
+  const deduped = [];
+  grouped.forEach((bucket) => {
+    const withMine =
+      state.session?.user
+        ? bucket.find((fixture) => fixture.predictions?.some((row) => row.user_id === state.session.user.id))
+        : null;
+    if (withMine) {
+      deduped.push(withMine);
+      return;
+    }
+    const earliest = bucket
       .slice()
-      .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())[0] || null
-  );
+      .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())[0];
+    if (earliest) {
+      deduped.push(earliest);
+    }
+  });
+
+  return deduped
+    .slice()
+    .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())[0] || null;
 }
 
 function getFallbackNextFixture() {
