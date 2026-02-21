@@ -2220,13 +2220,7 @@ async function loadActiveLeagueData() {
       .from("league_members")
       .select("user_id, display_name, country_code, role")
       .eq("league_id", league.id),
-    state.client
-      .from("fixtures")
-      .select(
-        "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
-      )
-      .eq("league_id", league.id)
-      .order("kickoff", { ascending: true })
+    fetchLeagueFixturesWithResults(league.id)
   ]);
 
   if (memberResult.error) {
@@ -2261,6 +2255,69 @@ async function loadActiveLeagueData() {
     loadActiveLeagueDataPromise = null;
     loadActiveLeagueDataLeagueId = null;
   }
+}
+
+async function fetchLeagueFixturesWithResults(leagueId) {
+  let result = await state.client
+    .from("fixtures")
+    .select(
+      "id, league_id, kickoff, opponent, competition, created_by, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
+    )
+    .eq("league_id", leagueId)
+    .order("kickoff", { ascending: true });
+
+  if (!result.error) {
+    return result;
+  }
+
+  // Backward-compatible fallback for environments missing newer results columns.
+  result = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, created_by, created_at")
+    .eq("league_id", leagueId)
+    .order("kickoff", { ascending: true });
+
+  if (result.error) {
+    return result;
+  }
+
+  const fixtures = Array.isArray(result.data) ? result.data : [];
+  if (fixtures.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const fixtureIds = fixtures.map((row) => row.id);
+  const legacyResults = await state.client
+    .from("results")
+    .select("fixture_id, chelsea_goals, opponent_goals, first_scorer, saved_at")
+    .in("fixture_id", fixtureIds);
+
+  if (legacyResults.error) {
+    // Keep fixtures usable for prediction even if results fallback fails.
+    return {
+      data: fixtures.map((fixture) => ({ ...fixture, results: [] })),
+      error: null
+    };
+  }
+
+  const byFixtureId = new Map();
+  (legacyResults.data || []).forEach((row) => {
+    byFixtureId.set(row.fixture_id, {
+      chelsea_goals: row.chelsea_goals,
+      opponent_goals: row.opponent_goals,
+      first_scorer: row.first_scorer,
+      chelsea_scorers: "",
+      saved_at: row.saved_at
+    });
+  });
+
+  return {
+    data: fixtures.map((fixture) => ({
+      ...fixture,
+      results: byFixtureId.has(fixture.id) ? [byFixtureId.get(fixture.id)] : []
+    })),
+    error: null
+  };
 }
 
 async function syncCompletedResultsFromChelsea() {
