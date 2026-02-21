@@ -2118,6 +2118,23 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     return;
   }
 
+  const verify = await state.client
+    .from("predictions")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers")
+    .eq("fixture_id", targetFixture.id)
+    .eq("user_id", state.session.user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (verify.error || !verify.data) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = idleLabel;
+    }
+    alert("Prediction could not be verified after save. Please try again.");
+    return;
+  }
+
   if (submitBtn) {
     submitBtn.disabled = false;
     submitBtn.textContent = hadExistingPrediction ? "Prediction updated" : "Prediction saved";
@@ -2131,6 +2148,15 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   state.draftLoadedFixtureId = "";
   clearDraftPrediction(targetFixture.id);
   cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
+  state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
+    row.id === targetFixture.id
+      ? {
+          ...row,
+          predictions: [verify.data]
+        }
+      : row
+  );
+  render();
   await loadActiveLeagueData();
   render();
   if (state.predictionButtonFlashTimeoutId) {
@@ -2175,6 +2201,28 @@ async function materializeFixtureForPrediction(fallbackFixture) {
   if (!existing.error && existing.data?.id) {
     await loadActiveLeagueData();
     return getNextFixtureForPrediction();
+  }
+
+  // Handle slight kickoff mismatches by matching same league/opponent/competition within +/- 18 hours.
+  const kickoffMs = new Date(kickoff).getTime();
+  if (Number.isFinite(kickoffMs)) {
+    const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+    const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+    const nearMatch = await state.client
+      .from("fixtures")
+      .select("id, kickoff")
+      .eq("league_id", league.id)
+      .eq("opponent", opponent)
+      .eq("competition", competition)
+      .gte("kickoff", windowStart)
+      .lte("kickoff", windowEnd)
+      .order("kickoff", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!nearMatch.error && nearMatch.data?.id) {
+      await loadActiveLeagueData();
+      return getNextFixtureForPrediction();
+    }
   }
 
   const { error: insertError } = await state.client.from("fixtures").insert({
