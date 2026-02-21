@@ -2148,6 +2148,15 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   state.draftLoadedFixtureId = "";
   clearDraftPrediction(targetFixture.id);
   cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
+
+  await syncPredictionAcrossMyLeagues(targetFixture, {
+    chelsea_goals: chelseaGoals,
+    opponent_goals: opponentGoals,
+    first_scorer: firstScorer,
+    predicted_scorers: predictedScorers,
+    submitted_at: new Date().toISOString()
+  });
+
   state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
     row.id === targetFixture.id
       ? {
@@ -2166,6 +2175,53 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     state.predictionButtonFlashTimeoutId = null;
     render();
   }, 5000);
+}
+
+async function syncPredictionAcrossMyLeagues(sourceFixture, payload) {
+  if (!state.client || !state.session?.user || !sourceFixture) {
+    return;
+  }
+  const leagueIds = (state.leagues || []).map((league) => league.id).filter(Boolean);
+  if (leagueIds.length === 0) {
+    return;
+  }
+
+  const kickoffMs = new Date(sourceFixture.kickoff).getTime();
+  if (!Number.isFinite(kickoffMs)) {
+    return;
+  }
+
+  const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+  const fixtureRows = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff")
+    .in("league_id", leagueIds)
+    .eq("opponent", sourceFixture.opponent)
+    .eq("competition", sourceFixture.competition)
+    .gte("kickoff", windowStart)
+    .lte("kickoff", windowEnd);
+
+  if (fixtureRows.error || !Array.isArray(fixtureRows.data) || fixtureRows.data.length === 0) {
+    return;
+  }
+
+  const upserts = fixtureRows.data.map((row) => ({
+    fixture_id: row.id,
+    user_id: state.session.user.id,
+    chelsea_goals: payload.chelsea_goals,
+    opponent_goals: payload.opponent_goals,
+    first_scorer: payload.first_scorer,
+    predicted_scorers: payload.predicted_scorers,
+    submitted_at: payload.submitted_at
+  }));
+
+  const { error } = await state.client.from("predictions").upsert(upserts, {
+    onConflict: "fixture_id,user_id"
+  });
+  if (error) {
+    console.warn("Cross-league prediction sync skipped:", error.message);
+  }
 }
 
 async function materializeFixtureForPrediction(fallbackFixture) {
