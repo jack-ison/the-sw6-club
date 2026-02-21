@@ -2154,11 +2154,6 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   const scoreChelseaEl = form.querySelector(".score-value-chelsea");
   if (scoreOpponentEl) scoreOpponentEl.textContent = String(opponentGoals);
   if (scoreChelseaEl) scoreChelseaEl.textContent = String(chelseaGoals);
-  state.lastPredictionAck = {
-    fixtureId: targetFixture.id,
-    updated: hadExistingPrediction,
-    at: Date.now()
-  };
   state.draftNeedsReviewFixtureId = "";
   state.draftLoadedFixtureId = "";
   clearDraftPrediction(targetFixture.id);
@@ -2195,8 +2190,15 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         : Boolean(row?.has_prediction)
   }));
   render();
-  await loadActiveLeagueData();
+  // Force full refresh so prediction state is visible immediately without tab switching.
+  await reloadAuthedData();
+  await ensureOverallLeaderboardLoaded(true);
   await refreshLeaderboardPredictionFlags(state.activeLeagueId);
+  state.lastPredictionAck = {
+    fixtureId: targetFixture.id,
+    updated: hadExistingPrediction,
+    at: Date.now()
+  };
   render();
   if (state.predictionButtonFlashTimeoutId) {
     clearTimeout(state.predictionButtonFlashTimeoutId);
@@ -2492,10 +2494,27 @@ async function refreshLeaderboardPredictionFlags(leagueId) {
   if (!state.client || !leagueId) {
     return;
   }
+  const currentUserId = state.session?.user?.id || "";
+  const nextFixture = getNextFixtureForPrediction();
+  const currentUserHasPrediction = Boolean(
+    currentUserId &&
+    nextFixture?.predictions?.some((row) => row.user_id === currentUserId)
+  );
   const { data, error } = await state.client.rpc("get_next_fixture_prediction_status", {
     p_league_id: leagueId
   });
   if (error) {
+    if (!currentUserId) {
+      return;
+    }
+    state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
+      ...row,
+      has_prediction: row?.user_id === currentUserId ? currentUserHasPrediction : Boolean(row?.has_prediction)
+    }));
+    state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
+      ...row,
+      has_prediction: row?.user_id === currentUserId ? currentUserHasPrediction : Boolean(row?.has_prediction)
+    }));
     return;
   }
   const submitted = new Set((Array.isArray(data) ? data : []).map((row) => row.user_id).filter(Boolean));
