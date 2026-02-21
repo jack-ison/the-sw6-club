@@ -2018,10 +2018,17 @@ function hydrateProfileEditorFields() {
 }
 
 async function onSavePrediction(fixture, form, submitBtn = null) {
+  const resetSubmitButton = (label = null) => {
+    if (!submitBtn) return;
+    submitBtn.disabled = false;
+    if (label) submitBtn.textContent = label;
+  };
+
   if (!canWriteActions()) {
     if (state.configError) {
       alert("Configuration error. Please contact the site admin.");
     }
+    resetSubmitButton("Save Prediction");
     return;
   }
 
@@ -2045,17 +2052,20 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
 
   if (!state.session?.user) {
     alert("Please sign in to submit.");
+    resetSubmitButton("Save Prediction");
     return;
   }
 
   if (isFixtureLockedForPrediction(targetFixture)) {
     alert("Prediction is locked for this fixture (90 minutes before kickoff).");
+    resetSubmitButton("Prediction locked");
     return;
   }
 
   const nextRealFixture = getNextFixtureForPrediction();
   if (nextRealFixture && nextRealFixture.id !== targetFixture.id) {
     alert("Only the next fixture can be predicted.");
+    resetSubmitButton("Save Prediction");
     return;
   }
 
@@ -2073,9 +2083,13 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   const firstScorerSelect = form.querySelector(".pred-first-scorer");
   let firstScorer = firstScorerSelect?.value?.trim() || "";
   if (chelseaGoals === null || opponentGoals === null) {
+    alert("Please set a valid score.");
+    resetSubmitButton(idleLabel);
     return;
   }
   if (chelseaGoals > 0 && (!selectedScorers || !firstScorer)) {
+    alert("Pick Chelsea goalscorers and choose the first Chelsea goalscorer before submitting.");
+    resetSubmitButton(idleLabel);
     return;
   }
   if (chelseaGoals === 0) {
