@@ -1100,10 +1100,14 @@ for select
 using (public.is_league_member(league_id));
 
 drop policy if exists fixtures_insert_owner on public.fixtures;
-create policy fixtures_insert_owner
+drop policy if exists fixtures_insert_member on public.fixtures;
+create policy fixtures_insert_member
 on public.fixtures
 for insert
-with check (public.is_league_owner(league_id));
+with check (
+  public.is_league_member(league_id)
+  and created_by = auth.uid()
+);
 
 drop policy if exists fixtures_update_owner on public.fixtures;
 create policy fixtures_update_owner

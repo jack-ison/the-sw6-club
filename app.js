@@ -2404,7 +2404,7 @@ async function syncCompletedResultsFromChelsea() {
 async function ensureUpcomingFixturesImported() {
   const league = getActiveLeague();
   const member = getCurrentMember();
-  if (!league || !member || (!isAdminUser() && member.role !== "owner")) {
+  if (!league || !member) {
     return;
   }
 
