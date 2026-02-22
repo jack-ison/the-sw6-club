@@ -2346,16 +2346,8 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   }
 
   const requestedUpdate = String(submitBtn?.textContent || "").toLowerCase().includes("update");
-  const existingPredictionCheck = await state.client
-    .from("predictions")
-    .select("fixture_id")
-    .eq("fixture_id", targetFixture.id)
-    .eq("user_id", state.session.user.id)
-    .limit(1)
-    .maybeSingle();
   const hadExistingPrediction =
     requestedUpdate ||
-    Boolean(existingPredictionCheck.data) ||
     targetFixture.predictions.some((row) => row.user_id === state.session.user.id);
   const idleLabel = hadExistingPrediction ? "Update Prediction" : "Save Prediction";
   if (submitBtn) {
@@ -2383,6 +2375,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     firstScorer = "None";
   }
 
+  const submittedAt = new Date().toISOString();
   const { error } = await state.client.from("predictions").upsert(
     {
       fixture_id: targetFixture.id,
@@ -2391,7 +2384,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
       opponent_goals: opponentGoals,
       first_scorer: firstScorer,
       predicted_scorers: predictedScorers,
-      submitted_at: new Date().toISOString()
+      submitted_at: submittedAt
     },
     { onConflict: "fixture_id,user_id" }
   );
@@ -2402,23 +2395,6 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
       submitBtn.textContent = idleLabel;
     }
     alert(error.message);
-    return;
-  }
-
-  const verify = await state.client
-    .from("predictions")
-    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
-    .eq("fixture_id", targetFixture.id)
-    .eq("user_id", state.session.user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (verify.error || !verify.data) {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = idleLabel;
-    }
-    alert("Prediction could not be verified after save. Please try again.");
     return;
   }
 
@@ -2435,19 +2411,31 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   clearDraftPrediction(targetFixture.id);
   cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
 
-  await syncPredictionAcrossMyLeagues(targetFixture, {
+  const savedPrediction = {
+    fixture_id: targetFixture.id,
+    user_id: state.session.user.id,
     chelsea_goals: chelseaGoals,
     opponent_goals: opponentGoals,
     first_scorer: firstScorer,
     predicted_scorers: predictedScorers,
-    submitted_at: new Date().toISOString()
+    submitted_at: submittedAt
+  };
+
+  syncPredictionAcrossMyLeagues(targetFixture, {
+    chelsea_goals: chelseaGoals,
+    opponent_goals: opponentGoals,
+    first_scorer: firstScorer,
+    predicted_scorers: predictedScorers,
+    submitted_at: submittedAt
+  }).catch(() => {
+    // Keep local save success even if cross-league propagation is temporarily unavailable.
   });
 
   state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
     row.id === targetFixture.id
       ? {
           ...row,
-          predictions: [verify.data]
+          predictions: [savedPrediction]
         }
       : row
   );
