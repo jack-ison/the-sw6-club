@@ -4609,7 +4609,7 @@ function renderLeaderboard() {
       left.setAttribute("aria-expanded", String(state.expandedLeaderboardUserId === row.user_id));
       const hint = document.createElement("span");
       hint.className = "leader-breakdown-toggle";
-      hint.textContent = state.expandedLeaderboardUserId === row.user_id ? "Hide breakdown ▲" : "View breakdown ▼";
+      hint.textContent = state.expandedLeaderboardUserId === row.user_id ? "▲" : "▼";
       left.appendChild(hint);
       const toggle = () => {
         state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
