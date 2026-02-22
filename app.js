@@ -3442,6 +3442,7 @@ function renderNow() {
 }
 
 function renderHeaderAuthState({ signedIn, isConnected }) {
+  if (authPanel) authPanel.classList.toggle("hidden", !signedIn);
   if (authLoginFields) authLoginFields.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
   if (loginBtn) loginBtn.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
   if (loginPanelEl) loginPanelEl.classList.toggle("hidden", signedIn || !state.loginPanelOpen);
