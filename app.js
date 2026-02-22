@@ -246,6 +246,7 @@ const state = {
   registeredUserCount: undefined,
   visitorCount: null,
   adminLeagues: [],
+  adminResultFixtureId: "",
   cardDeepLinkId: "",
   pendingJoinCode: "",
   user: null,
@@ -4071,6 +4072,22 @@ function getNextPendingResultFixture() {
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())[0] || null;
 }
 
+function getAdminResultFixtureOptions() {
+  const now = Date.now();
+  return state.activeLeagueFixtures
+    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
+    .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
+    .slice()
+    .sort((a, b) => {
+      const aNeedsResult = !a.result;
+      const bNeedsResult = !b.result;
+      if (aNeedsResult !== bNeedsResult) {
+        return aNeedsResult ? -1 : 1;
+      }
+      return new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime();
+    });
+}
+
 function renderAdminScorePanel() {
   if (!adminScorePanelEl) {
     return;
@@ -4082,20 +4099,45 @@ function renderAdminScorePanel() {
     return;
   }
 
-  const targetFixture = getNextPendingResultFixture();
+  const options = getAdminResultFixtureOptions();
   adminScorePanelEl.textContent = "";
 
   const heading = document.createElement("h3");
   heading.textContent = "Admin Score Input";
   adminScorePanelEl.appendChild(heading);
 
-  if (!targetFixture) {
+  if (options.length === 0) {
     const status = document.createElement("p");
     status.className = "admin-score-meta";
-    status.textContent = "No completed fixtures awaiting score input.";
+    status.textContent = "No completed fixtures available yet.";
     adminScorePanelEl.appendChild(status);
     return;
   }
+
+  const selectedId = state.adminResultFixtureId && options.some((fixture) => fixture.id === state.adminResultFixtureId)
+    ? state.adminResultFixtureId
+    : options[0].id;
+  state.adminResultFixtureId = selectedId;
+  const targetFixture = options.find((fixture) => fixture.id === selectedId) || options[0];
+
+  const selectorWrap = document.createElement("label");
+  selectorWrap.className = "admin-score-meta";
+  selectorWrap.textContent = "Select fixture";
+  const selector = document.createElement("select");
+  options.forEach((fixture) => {
+    const option = document.createElement("option");
+    option.value = fixture.id;
+    const statusLabel = fixture.result ? "Result saved" : "Needs result";
+    option.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent} (${fixture.competition}) — ${statusLabel}`;
+    selector.appendChild(option);
+  });
+  selector.value = targetFixture.id;
+  selector.addEventListener("change", (event) => {
+    state.adminResultFixtureId = event.target.value || "";
+    render();
+  });
+  selectorWrap.appendChild(selector);
+  adminScorePanelEl.appendChild(selectorWrap);
 
   const meta = document.createElement("p");
   meta.className = "admin-score-meta";
@@ -4115,7 +4157,7 @@ function renderAdminScorePanel() {
   chelseaInput.className = "result-chelsea";
   chelseaInput.min = "0";
   chelseaInput.required = true;
-  chelseaInput.value = "0";
+  chelseaInput.value = String(targetFixture.result?.chelsea_goals ?? 0);
   chelseaLabel.appendChild(chelseaInput);
 
   const oppLabel = document.createElement("label");
@@ -4125,7 +4167,7 @@ function renderAdminScorePanel() {
   oppInput.className = "result-opponent";
   oppInput.min = "0";
   oppInput.required = true;
-  oppInput.value = "0";
+  oppInput.value = String(targetFixture.result?.opponent_goals ?? 0);
   oppLabel.appendChild(oppInput);
 
   const scorerLabel = document.createElement("label");
@@ -4134,6 +4176,11 @@ function renderAdminScorePanel() {
   scorerInput.type = "text";
   scorerInput.className = "result-scorer";
   scorerInput.placeholder = "Optional (Unknown if blank)";
+  scorerInput.value =
+    targetFixture.result?.first_scorer &&
+    !["none", "unknown"].includes(String(targetFixture.result.first_scorer).toLowerCase())
+      ? String(targetFixture.result.first_scorer)
+      : "";
   scorerLabel.appendChild(scorerInput);
 
   grid.appendChild(chelseaLabel);
@@ -4143,7 +4190,7 @@ function renderAdminScorePanel() {
 
   const submit = document.createElement("button");
   submit.type = "submit";
-  submit.textContent = "Save Final Score";
+  submit.textContent = targetFixture.result ? "Update Final Score" : "Save Final Score";
   form.appendChild(submit);
 
   form.addEventListener("submit", async (event) => {
@@ -4152,7 +4199,7 @@ function renderAdminScorePanel() {
     submit.textContent = "Saving...";
     await onSaveResult(targetFixture, form);
     submit.disabled = false;
-    submit.textContent = "Save Final Score";
+    submit.textContent = targetFixture.result ? "Update Final Score" : "Save Final Score";
   });
 
   adminScorePanelEl.appendChild(form);
