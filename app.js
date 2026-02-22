@@ -3775,15 +3775,28 @@ function renderProfileEditor() {
 }
 
 function getLeaderboardTrustMeta() {
-  const completedFixtures = state.activeLeagueFixtures.filter((fixture) => fixture.result);
-  const completedCount = completedFixtures.length;
+  const completedFixtureIds = new Set();
   let latestSavedAt = null;
-  completedFixtures.forEach((fixture) => {
-    const savedAt = fixture?.result?.saved_at ? new Date(fixture.result.saved_at).getTime() : NaN;
+
+  state.activeLeagueFixtures.forEach((fixture) => {
+    if (!fixture?.result) return;
+    if (fixture.id) completedFixtureIds.add(String(fixture.id));
+    const savedAt = fixture.result.saved_at ? new Date(fixture.result.saved_at).getTime() : NaN;
     if (Number.isFinite(savedAt) && (!latestSavedAt || savedAt > latestSavedAt)) {
       latestSavedAt = savedAt;
     }
   });
+
+  (Array.isArray(state.pastGamesRows) ? state.pastGamesRows : []).forEach((row) => {
+    if (!row?.result || !row?.fixture?.id) return;
+    completedFixtureIds.add(String(row.fixture.id));
+    const savedAt = row.result.saved_at ? new Date(row.result.saved_at).getTime() : NaN;
+    if (Number.isFinite(savedAt) && (!latestSavedAt || savedAt > latestSavedAt)) {
+      latestSavedAt = savedAt;
+    }
+  });
+
+  const completedCount = completedFixtureIds.size;
   const latestLabel = latestSavedAt ? formatKickoff(new Date(latestSavedAt).toISOString()) : "n/a";
   return `Last updated: ${latestLabel} | Completed fixtures: ${completedCount}`;
 }
