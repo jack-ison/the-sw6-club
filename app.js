@@ -4360,10 +4360,23 @@ function getNextPendingResultFixture() {
 
 function getAdminResultFixtureOptions() {
   const now = Date.now();
-  return state.activeLeagueFixtures
+  const base = state.activeLeagueFixtures
     .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
     .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
-    .slice()
+    .slice();
+
+  const byMatch = new Map();
+  base.forEach((fixture) => {
+    const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const existing = byMatch.get(key);
+    if (!existing) {
+      byMatch.set(key, fixture);
+      return;
+    }
+    byMatch.set(key, pickPreferredAdminFixture(existing, fixture));
+  });
+
+  return [...byMatch.values()]
     .sort((a, b) => {
       const aNeedsResult = !a.result;
       const bNeedsResult = !b.result;
@@ -4372,6 +4385,23 @@ function getAdminResultFixtureOptions() {
       }
       return new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime();
     });
+}
+
+function pickPreferredAdminFixture(current, candidate) {
+  const score = (fixture) => {
+    let value = 0;
+    if (fixture.result) value += 100;
+    if (state.session?.user?.id && fixture.predictions?.some((row) => row.user_id === state.session.user.id)) {
+      value += 50;
+    }
+    const createdAtTs = Number.isFinite(new Date(fixture.created_at).getTime())
+      ? new Date(fixture.created_at).getTime()
+      : 0;
+    // Prefer older (likely canonical) rows when other factors tie.
+    value += createdAtTs > 0 ? Math.max(0, 1_000_000_000_000 - createdAtTs) / 1_000_000_000_000 : 0;
+    return value;
+  };
+  return score(candidate) > score(current) ? candidate : current;
 }
 
 function renderAdminScorePanel() {
