@@ -49,6 +49,9 @@ const SCORING = {
   correctFirstScorer: 2,
   perfectBonus: 1
 };
+const ADMIN_EMAIL_ALLOWLIST = new Set([
+  "jackwilliamison@gmail.com"
+]);
 const FALLBACK_FIXTURES = [
   { date: "2026-02-21", opponent: "Burnley", competition: "Premier League", kickoffUk: "15:00" },
   { date: "2026-03-01", opponent: "Arsenal", competition: "Premier League", kickoffUk: "16:30" },
@@ -232,6 +235,8 @@ const state = {
   activeForumThreadId: null,
   forumStatus: "",
   forumUnreadCount: 0,
+  pastGamesRows: [],
+  pastGamesLoaded: false,
   scorerCompetition: "all",
   scorerDataByCompetition: cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION),
   leaderboardScope: "global",
@@ -1454,6 +1459,10 @@ async function loadAdminAccess(force = false) {
     state.isAdmin = false;
     return;
   }
+  if (isAllowlistedAdminEmail()) {
+    state.isAdmin = true;
+    return;
+  }
   if (!force && adminAccessPromise) {
     await adminAccessPromise;
     return;
@@ -1461,10 +1470,10 @@ async function loadAdminAccess(force = false) {
   adminAccessPromise = (async () => {
     const { data, error } = await state.client.rpc("is_configured_admin");
     if (error) {
-      state.isAdmin = false;
+      state.isAdmin = isAllowlistedAdminEmail();
       return;
     }
-    state.isAdmin = Boolean(data);
+    state.isAdmin = Boolean(data) || isAllowlistedAdminEmail();
   })();
   try {
     await adminAccessPromise;
@@ -1569,6 +1578,7 @@ async function reloadAuthedData() {
     await loadActiveLeagueData();
     await maybeRefreshChelseaSquad();
   }
+  await loadPastGamesForUser();
 
   if (isAdminUser()) {
     if (state.topView === "leagues") {
@@ -1583,6 +1593,58 @@ async function reloadAuthedData() {
   } finally {
     reloadAuthedDataPromise = null;
   }
+}
+
+async function loadPastGamesForUser() {
+  if (!state.client || !state.session?.user) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = false;
+    return;
+  }
+  const { data, error } = await state.client
+    .from("predictions")
+    .select(
+      "fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at, fixtures(id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at))"
+    )
+    .eq("user_id", state.session.user.id)
+    .order("submitted_at", { ascending: false });
+
+  if (error) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+
+  state.pastGamesRows = (data || [])
+    .map((row) => {
+      const fixture = row.fixtures || null;
+      const result = fixture?.results?.[0] || null;
+      if (!fixture || !result) {
+        return null;
+      }
+      const prediction = {
+        fixture_id: row.fixture_id,
+        user_id: row.user_id,
+        chelsea_goals: row.chelsea_goals,
+        opponent_goals: row.opponent_goals,
+        first_scorer: row.first_scorer,
+        predicted_scorers: row.predicted_scorers
+      };
+      return {
+        fixture: {
+          id: fixture.id,
+          kickoff: fixture.kickoff,
+          opponent: fixture.opponent,
+          competition: fixture.competition
+        },
+        prediction,
+        result,
+        points: scorePrediction(prediction, result).points
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.fixture.kickoff).getTime() - new Date(a.fixture.kickoff).getTime());
+  state.pastGamesLoaded = true;
 }
 
 async function ensureAuthedDataLoaded(force = false) {
@@ -2386,6 +2448,7 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData();
+  await loadPastGamesForUser();
   alert(`Result saved. Leaderboards and collectables updated. ${settlementNote}`);
   render();
 }
@@ -3438,9 +3501,17 @@ function renderPastGames() {
     return;
   }
 
-  const completedFixtures = state.activeLeagueFixtures
-    .filter((fixture) => fixture.result)
-    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+  const rows = Array.isArray(state.pastGamesRows) ? state.pastGamesRows : [];
+  const completedFixtures = rows.length > 0
+    ? rows.map((row) => ({
+        ...row.fixture,
+        predictions: [row.prediction],
+        result: row.result,
+        computedPoints: row.points
+      }))
+    : state.activeLeagueFixtures
+        .filter((fixture) => fixture.result)
+        .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
 
   if (completedFixtures.length === 0) {
     const li = document.createElement("li");
@@ -3469,7 +3540,9 @@ function renderPastGames() {
     li.appendChild(resultLine);
 
     if (myPrediction) {
-      const detail = scorePrediction(myPrediction, result);
+      const detail = Number.isFinite(fixture.computedPoints)
+        ? { points: fixture.computedPoints }
+        : scorePrediction(myPrediction, result);
       totalPoints += detail.points;
       const predictionLine = document.createElement("p");
       predictionLine.className = "past-game-line";
@@ -5024,6 +5097,15 @@ function getCurrentUserAvatarUrl() {
 
 function isAdminUser() {
   return Boolean(state.session?.user) && Boolean(state.isAdmin);
+}
+
+function getCurrentUserEmail() {
+  return String(state.session?.user?.email || "").trim().toLowerCase();
+}
+
+function isAllowlistedAdminEmail() {
+  const email = getCurrentUserEmail();
+  return Boolean(email) && ADMIN_EMAIL_ALLOWLIST.has(email);
 }
 
 function countryCodeToFlag(code) {
