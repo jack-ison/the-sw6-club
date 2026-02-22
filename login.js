@@ -23,6 +23,7 @@ if (signinForm && client) {
 }
 if (client) {
   handleAuthCallback();
+  redirectIfAlreadySignedIn();
 }
 
 async function handleAuthCallback() {
@@ -68,6 +69,12 @@ async function handleAuthCallback() {
     return;
   }
 
+  const sessionReady = await waitForActiveSession();
+  if (!sessionReady) {
+    signinStatus.textContent = "Confirmation completed but no active session was found. Please sign in manually.";
+    return;
+  }
+
   url.search = "";
   url.hash = "";
   window.history.replaceState({}, document.title, url.toString());
@@ -100,8 +107,43 @@ async function onSignIn(event) {
     return;
   }
 
+  const sessionReady = await waitForActiveSession();
+  if (!sessionReady) {
+    if (signinStatus) signinStatus.textContent = "Signed in, but session is still initializing. Please try again.";
+    if (signinSubmitBtn) signinSubmitBtn.disabled = false;
+    return;
+  }
+
   if (signinStatus) signinStatus.textContent = "Signed in. Redirecting...";
   window.location.href = REDIRECT_AFTER_LOGIN;
+}
+
+async function redirectIfAlreadySignedIn() {
+  if (!client) {
+    return;
+  }
+  const { data, error } = await client.auth.getSession();
+  if (error || !data?.session) {
+    return;
+  }
+  window.location.href = REDIRECT_AFTER_LOGIN;
+}
+
+async function waitForActiveSession(maxAttempts = 6, delayMs = 180) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data: sessionData } = await client.auth.getSession();
+    if (sessionData?.session?.user) {
+      return true;
+    }
+    const { data: userData, error: userError } = await client.auth.getUser();
+    if (!userError && userData?.user) {
+      return true;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return false;
 }
 
 function readRuntimeConfig() {
