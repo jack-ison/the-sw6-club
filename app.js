@@ -29,6 +29,12 @@ const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const LEAGUE_PAYLOAD_CACHE_KEY = "cfc-league-payload-cache-v1";
 const LEAGUE_PAYLOAD_CACHE_VERSION = 1;
 const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const PAST_GAMES_CACHE_KEY = "cfc-past-games-cache-v1";
+const PAST_GAMES_CACHE_VERSION = 1;
+const PAST_GAMES_CACHE_MAX_AGE_MS = 60 * 1000;
+const LEAGUE_BREAKDOWN_CACHE_KEY = "cfc-league-breakdown-cache-v1";
+const LEAGUE_BREAKDOWN_CACHE_VERSION = 1;
+const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 1;
 const OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS = 60 * 1000;
@@ -194,6 +200,7 @@ let overallLeaderboardLoadPromise = null;
 let reloadAuthedDataPromise = null;
 let loadActiveLeagueDataPromise = null;
 let loadActiveLeagueDataLeagueId = null;
+let loadPastGamesPromise = null;
 let cardsLoadPromise = null;
 let upcomingFixturesSyncPromise = null;
 let scorerStatsSyncPromise = null;
@@ -205,11 +212,13 @@ let authedDataInitialized = false;
 let ensureAuthedDataLoadedPromise = null;
 let forumThreadsRefreshPromise = null;
 const leagueLeaderboardRefreshPromises = new Map();
+const leagueBreakdownRefreshPromises = new Map();
 const activeLeagueHydratedAtByLeague = new Map();
 const completedResultsSyncedAtByLeague = new Map();
 let upcomingFixturesAbortController = null;
 let scorerStatsAbortController = null;
 let renderScheduled = false;
+let deadlineCountdownIntervalId = null;
 const draftAutosaveTimers = new Map();
 let detachedAuthedFormsApplied = null;
 const TOP_VIEW_MODULE_URLS = {
@@ -522,9 +531,9 @@ if (cardsRarityRareBtn) cardsRarityRareBtn.addEventListener("click", () => setCa
 if (cardsRarityLegendaryBtn) cardsRarityLegendaryBtn.addEventListener("click", () => setCardsRarityFilter("legendary"));
 if (closeCardDetailModalBtn) closeCardDetailModalBtn.addEventListener("click", onCloseCardDetailModal);
 if (closeDraftSaveModalBtn) closeDraftSaveModalBtn.addEventListener("click", onCloseDraftSaveModal);
-
-setInterval(renderDeadlineCountdown, 1000);
+startDeadlineCountdownTicker();
 window.addEventListener("hashchange", onRouteChange);
+document.addEventListener("visibilitychange", onVisibilityChange);
 document.addEventListener("click", onDocumentClick);
 document.addEventListener("keydown", onDocumentKeydown);
 
@@ -552,6 +561,32 @@ async function getAuthUser() {
   state.session = { user: data.user };
   state.isAuthed = true;
   return data.user;
+}
+
+function startDeadlineCountdownTicker() {
+  if (deadlineCountdownIntervalId !== null) {
+    return;
+  }
+  deadlineCountdownIntervalId = window.setInterval(() => {
+    renderDeadlineCountdown();
+  }, 1000);
+}
+
+function stopDeadlineCountdownTicker() {
+  if (deadlineCountdownIntervalId === null) {
+    return;
+  }
+  clearInterval(deadlineCountdownIntervalId);
+  deadlineCountdownIntervalId = null;
+}
+
+function onVisibilityChange() {
+  if (document.hidden) {
+    stopDeadlineCountdownTicker();
+    return;
+  }
+  startDeadlineCountdownTicker();
+  renderDeadlineCountdown();
 }
 
 async function initializeApp() {
@@ -1663,12 +1698,39 @@ async function reloadAuthedData() {
   }
 }
 
-async function loadPastGamesForUser() {
+async function loadPastGamesForUser(options = {}) {
+  const force = Boolean(options.force);
+  const background = Boolean(options.background);
   if (!state.client || !state.session?.user) {
     state.pastGamesRows = [];
     state.pastGamesLoaded = false;
     return;
   }
+  const userId = state.session.user.id;
+  if (!force) {
+    const cachedRows = readPastGamesCache(userId);
+    if (cachedRows.length > 0) {
+      state.pastGamesRows = cachedRows;
+      state.pastGamesLoaded = true;
+      if (background) {
+        if (!loadPastGamesPromise) {
+          loadPastGamesPromise = loadPastGamesForUser({ force: true }).finally(() => {
+            loadPastGamesPromise = null;
+          });
+        }
+        return;
+      }
+    }
+  }
+  if (!force && loadPastGamesPromise) {
+    await loadPastGamesPromise;
+    return;
+  }
+  if (force && loadPastGamesPromise) {
+    await loadPastGamesPromise;
+    return;
+  }
+  loadPastGamesPromise = (async () => {
   const predictionsResult = await state.client
     .from("predictions")
     .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
@@ -1684,12 +1746,14 @@ async function loadPastGamesForUser() {
   if (predictions.length === 0) {
     state.pastGamesRows = [];
     state.pastGamesLoaded = true;
+    writePastGamesCache(userId, []);
     return;
   }
   const predictionFixtureIds = [...new Set(predictions.map((row) => row.fixture_id).filter(Boolean))];
   if (predictionFixtureIds.length === 0) {
     state.pastGamesRows = [];
     state.pastGamesLoaded = true;
+    writePastGamesCache(userId, []);
     return;
   }
 
@@ -1767,7 +1831,14 @@ async function loadPastGamesForUser() {
     })
     .filter(Boolean)
     .sort((a, b) => new Date(b.fixture.kickoff).getTime() - new Date(a.fixture.kickoff).getTime());
+  writePastGamesCache(userId, state.pastGamesRows);
   state.pastGamesLoaded = true;
+  })();
+  try {
+    await loadPastGamesPromise;
+  } finally {
+    loadPastGamesPromise = null;
+  }
 }
 
 async function fetchCompletedFixturesForPastGames(leagueIds) {
@@ -2406,7 +2477,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     ensureOverallLeaderboardLoaded(true),
     state.activeLeagueId ? refreshLeaderboardPredictionFlags(state.activeLeagueId) : Promise.resolve()
   ]).then(() => {
-    render();
+    refreshVisibleSectionsFast();
   });
   if (state.predictionButtonFlashTimeoutId) {
     clearTimeout(state.predictionButtonFlashTimeoutId);
@@ -2607,7 +2678,7 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData(true);
-  await loadPastGamesForUser();
+  await loadPastGamesForUser({ force: true });
   await ensureOverallLeaderboardLoaded(true);
   state.adminScoreAck = {
     message: `Result saved. ${settlementNote}`,
@@ -2715,6 +2786,7 @@ async function loadActiveLeagueData(force = false) {
   const hasInMemoryLeagueData = state.activeLeagueFixtures.length > 0 || state.activeLeagueMembers.length > 0;
   if (!force && hasInMemoryLeagueData && Date.now() - lastHydratedAt < ACTIVE_LEAGUE_HYDRATE_MIN_INTERVAL_MS) {
     await loadLeagueLeaderboard({ background: true });
+    await loadLeagueLastGameBreakdown(league.id, { background: true });
     return;
   }
 
@@ -2824,24 +2896,54 @@ async function refreshLeaderboardPredictionFlags(leagueId) {
   }));
 }
 
-async function loadLeagueLastGameBreakdown(leagueId) {
+async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
+  const force = Boolean(options.force);
+  const background = Boolean(options.background);
   if (!state.client || !leagueId) {
     state.leagueLastGameBreakdownByUser = {};
     return;
   }
-  const { data, error } = await state.client.rpc("get_league_last_game_breakdown", {
-    p_league_id: leagueId
-  });
-  if (error) {
-    state.leagueLastGameBreakdownByUser = {};
+  if (!force) {
+    const cached = readLeagueBreakdownCache(leagueId);
+    if (Object.keys(cached).length > 0) {
+      state.leagueLastGameBreakdownByUser = cached;
+      if (background) {
+        if (!leagueBreakdownRefreshPromises.has(leagueId)) {
+          const promise = loadLeagueLastGameBreakdown(leagueId, { force: true }).finally(() => {
+            leagueBreakdownRefreshPromises.delete(leagueId);
+          });
+          leagueBreakdownRefreshPromises.set(leagueId, promise);
+        }
+        return;
+      }
+    }
+  }
+  if (leagueBreakdownRefreshPromises.has(leagueId)) {
+    await leagueBreakdownRefreshPromises.get(leagueId);
     return;
   }
-  const byUser = {};
-  (Array.isArray(data) ? data : []).forEach((row) => {
-    if (!row?.user_id) return;
-    byUser[row.user_id] = row;
-  });
-  state.leagueLastGameBreakdownByUser = byUser;
+  const runPromise = (async () => {
+    const { data, error } = await state.client.rpc("get_league_last_game_breakdown", {
+      p_league_id: leagueId
+    });
+    if (error) {
+      state.leagueLastGameBreakdownByUser = {};
+      return;
+    }
+    const byUser = {};
+    (Array.isArray(data) ? data : []).forEach((row) => {
+      if (!row?.user_id) return;
+      byUser[row.user_id] = row;
+    });
+    state.leagueLastGameBreakdownByUser = byUser;
+    writeLeagueBreakdownCache(leagueId, byUser);
+  })();
+  leagueBreakdownRefreshPromises.set(leagueId, runPromise);
+  try {
+    await runPromise;
+  } finally {
+    leagueBreakdownRefreshPromises.delete(leagueId);
+  }
 }
 
 async function fetchLeagueFixturesWithResults(leagueId) {
@@ -3109,6 +3211,48 @@ function writeLeaguePayloadCache(leagueId, userId, payload) {
   );
 }
 
+function getPastGamesCacheKey(userId) {
+  return `${PAST_GAMES_CACHE_KEY}:${userId}`;
+}
+
+function readPastGamesCache(userId) {
+  const cached = readObjectCache(
+    getPastGamesCacheKey(userId),
+    PAST_GAMES_CACHE_VERSION,
+    PAST_GAMES_CACHE_MAX_AGE_MS
+  );
+  return Array.isArray(cached) ? cached : [];
+}
+
+function writePastGamesCache(userId, rows) {
+  writeObjectCache(
+    getPastGamesCacheKey(userId),
+    PAST_GAMES_CACHE_VERSION,
+    Array.isArray(rows) ? rows : []
+  );
+}
+
+function getLeagueBreakdownCacheKey(leagueId) {
+  return `${LEAGUE_BREAKDOWN_CACHE_KEY}:${leagueId}`;
+}
+
+function readLeagueBreakdownCache(leagueId) {
+  const cached = readObjectCache(
+    getLeagueBreakdownCacheKey(leagueId),
+    LEAGUE_BREAKDOWN_CACHE_VERSION,
+    LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS
+  );
+  return cached && typeof cached === "object" ? cached : {};
+}
+
+function writeLeagueBreakdownCache(leagueId, byUser) {
+  writeObjectCache(
+    getLeagueBreakdownCacheKey(leagueId),
+    LEAGUE_BREAKDOWN_CACHE_VERSION,
+    byUser && typeof byUser === "object" ? byUser : {}
+  );
+}
+
 async function refreshLeagueLeaderboardFromServer(leagueId) {
   const { data, error } = await state.client.rpc("get_league_leaderboard", { p_league_id: leagueId });
   if (error) {
@@ -3154,6 +3298,32 @@ async function loadLeagueLeaderboard(options = {}) {
   });
   leagueLeaderboardRefreshPromises.set(league.id, promise);
   await promise;
+}
+
+function refreshVisibleSectionsFast() {
+  if (state.topView === "predict") {
+    renderFixtures();
+    renderAdminScorePanel();
+  }
+  if (state.topView === "leagues") {
+    renderLeagueSelect();
+    renderLeaderboard();
+    renderOverallLeaderboard();
+  }
+  if (state.topView === "results") {
+    if (state.resultsTab === "fixtures") renderUpcomingFixtures();
+    if (state.resultsTab === "past") renderPastGames();
+    if (state.resultsTab === "stats") renderTopScorers();
+  }
+  if (state.topView === "forum") {
+    renderForumPanel();
+  }
+  if (state.topView === "cards") {
+    renderCardsPanel();
+  }
+  renderDeadlineCountdown();
+  renderMatchdayAttendance();
+  renderVisitorCount();
 }
 
 function render() {
@@ -3753,7 +3923,11 @@ function renderPastGames() {
     return;
   }
   if (!state.pastGamesLoaded && state.client) {
-    loadPastGamesForUser().then(render);
+    loadPastGamesForUser({ background: true }).then(() => {
+      if (state.topView === "results" && state.resultsTab === "past") {
+        renderPastGames();
+      }
+    });
   }
 
   const rows = Array.isArray(state.pastGamesRows) ? state.pastGamesRows : [];
