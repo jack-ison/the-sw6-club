@@ -1606,35 +1606,56 @@ async function loadPastGamesForUser() {
     state.pastGamesLoaded = false;
     return;
   }
-  const { data, error } = await state.client
-    .from("predictions")
-    .select(
-      "fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at, fixtures(id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at))"
-    )
-    .eq("user_id", state.session.user.id)
-    .order("submitted_at", { ascending: false });
-
-  if (error) {
+  const leagueIds = (state.leagues || []).map((league) => league.id).filter(Boolean);
+  if (leagueIds.length === 0) {
     state.pastGamesRows = [];
     state.pastGamesLoaded = true;
     return;
   }
 
-  state.pastGamesRows = (data || [])
-    .map((row) => {
-      const fixture = row.fixtures || null;
-      const result = fixture?.results?.[0] || null;
-      if (!fixture || !result) {
-        return null;
-      }
-      const prediction = {
-        fixture_id: row.fixture_id,
-        user_id: row.user_id,
-        chelsea_goals: row.chelsea_goals,
-        opponent_goals: row.opponent_goals,
-        first_scorer: row.first_scorer,
-        predicted_scorers: row.predicted_scorers
-      };
+  const fixtureResult = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)")
+    .in("league_id", leagueIds)
+    .order("kickoff", { ascending: false });
+
+  if (fixtureResult.error) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+
+  const completedFixtures = (fixtureResult.data || [])
+    .map((fixture) => ({
+      ...fixture,
+      result: Array.isArray(fixture.results) ? fixture.results[0] : null
+    }))
+    .filter((fixture) => Boolean(fixture.result));
+
+  if (completedFixtures.length === 0) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+
+  const fixtureIds = completedFixtures.map((fixture) => fixture.id);
+  const predictionResult = await state.client
+    .from("predictions")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
+    .eq("user_id", state.session.user.id)
+    .in("fixture_id", fixtureIds);
+
+  const predictionByFixtureId = new Map();
+  if (!predictionResult.error) {
+    (predictionResult.data || []).forEach((prediction) => {
+      predictionByFixtureId.set(prediction.fixture_id, prediction);
+    });
+  }
+
+  state.pastGamesRows = completedFixtures
+    .map((fixture) => {
+      const prediction = predictionByFixtureId.get(fixture.id) || null;
+      const points = prediction ? scorePrediction(prediction, fixture.result).points : 0;
       return {
         fixture: {
           id: fixture.id,
@@ -1643,8 +1664,8 @@ async function loadPastGamesForUser() {
           competition: fixture.competition
         },
         prediction,
-        result,
-        points: scorePrediction(prediction, result).points
+        result: fixture.result,
+        points
       };
     })
     .filter(Boolean)
@@ -2407,7 +2428,7 @@ async function materializeFixtureForPrediction(fallbackFixture) {
 }
 
 async function onSaveResult(fixture, form) {
-  if (!state.session?.user || !isAdminUser()) {
+  if (!state.session?.user || !canManageResults()) {
     return;
   }
   const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
@@ -4236,7 +4257,7 @@ function renderAdminScorePanel() {
   if (!adminScorePanelEl) {
     return;
   }
-  const visible = Boolean(state.session?.user) && isAdminUser() && state.topView === "predict";
+  const visible = Boolean(state.session?.user) && canManageResults() && state.topView === "predict";
   adminScorePanelEl.classList.toggle("hidden", !visible);
   if (!visible) {
     adminScorePanelEl.textContent = "";
@@ -5188,6 +5209,17 @@ function getCurrentUserAvatarUrl() {
 
 function isAdminUser() {
   return Boolean(state.session?.user) && Boolean(state.isAdmin);
+}
+
+function canManageResults() {
+  if (!state.session?.user) {
+    return false;
+  }
+  if (isAdminUser() || isAllowlistedAdminEmail()) {
+    return true;
+  }
+  const member = getCurrentMember();
+  return member?.role === "owner";
 }
 
 function getCurrentUserEmail() {
