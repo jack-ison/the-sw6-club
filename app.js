@@ -1606,52 +1606,90 @@ async function loadPastGamesForUser() {
     state.pastGamesLoaded = false;
     return;
   }
-  const leagueIds = (state.leagues || []).map((league) => league.id).filter(Boolean);
-  if (leagueIds.length === 0) {
-    state.pastGamesRows = [];
-    state.pastGamesLoaded = true;
-    return;
-  }
-
-  const fixtureResult = await fetchCompletedFixturesForPastGames(leagueIds);
-
-  if (fixtureResult.error) {
-    state.pastGamesRows = [];
-    state.pastGamesLoaded = true;
-    return;
-  }
-
-  const completedFixtures = (fixtureResult.data || [])
-    .map((fixture) => ({
-      ...fixture,
-      result: Array.isArray(fixture.results) ? fixture.results[0] : null
-    }))
-    .filter((fixture) => Boolean(fixture.result));
-
-  if (completedFixtures.length === 0) {
-    state.pastGamesRows = [];
-    state.pastGamesLoaded = true;
-    return;
-  }
-
-  const fixtureIds = completedFixtures.map((fixture) => fixture.id);
-  const predictionResult = await state.client
+  const predictionsResult = await state.client
     .from("predictions")
     .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
     .eq("user_id", state.session.user.id)
-    .in("fixture_id", fixtureIds);
+    .order("submitted_at", { ascending: false });
 
-  const predictionByFixtureId = new Map();
-  if (!predictionResult.error) {
-    (predictionResult.data || []).forEach((prediction) => {
-      predictionByFixtureId.set(prediction.fixture_id, prediction);
+  if (predictionsResult.error) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+  const predictions = Array.isArray(predictionsResult.data) ? predictionsResult.data : [];
+  if (predictions.length === 0) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+  const predictionFixtureIds = [...new Set(predictions.map((row) => row.fixture_id).filter(Boolean))];
+  if (predictionFixtureIds.length === 0) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+
+  const predictionFixturesResult = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition")
+    .in("id", predictionFixtureIds);
+
+  if (predictionFixturesResult.error) {
+    state.pastGamesRows = [];
+    state.pastGamesLoaded = true;
+    return;
+  }
+  const predictionFixtures = Array.isArray(predictionFixturesResult.data) ? predictionFixturesResult.data : [];
+  const predictionFixtureById = new Map(predictionFixtures.map((fixture) => [fixture.id, fixture]));
+
+  const directResultsResult = await state.client
+    .from("results")
+    .select("fixture_id, chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at")
+    .in("fixture_id", predictionFixtureIds);
+
+  const directResultByFixtureId = new Map();
+  if (!directResultsResult.error) {
+    (directResultsResult.data || []).forEach((row) => {
+      directResultByFixtureId.set(row.fixture_id, row);
     });
   }
 
-  state.pastGamesRows = completedFixtures
-    .map((fixture) => {
-      const prediction = predictionByFixtureId.get(fixture.id) || null;
-      const points = prediction ? scorePrediction(prediction, fixture.result).points : 0;
+  const leagueIdsFromPredictions = [...new Set(predictionFixtures.map((fixture) => fixture.league_id).filter(Boolean))];
+  let resultFixtureByScheduleKey = new Map();
+  if (leagueIdsFromPredictions.length > 0) {
+    const leagueFixturesResult = await fetchCompletedFixturesForPastGames(leagueIdsFromPredictions);
+    if (!leagueFixturesResult.error) {
+      const completedFixtures = (leagueFixturesResult.data || [])
+        .map((fixture) => ({
+          ...fixture,
+          result: Array.isArray(fixture.results) ? fixture.results[0] : null
+        }))
+        .filter((fixture) => fixture.result);
+      resultFixtureByScheduleKey = new Map(
+        completedFixtures.map((fixture) => [
+          fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition),
+          fixture
+        ])
+      );
+    }
+  }
+
+  state.pastGamesRows = predictions
+    .map((prediction) => {
+      const fixture = predictionFixtureById.get(prediction.fixture_id);
+      if (!fixture) {
+        return null;
+      }
+      let result = directResultByFixtureId.get(prediction.fixture_id) || null;
+      if (!result) {
+        const scheduleKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+        const matchedFixture = resultFixtureByScheduleKey.get(scheduleKey);
+        result = matchedFixture?.result || null;
+      }
+      if (!result) {
+        return null;
+      }
       return {
         fixture: {
           id: fixture.id,
@@ -1660,8 +1698,8 @@ async function loadPastGamesForUser() {
           competition: fixture.competition
         },
         prediction,
-        result: fixture.result,
-        points
+        result,
+        points: scorePrediction(prediction, result).points
       };
     })
     .filter(Boolean)
