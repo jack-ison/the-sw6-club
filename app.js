@@ -247,6 +247,7 @@ const state = {
   upcomingSourceText: "Using bundled SW6 fixture fallback list.",
   lastPredictionAck: null,
   profileAck: null,
+  adminScoreAck: null,
   predictionButtonFlashTimeoutId: null,
   registeredUserCount: undefined,
   visitorCount: null,
@@ -1276,6 +1277,10 @@ async function onLogOut() {
   if (!state.client || !state.session) {
     return;
   }
+  const confirmed = window.confirm("Sign out now?");
+  if (!confirmed) {
+    return;
+  }
   const { error } = await state.client.auth.signOut();
   if (error) {
     alert(error.message);
@@ -2253,9 +2258,12 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         : Boolean(row?.has_prediction)
   }));
   render();
-  // Force full refresh so prediction state is visible immediately without tab switching.
-  await reloadAuthedData();
-  await ensureOverallLeaderboardLoaded(true);
+  // Targeted refresh for speed/reliability without full app reset.
+  await Promise.all([
+    loadActiveLeagueData(),
+    loadPastGamesForUser(),
+    ensureOverallLeaderboardLoaded(true)
+  ]);
   await refreshLeaderboardPredictionFlags(state.activeLeagueId);
   state.lastPredictionAck = {
     fixtureId: targetFixture.id,
@@ -2432,7 +2440,13 @@ async function onSaveResult(fixture, form) {
   );
 
   if (error) {
+    state.adminScoreAck = {
+      message: error.message,
+      isError: true,
+      at: Date.now()
+    };
     alert(error.message);
+    render();
     return;
   }
 
@@ -2458,7 +2472,11 @@ async function onSaveResult(fixture, form) {
   await loadActiveLeagueData();
   await loadPastGamesForUser();
   await ensureOverallLeaderboardLoaded(true);
-  alert(`Result saved. Leaderboards and collectables updated. ${settlementNote}`);
+  state.adminScoreAck = {
+    message: `Result saved. ${settlementNote}`,
+    isError: false,
+    at: Date.now()
+  };
   render();
 }
 
@@ -4231,6 +4249,16 @@ function renderAdminScorePanel() {
   const heading = document.createElement("h3");
   heading.textContent = "Admin Score Input";
   adminScorePanelEl.appendChild(heading);
+
+  const ack = state.adminScoreAck;
+  const ackFresh = Boolean(ack) && Date.now() - ack.at < 12000;
+  if (ackFresh) {
+    const ackEl = document.createElement("p");
+    ackEl.className = "admin-score-meta";
+    ackEl.textContent = ack.message;
+    ackEl.style.color = ack.isError ? "#9f2b2b" : "#0b6b3a";
+    adminScorePanelEl.appendChild(ackEl);
+  }
 
   if (options.length === 0) {
     const status = document.createElement("p");
