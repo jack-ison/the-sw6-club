@@ -1613,11 +1613,7 @@ async function loadPastGamesForUser() {
     return;
   }
 
-  const fixtureResult = await state.client
-    .from("fixtures")
-    .select("id, league_id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)")
-    .in("league_id", leagueIds)
-    .order("kickoff", { ascending: false });
+  const fixtureResult = await fetchCompletedFixturesForPastGames(leagueIds);
 
   if (fixtureResult.error) {
     state.pastGamesRows = [];
@@ -1671,6 +1667,25 @@ async function loadPastGamesForUser() {
     .filter(Boolean)
     .sort((a, b) => new Date(b.fixture.kickoff).getTime() - new Date(a.fixture.kickoff).getTime());
   state.pastGamesLoaded = true;
+}
+
+async function fetchCompletedFixturesForPastGames(leagueIds) {
+  let result = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)")
+    .in("league_id", leagueIds)
+    .order("kickoff", { ascending: false });
+  if (!result.error) {
+    return result;
+  }
+
+  // Backward-compatible fallback for projects missing chelsea_scorers on results.
+  result = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, results(chelsea_goals, opponent_goals, first_scorer, saved_at)")
+    .in("league_id", leagueIds)
+    .order("kickoff", { ascending: false });
+  return result;
 }
 
 async function ensureAuthedDataLoaded(force = false) {
@@ -3592,6 +3607,9 @@ function renderPastGames() {
     pastGamesStatusEl.textContent = "Your history appears here after you sign in.";
     return;
   }
+  if (!state.pastGamesLoaded && state.client) {
+    loadPastGamesForUser().then(render);
+  }
 
   const rows = Array.isArray(state.pastGamesRows) ? state.pastGamesRows : [];
   const completedFixtures = rows.length > 0
@@ -3941,8 +3959,11 @@ async function loadMyCards(options = {}) {
     ]);
 
     if (cardsResult.error) {
-      state.cards = [];
-      state.cardsStatus = "Collectables unavailable right now.";
+      const fallbackCards = buildFallbackCollectablesFromPredictions();
+      state.cards = fallbackCards;
+      state.cardsStatus = fallbackCards.length > 0
+        ? "Showing fallback collectables while live card data sync catches up."
+        : "Collectables unavailable right now.";
       state.cardsLoaded = true;
       return;
     }
@@ -3959,6 +3980,36 @@ async function loadMyCards(options = {}) {
   } finally {
     cardsLoadPromise = null;
   }
+}
+
+function buildFallbackCollectablesFromPredictions() {
+  const rows = Array.isArray(state.pastGamesRows) ? state.pastGamesRows : [];
+  return rows
+    .filter((row) => row?.prediction && row?.result)
+    .slice(0, 24)
+    .map((row, idx) => ({
+      id: `fallback-${row.fixture.id}`,
+      userId: state.session?.user?.id || "",
+      fixtureCardId: `fallback-${row.fixture.id}`,
+      fixtureId: row.fixture.id,
+      title: row.points > 0 ? "Prediction Points" : "Matchday Entry",
+      subtitle: `Chelsea vs ${row.fixture.opponent} | ${row.fixture.competition}`,
+      templateSlug: row.points > 0 ? "correct-result-fallback" : "entry-fallback",
+      templateName: row.points > 0 ? "Points Earned" : "Prediction Logged",
+      templateDescription: row.points > 0 ? "You earned points for this completed match." : "You submitted a prediction.",
+      rarity: row.points >= 6 ? "rare" : "common",
+      opponent: row.fixture.opponent || "Opponent",
+      kickoff: row.fixture.kickoff || "",
+      competition: row.fixture.competition || "Competition",
+      scoreLine: `${row.result.chelsea_goals}-${row.result.opponent_goals}`,
+      firstScorer: row.result.first_scorer || "",
+      serialNumber: idx + 1,
+      earnedAt: row.result.saved_at || row.fixture.kickoff || "",
+      meta: {
+        reason: row.points > 0 ? `${row.points} points in this fixture.` : "Prediction submitted for this fixture."
+      },
+      earned: true
+    }));
 }
 
 function normalizeCardRows(rows) {
