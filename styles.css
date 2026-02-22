@@ -872,6 +872,38 @@ button:disabled {
   color: #244879;
 }
 
+.signedout-why-card {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.signedout-why-list {
+  list-style: none;
+  margin: 0.18rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.34rem;
+}
+
+.signedout-why-list li {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.38rem 0.46rem;
+  border: 1px solid #d5e4ff;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 86%);
+}
+
+.signedout-why-list li strong {
+  font-size: 0.8rem;
+  color: #234777;
+}
+
+.signedout-why-list li span {
+  font-size: 0.74rem;
+  color: #4f6f9f;
+}
+
 .signedout-preview-card .leaderboard {
   gap: 0.3rem;
 }
@@ -888,6 +920,10 @@ button:disabled {
 
 .signedout-cta-link {
   width: fit-content;
+}
+
+.fixtures-list.hidden {
+  display: none;
 }
 
 .admin-score-panel {

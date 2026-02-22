@@ -3424,8 +3424,17 @@ function renderNow() {
     }
   }
   if (showPredict) {
-    renderFixtures();
-    renderAdminScorePanel();
+    if (signedIn) {
+      if (fixturesListEl) fixturesListEl.classList.remove("hidden");
+      renderFixtures();
+      renderAdminScorePanel();
+    } else {
+      if (fixturesListEl) {
+        fixturesListEl.textContent = "";
+        fixturesListEl.classList.add("hidden");
+      }
+      if (adminScorePanelEl) adminScorePanelEl.classList.add("hidden");
+    }
   }
   renderDeadlineCountdown();
   renderMatchdayAttendance();
