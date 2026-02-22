@@ -2404,7 +2404,7 @@ async function onSaveResult(fixture, form) {
   }
   const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".result-opponent").value);
-  let firstScorer = form.querySelector(".result-scorer").value.trim();
+  let firstScorer = String(form.querySelector(".result-scorer")?.value || "").trim();
   if (chelseaGoals === null || opponentGoals === null) {
     return;
   }
@@ -2436,6 +2436,14 @@ async function onSaveResult(fixture, form) {
     return;
   }
 
+  await syncResultAcrossMyLeagues(fixture, {
+    chelsea_goals: chelseaGoals,
+    opponent_goals: opponentGoals,
+    first_scorer: firstScorer,
+    chelsea_scorers: scorerStorageValue,
+    saved_at: new Date().toISOString()
+  });
+
   let settlementNote = "Settlement complete.";
   const settlementResult = await state.client.rpc("get_fixture_settlement", { p_fixture_id: fixture.id });
   if (!settlementResult.error && Array.isArray(settlementResult.data) && settlementResult.data[0]) {
@@ -2449,8 +2457,53 @@ async function onSaveResult(fixture, form) {
 
   await loadActiveLeagueData();
   await loadPastGamesForUser();
+  await ensureOverallLeaderboardLoaded(true);
   alert(`Result saved. Leaderboards and collectables updated. ${settlementNote}`);
   render();
+}
+
+async function syncResultAcrossMyLeagues(sourceFixture, payload) {
+  if (!state.client || !sourceFixture) {
+    return;
+  }
+  const leagueIds = (state.leagues || []).map((league) => league.id).filter(Boolean);
+  if (leagueIds.length === 0) {
+    return;
+  }
+
+  const kickoffMs = new Date(sourceFixture.kickoff).getTime();
+  if (!Number.isFinite(kickoffMs)) {
+    return;
+  }
+  const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+
+  const fixtureRows = await state.client
+    .from("fixtures")
+    .select("id")
+    .in("league_id", leagueIds)
+    .eq("opponent", sourceFixture.opponent)
+    .eq("competition", sourceFixture.competition)
+    .gte("kickoff", windowStart)
+    .lte("kickoff", windowEnd);
+
+  if (fixtureRows.error || !Array.isArray(fixtureRows.data) || fixtureRows.data.length === 0) {
+    return;
+  }
+
+  const resultRows = fixtureRows.data.map((row) => ({
+    fixture_id: row.id,
+    chelsea_goals: payload.chelsea_goals,
+    opponent_goals: payload.opponent_goals,
+    first_scorer: payload.first_scorer,
+    chelsea_scorers: payload.chelsea_scorers,
+    saved_by: state.session.user.id,
+    saved_at: payload.saved_at
+  }));
+  const upsertResult = await state.client.from("results").upsert(resultRows, { onConflict: "fixture_id" });
+  if (upsertResult.error) {
+    console.warn("Cross-league result sync skipped:", upsertResult.error.message);
+  }
 }
 
 async function loadLeaguesForUser() {
@@ -4245,15 +4298,25 @@ function renderAdminScorePanel() {
 
   const scorerLabel = document.createElement("label");
   scorerLabel.textContent = "First Chelsea scorer";
-  const scorerInput = document.createElement("input");
-  scorerInput.type = "text";
+  const scorerInput = document.createElement("select");
   scorerInput.className = "result-scorer";
-  scorerInput.placeholder = "Optional (Unknown if blank)";
-  scorerInput.value =
+  const scorerPlaceholder = document.createElement("option");
+  scorerPlaceholder.value = "Unknown";
+  scorerPlaceholder.textContent = "Unknown / not listed";
+  scorerInput.appendChild(scorerPlaceholder);
+  const players = getChelseaRegisteredPlayers();
+  players.forEach((player) => {
+    const option = document.createElement("option");
+    option.value = player;
+    option.textContent = player;
+    scorerInput.appendChild(option);
+  });
+  const existingScorer =
     targetFixture.result?.first_scorer &&
     !["none", "unknown"].includes(String(targetFixture.result.first_scorer).toLowerCase())
       ? String(targetFixture.result.first_scorer)
-      : "";
+      : "Unknown";
+  scorerInput.value = players.includes(existingScorer) ? existingScorer : "Unknown";
   scorerLabel.appendChild(scorerInput);
 
   grid.appendChild(chelseaLabel);
