@@ -213,6 +213,8 @@ const state = {
   activeLeagueMembers: [],
   activeLeagueFixtures: [],
   activeLeagueLeaderboard: [],
+  leagueLastGameBreakdownByUser: {},
+  expandedLeaderboardUserId: "",
   overallLeaderboard: [],
   overallLeaderboardStatus: "Loading overall leaderboard...",
   overallLeaderboardLoaded: false,
@@ -1554,6 +1556,8 @@ async function reloadAuthedData() {
   state.activeLeagueMembers = [];
   state.activeLeagueFixtures = [];
   state.activeLeagueLeaderboard = [];
+  state.leagueLastGameBreakdownByUser = {};
+  state.expandedLeaderboardUserId = "";
   state.adminLeagues = [];
 
   if (!state.client || !state.session?.user) {
@@ -2683,6 +2687,7 @@ async function loadActiveLeagueData() {
   await loadMyPredictionsForActiveFixtures();
   await loadLeagueLeaderboard({ background: true });
   await refreshLeaderboardPredictionFlags(league.id);
+  await loadLeagueLastGameBreakdown(league.id);
   writeLeaguePayloadCache(league.id, userId, {
     members: state.activeLeagueMembers,
     fixtures: state.activeLeagueFixtures
@@ -2733,6 +2738,26 @@ async function refreshLeaderboardPredictionFlags(leagueId) {
     ...row,
     has_prediction: submitted.has(row.user_id)
   }));
+}
+
+async function loadLeagueLastGameBreakdown(leagueId) {
+  if (!state.client || !leagueId) {
+    state.leagueLastGameBreakdownByUser = {};
+    return;
+  }
+  const { data, error } = await state.client.rpc("get_league_last_game_breakdown", {
+    p_league_id: leagueId
+  });
+  if (error) {
+    state.leagueLastGameBreakdownByUser = {};
+    return;
+  }
+  const byUser = {};
+  (Array.isArray(data) ? data : []).forEach((row) => {
+    if (!row?.user_id) return;
+    byUser[row.user_id] = row;
+  });
+  state.leagueLastGameBreakdownByUser = byUser;
 }
 
 async function fetchLeagueFixturesWithResults(leagueId) {
@@ -4536,6 +4561,7 @@ function renderLeaderboard() {
 
   rows.forEach((row, index) => {
     const li = document.createElement("li");
+    li.classList.add("leaderboard-row");
     const safeName = row.display_name || "Player";
     const suffix = !useGlobalTopTen && row.role === "owner" ? " (Owner)" : "";
     const left = createLeaderboardIdentity(
@@ -4545,13 +4571,49 @@ function renderLeaderboard() {
       row.avatar_url,
       Boolean(row.has_prediction)
     );
+    const breakdown = state.leagueLastGameBreakdownByUser?.[row.user_id] || null;
+    if (breakdown) {
+      left.classList.add("leader-identity-clickable");
+      left.setAttribute("role", "button");
+      left.setAttribute("tabindex", "0");
+      left.setAttribute("aria-expanded", String(state.expandedLeaderboardUserId === row.user_id));
+      const toggle = () => {
+        state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
+        render();
+      };
+      left.addEventListener("click", toggle);
+      left.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      });
+    }
     li.appendChild(left);
     const right = document.createElement("span");
     right.className = "leader-points";
     right.textContent = `${row.points} pts`;
     li.appendChild(right);
+    if (breakdown && state.expandedLeaderboardUserId === row.user_id) {
+      const drop = document.createElement("div");
+      drop.className = "leader-breakdown";
+      drop.textContent = formatLeaderboardBreakdown(breakdown);
+      li.appendChild(drop);
+    }
     leaderboardEl.appendChild(li);
   });
+}
+
+function formatLeaderboardBreakdown(row) {
+  const parts = [];
+  parts.push(`Last game: Chelsea ${row.actual_chelsea_goals}-${row.actual_opponent_goals} ${row.opponent}`);
+  if (row.did_submit) {
+    parts.push(`Prediction: ${row.predicted_chelsea_goals}-${row.predicted_opponent_goals}`);
+    parts.push(`Points: ${row.points} (Score ${row.exact_score_points}, Result ${row.result_points}, Chelsea goals ${row.chelsea_goals_points}, Opponent goals ${row.opponent_goals_points}, Scorers ${row.goalscorer_points}, First scorer ${row.first_scorer_points}, Bonus ${row.perfect_bonus_points})`);
+  } else {
+    parts.push("No prediction submitted for this game.");
+  }
+  return parts.join(" | ");
 }
 
 function renderFixtures() {

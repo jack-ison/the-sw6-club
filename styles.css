@@ -677,6 +677,7 @@ button:disabled {
   justify-content: space-between;
   gap: 0.6rem;
   align-items: center;
+  flex-wrap: wrap;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.52rem 0.58rem;
@@ -723,6 +724,16 @@ button:disabled {
   white-space: nowrap;
 }
 
+.leader-identity-clickable {
+  cursor: pointer;
+}
+
+.leader-identity-clickable:focus-visible {
+  outline: 2px solid #4d7fd6;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .leader-submitted-tick {
   display: inline-flex;
   align-items: center;
@@ -736,6 +747,18 @@ button:disabled {
   font-weight: 800;
   line-height: 1;
   flex: 0 0 auto;
+}
+
+.leader-breakdown {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #d4e4ff;
+  border-radius: 10px;
+  background: #f7fbff;
+  color: #2a4d80;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .leader-points {
