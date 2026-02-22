@@ -17,6 +17,12 @@ const VISITOR_COUNT_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const FORUM_THREADS_CACHE_KEY = "cfc-forum-threads-cache-v1";
 const FORUM_THREADS_CACHE_VERSION = 1;
 const FORUM_THREADS_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const CARD_TEMPLATES_CACHE_KEY = "cfc-card-templates-cache-v1";
+const CARD_TEMPLATES_CACHE_VERSION = 1;
+const CARD_TEMPLATES_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+const USER_CARDS_CACHE_KEY = "cfc-user-cards-cache-v1";
+const USER_CARDS_CACHE_VERSION = 1;
+const USER_CARDS_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const LEAGUE_LEADERBOARD_CACHE_KEY = "cfc-league-leaderboard-cache-v1";
 const LEAGUE_LEADERBOARD_CACHE_VERSION = 1;
 const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
@@ -51,6 +57,16 @@ const SCORING = {
   correctFirstScorer: 2,
   perfectBonus: 1
 };
+const DEFAULT_CARD_TEMPLATES = [
+  { id: 1, slug: "correct-result", name: "Correct Result", description: "Predicted the right match result.", rarity: "common", active: true },
+  { id: 2, slug: "correct-scorer", name: "Correct Scorer", description: "Picked at least one correct Chelsea goalscorer.", rarity: "common", active: true },
+  { id: 3, slug: "exact-scoreline", name: "Exact Scoreline", description: "Predicted the exact final score.", rarity: "legendary", active: true },
+  { id: 4, slug: "first-chelsea-scorer", name: "First Chelsea Scorer", description: "Picked the first Chelsea goalscorer correctly.", rarity: "common", active: true },
+  { id: 5, slug: "top-5-percent", name: "Top 5%", description: "Finished in the top 5% for the matchday.", rarity: "rare", active: true },
+  { id: 6, slug: "league-winner", name: "League Winner", description: "Top scorer in your league for that fixture.", rarity: "rare", active: true },
+  { id: 7, slug: "comeback-win", name: "Comeback Win", description: "Chelsea won after trailing.", rarity: "rare", active: true },
+  { id: 8, slug: "clean-sheet", name: "Clean Sheet", description: "Opponent scored zero.", rarity: "common", active: true }
+];
 const ADMIN_EMAIL_ALLOWLIST = new Set([
   "jackwilliamison@gmail.com"
 ]);
@@ -1422,6 +1438,47 @@ function writeObjectCache(cacheKey, version, data) {
   } catch {
     // Ignore local cache failures.
   }
+}
+
+function getUserCardsCacheKey(userId) {
+  return `${USER_CARDS_CACHE_KEY}:${userId}`;
+}
+
+function readCardTemplatesCache() {
+  const cached = readObjectCache(
+    CARD_TEMPLATES_CACHE_KEY,
+    CARD_TEMPLATES_CACHE_VERSION,
+    CARD_TEMPLATES_CACHE_MAX_AGE_MS
+  );
+  if (!Array.isArray(cached) || cached.length === 0) {
+    return null;
+  }
+  return cached;
+}
+
+function writeCardTemplatesCache(rows) {
+  writeObjectCache(
+    CARD_TEMPLATES_CACHE_KEY,
+    CARD_TEMPLATES_CACHE_VERSION,
+    Array.isArray(rows) ? rows : []
+  );
+}
+
+function readUserCardsCache(userId) {
+  const cached = readObjectCache(
+    getUserCardsCacheKey(userId),
+    USER_CARDS_CACHE_VERSION,
+    USER_CARDS_CACHE_MAX_AGE_MS
+  );
+  return Array.isArray(cached) ? cached : [];
+}
+
+function writeUserCardsCache(userId, rows) {
+  writeObjectCache(
+    getUserCardsCacheKey(userId),
+    USER_CARDS_CACHE_VERSION,
+    Array.isArray(rows) ? rows : []
+  );
 }
 
 async function loadRegisteredUserCount(force = false) {
@@ -4052,6 +4109,23 @@ async function loadMyCards(options = {}) {
     state.cardsStatus = "Sign in to view collectables.";
     return;
   }
+  const userId = state.session.user.id;
+
+  if (!force) {
+    const cachedTemplates = readCardTemplatesCache();
+    const cachedCards = readUserCardsCache(userId);
+    if (cachedTemplates && cachedTemplates.length > 0) {
+      state.cardTemplates = cachedTemplates;
+    } else if (!state.cardTemplates.length) {
+      state.cardTemplates = [...DEFAULT_CARD_TEMPLATES];
+    }
+    if (cachedCards.length > 0) {
+      state.cards = cachedCards;
+      state.cardsLoaded = true;
+      state.cardsStatus = "";
+    }
+  }
+
   if (!force && background && state.cardsLoaded) {
     return;
   }
@@ -4061,6 +4135,7 @@ async function loadMyCards(options = {}) {
   }
 
   cardsLoadPromise = (async () => {
+    const shouldFetchTemplates = force || !state.cardTemplates.length;
     const [cardsResult, templatesResult] = await Promise.all([
       state.client
         .from("user_fixture_cards")
@@ -4069,26 +4144,33 @@ async function loadMyCards(options = {}) {
         )
         .eq("user_id", state.session.user.id)
         .order("earned_at", { ascending: false }),
-      state.client
-        .from("card_templates")
-        .select("id, slug, name, description, rarity, active")
-        .eq("active", true)
-        .order("id", { ascending: true })
+      shouldFetchTemplates
+        ? state.client
+            .from("card_templates")
+            .select("id, slug, name, description, rarity, active")
+            .eq("active", true)
+            .order("id", { ascending: true })
+        : Promise.resolve({ data: state.cardTemplates, error: null })
     ]);
 
     if (cardsResult.error) {
       const fallbackCards = buildFallbackCollectablesFromPredictions();
       state.cards = fallbackCards;
+      writeUserCardsCache(userId, fallbackCards);
       state.cardsStatus = fallbackCards.length > 0
         ? "Showing fallback collectables while live card data sync catches up."
         : "Collectables unavailable right now.";
       state.cardsLoaded = true;
       return;
     }
-    if (!templatesResult.error) {
-      state.cardTemplates = Array.isArray(templatesResult.data) ? templatesResult.data : [];
+    if (!templatesResult.error && Array.isArray(templatesResult.data) && templatesResult.data.length > 0) {
+      state.cardTemplates = templatesResult.data;
+      writeCardTemplatesCache(state.cardTemplates);
+    } else if (!state.cardTemplates.length) {
+      state.cardTemplates = [...DEFAULT_CARD_TEMPLATES];
     }
     state.cards = normalizeCardRows(cardsResult.data || []);
+    writeUserCardsCache(userId, state.cards);
     state.cardsLoaded = true;
     state.cardsStatus = state.cards.length > 0 ? "" : "No collectables earned yet.";
   })();
@@ -4105,29 +4187,62 @@ function buildFallbackCollectablesFromPredictions() {
   return rows
     .filter((row) => row?.prediction && row?.result)
     .slice(0, 24)
-    .map((row, idx) => ({
-      id: `fallback-${row.fixture.id}`,
-      userId: state.session?.user?.id || "",
-      fixtureCardId: `fallback-${row.fixture.id}`,
-      fixtureId: row.fixture.id,
-      title: row.points > 0 ? "Prediction Points" : "Matchday Entry",
-      subtitle: `Chelsea vs ${row.fixture.opponent} | ${row.fixture.competition}`,
-      templateSlug: row.points > 0 ? "correct-result-fallback" : "entry-fallback",
-      templateName: row.points > 0 ? "Points Earned" : "Prediction Logged",
-      templateDescription: row.points > 0 ? "You earned points for this completed match." : "You submitted a prediction.",
-      rarity: row.points >= 6 ? "rare" : "common",
-      opponent: row.fixture.opponent || "Opponent",
-      kickoff: row.fixture.kickoff || "",
-      competition: row.fixture.competition || "Competition",
-      scoreLine: `${row.result.chelsea_goals}-${row.result.opponent_goals}`,
-      firstScorer: row.result.first_scorer || "",
-      serialNumber: idx + 1,
-      earnedAt: row.result.saved_at || row.fixture.kickoff || "",
-      meta: {
-        reason: row.points > 0 ? `${row.points} points in this fixture.` : "Prediction submitted for this fixture."
-      },
-      earned: true
-    }));
+    .flatMap((row, idx) => {
+      const cards = [{
+        id: `fallback-${row.fixture.id}`,
+        userId: state.session?.user?.id || "",
+        fixtureCardId: `fallback-${row.fixture.id}`,
+        fixtureId: row.fixture.id,
+        title: row.points > 0 ? "Prediction Points" : "Matchday Entry",
+        subtitle: `Chelsea vs ${row.fixture.opponent} | ${row.fixture.competition}`,
+        templateSlug: row.points > 0 ? "correct-result-fallback" : "entry-fallback",
+        templateName: row.points > 0 ? "Points Earned" : "Prediction Logged",
+        templateDescription: row.points > 0 ? "You earned points for this completed match." : "You submitted a prediction.",
+        rarity: row.points >= 6 ? "rare" : "common",
+        opponent: row.fixture.opponent || "Opponent",
+        kickoff: row.fixture.kickoff || "",
+        competition: row.fixture.competition || "Competition",
+        scoreLine: `${row.result.chelsea_goals}-${row.result.opponent_goals}`,
+        firstScorer: row.result.first_scorer || "",
+        serialNumber: idx + 1,
+        earnedAt: row.result.saved_at || row.fixture.kickoff || "",
+        meta: {
+          reason: row.points > 0 ? `${row.points} points in this fixture.` : "Prediction submitted for this fixture."
+        },
+        earned: true
+      }];
+
+      const predictedFirst = normalizeFirstScorerValue(row.prediction.first_scorer || "");
+      const actualFirst = normalizeFirstScorerValue(row.result.first_scorer || "");
+      const hasChelseaScorer = Number(row.result.chelsea_goals || 0) > 0;
+      if (hasChelseaScorer && predictedFirst && actualFirst && predictedFirst === actualFirst) {
+        cards.push({
+          id: `fallback-${row.fixture.id}-first-scorer`,
+          userId: state.session?.user?.id || "",
+          fixtureCardId: `fallback-${row.fixture.id}-first-scorer`,
+          fixtureId: row.fixture.id,
+          title: "First Chelsea Scorer",
+          subtitle: `Chelsea vs ${row.fixture.opponent} | ${row.fixture.competition}`,
+          templateSlug: "first-chelsea-scorer",
+          templateName: "First Chelsea Scorer",
+          templateDescription: "Picked the first Chelsea goalscorer correctly.",
+          rarity: "common",
+          opponent: row.fixture.opponent || "Opponent",
+          kickoff: row.fixture.kickoff || "",
+          competition: row.fixture.competition || "Competition",
+          scoreLine: `${row.result.chelsea_goals}-${row.result.opponent_goals}`,
+          firstScorer: row.result.first_scorer || "",
+          serialNumber: idx + 101,
+          earnedAt: row.result.saved_at || row.fixture.kickoff || "",
+          meta: {
+            reason: "Correct first Chelsea goalscorer."
+          },
+          earned: true
+        });
+      }
+
+      return cards;
+    });
 }
 
 function normalizeCardRows(rows) {
