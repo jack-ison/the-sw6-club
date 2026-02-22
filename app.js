@@ -26,6 +26,8 @@ const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 1;
 const OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS = 60 * 1000;
+const ACTIVE_LEAGUE_HYDRATE_MIN_INTERVAL_MS = 30 * 1000;
+const COMPLETED_RESULTS_SYNC_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
 const SQUAD_CACHE_VERSION = 3;
 const SQUAD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -187,6 +189,8 @@ let authedDataInitialized = false;
 let ensureAuthedDataLoadedPromise = null;
 let forumThreadsRefreshPromise = null;
 const leagueLeaderboardRefreshPromises = new Map();
+const activeLeagueHydratedAtByLeague = new Map();
+const completedResultsSyncedAtByLeague = new Map();
 let upcomingFixturesAbortController = null;
 let scorerStatsAbortController = null;
 let renderScheduled = false;
@@ -1585,7 +1589,7 @@ async function reloadAuthedData() {
     await loadActiveLeagueData();
     await maybeRefreshChelseaSquad();
   }
-  await loadPastGamesForUser();
+  state.pastGamesLoaded = false;
 
   if (isAdminUser()) {
     if (state.topView === "leagues") {
@@ -2333,20 +2337,20 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         ? true
         : Boolean(row?.has_prediction)
   }));
-  render();
-  // Targeted refresh for speed/reliability without full app reset.
-  await Promise.all([
-    loadActiveLeagueData(),
-    loadPastGamesForUser(),
-    ensureOverallLeaderboardLoaded(true)
-  ]);
-  await refreshLeaderboardPredictionFlags(state.activeLeagueId);
   state.lastPredictionAck = {
     fixtureId: targetFixture.id,
     updated: hadExistingPrediction,
     at: Date.now()
   };
   render();
+  // Background refresh keeps UX snappy after submit without blocking the confirmation state.
+  Promise.allSettled([
+    loadActiveLeagueData(),
+    ensureOverallLeaderboardLoaded(true),
+    state.activeLeagueId ? refreshLeaderboardPredictionFlags(state.activeLeagueId) : Promise.resolve()
+  ]).then(() => {
+    render();
+  });
   if (state.predictionButtonFlashTimeoutId) {
     clearTimeout(state.predictionButtonFlashTimeoutId);
   }
@@ -2434,7 +2438,7 @@ async function materializeFixtureForPrediction(fallbackFixture) {
     .maybeSingle();
 
   if (!existing.error && existing.data?.id) {
-    await loadActiveLeagueData();
+    await loadActiveLeagueData(true);
     return getNextFixtureForPrediction();
   }
 
@@ -2455,7 +2459,7 @@ async function materializeFixtureForPrediction(fallbackFixture) {
       .limit(1)
       .maybeSingle();
     if (!nearMatch.error && nearMatch.data?.id) {
-      await loadActiveLeagueData();
+      await loadActiveLeagueData(true);
       return getNextFixtureForPrediction();
     }
   }
@@ -2478,7 +2482,7 @@ async function materializeFixtureForPrediction(fallbackFixture) {
     return null;
   }
 
-  await loadActiveLeagueData();
+  await loadActiveLeagueData(true);
   return getNextFixtureForPrediction();
 }
 
@@ -2545,7 +2549,7 @@ async function onSaveResult(fixture, form) {
       : "Settlement encountered an issue. Please retry.";
   }
 
-  await loadActiveLeagueData();
+  await loadActiveLeagueData(true);
   await loadPastGamesForUser();
   await ensureOverallLeaderboardLoaded(true);
   state.adminScoreAck = {
@@ -2635,7 +2639,7 @@ async function loadAdminLeagues() {
   state.adminLeagues = Array.isArray(data) ? data : [];
 }
 
-async function loadActiveLeagueData() {
+async function loadActiveLeagueData(force = false) {
   const league = getActiveLeague();
   const leagueId = league?.id || null;
   if (loadActiveLeagueDataPromise && loadActiveLeagueDataLeagueId === leagueId) {
@@ -2647,6 +2651,13 @@ async function loadActiveLeagueData() {
   if (!league) {
     state.activeLeagueMembers = [];
     state.activeLeagueFixtures = [];
+    return;
+  }
+
+  const lastHydratedAt = Number(activeLeagueHydratedAtByLeague.get(league.id) || 0);
+  const hasInMemoryLeagueData = state.activeLeagueFixtures.length > 0 || state.activeLeagueMembers.length > 0;
+  if (!force && hasInMemoryLeagueData && Date.now() - lastHydratedAt < ACTIVE_LEAGUE_HYDRATE_MIN_INTERVAL_MS) {
+    await loadLeagueLeaderboard({ background: true });
     return;
   }
 
@@ -2683,15 +2694,31 @@ async function loadActiveLeagueData() {
   }));
 
   await ensureUpcomingFixturesImported();
-  await syncCompletedResultsFromChelsea();
   await loadMyPredictionsForActiveFixtures();
   await loadLeagueLeaderboard({ background: true });
   await refreshLeaderboardPredictionFlags(league.id);
   await loadLeagueLastGameBreakdown(league.id);
+  activeLeagueHydratedAtByLeague.set(league.id, Date.now());
   writeLeaguePayloadCache(league.id, userId, {
     members: state.activeLeagueMembers,
     fixtures: state.activeLeagueFixtures
   });
+
+  const lastResultSync = Number(completedResultsSyncedAtByLeague.get(league.id) || 0);
+  if (Date.now() - lastResultSync >= COMPLETED_RESULTS_SYNC_MIN_INTERVAL_MS) {
+    completedResultsSyncedAtByLeague.set(league.id, Date.now());
+    syncCompletedResultsFromChelsea()
+      .then(async () => {
+        await Promise.allSettled([
+          loadLeagueLeaderboard({ background: true }),
+          loadLeagueLastGameBreakdown(league.id)
+        ]);
+        render();
+      })
+      .catch(() => {
+        // Keep manual results flow if sync fails.
+      });
+  }
   })();
 
   try {
