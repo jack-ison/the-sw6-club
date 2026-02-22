@@ -357,7 +357,6 @@ const cardsRarityLegendaryBtn = document.getElementById("cards-rarity-legendary"
 const cardDetailModalEl = document.getElementById("card-detail-modal");
 const closeCardDetailModalBtn = document.getElementById("close-card-detail-modal");
 const cardDetailBodyEl = document.getElementById("card-detail-body");
-const copyCardLinkBtn = document.getElementById("copy-card-link-btn");
 const draftSaveModalEl = document.getElementById("draft-save-modal");
 const closeDraftSaveModalBtn = document.getElementById("close-draft-save-modal");
 const upcomingToggleBtn = document.getElementById("upcoming-toggle-btn");
@@ -500,7 +499,6 @@ if (cardsRarityCommonBtn) cardsRarityCommonBtn.addEventListener("click", () => s
 if (cardsRarityRareBtn) cardsRarityRareBtn.addEventListener("click", () => setCardsRarityFilter("rare"));
 if (cardsRarityLegendaryBtn) cardsRarityLegendaryBtn.addEventListener("click", () => setCardsRarityFilter("legendary"));
 if (closeCardDetailModalBtn) closeCardDetailModalBtn.addEventListener("click", onCloseCardDetailModal);
-if (copyCardLinkBtn) copyCardLinkBtn.addEventListener("click", onCopyCardLink);
 if (closeDraftSaveModalBtn) closeDraftSaveModalBtn.addEventListener("click", onCloseDraftSaveModal);
 
 setInterval(renderDeadlineCountdown, 1000);
@@ -4327,27 +4325,6 @@ function renderCardDetailModal() {
   }
   cardDetailBodyEl.textContent = "";
   cardDetailBodyEl.appendChild(renderCardDetail(active));
-}
-
-async function onCopyCardLink() {
-  const visibleCards = getVisibleCards();
-  const active = visibleCards.find((card) => card.id === state.activeCardId);
-  if (!active) {
-    return;
-  }
-  const targetId = active.fixtureCardId ? String(active.fixtureCardId) : active.id;
-  const url = `${window.location.origin}${window.location.pathname}?tab=cards&card=${encodeURIComponent(targetId)}#cards`;
-  try {
-    await navigator.clipboard.writeText(url);
-    if (copyCardLinkBtn) {
-      copyCardLinkBtn.textContent = "Copied";
-      setTimeout(() => {
-        if (copyCardLinkBtn) copyCardLinkBtn.textContent = "Copy link";
-      }, 1500);
-    }
-  } catch {
-    // Clipboard may be unavailable in some contexts.
-  }
 }
 
 function getNextPendingResultFixture() {
