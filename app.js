@@ -3688,14 +3688,29 @@ function renderPastGames() {
     li.appendChild(resultLine);
 
     if (myPrediction) {
-      const detail = Number.isFinite(fixture.computedPoints)
-        ? { points: fixture.computedPoints }
-        : scorePrediction(myPrediction, result);
+      const detail = scorePrediction(myPrediction, result);
       totalPoints += detail.points;
       const predictionLine = document.createElement("p");
       predictionLine.className = "past-game-line";
       predictionLine.textContent = `Your prediction: Chelsea ${myPrediction.chelsea_goals} - ${myPrediction.opponent_goals} ${fixture.opponent} | First scorer: ${myPrediction.first_scorer} | Match points: ${detail.points}`;
       li.appendChild(predictionLine);
+
+      const breakdown = document.createElement("details");
+      breakdown.className = "past-game-breakdown";
+      const summary = document.createElement("summary");
+      summary.textContent = "Points breakdown";
+      breakdown.appendChild(summary);
+
+      const lines = document.createElement("ul");
+      lines.className = "rules-list no-margin";
+      const components = getPredictionPointsBreakdown(detail);
+      components.forEach((line) => {
+        const entry = document.createElement("li");
+        entry.textContent = line;
+        lines.appendChild(entry);
+      });
+      breakdown.appendChild(lines);
+      li.appendChild(breakdown);
     } else {
       const missingLine = document.createElement("p");
       missingLine.className = "past-game-line";
@@ -3707,6 +3722,21 @@ function renderPastGames() {
   });
 
   pastGamesStatusEl.textContent = `Your completed games: ${completedFixtures.length} | Total points from completed games: ${totalPoints}`;
+}
+
+function getPredictionPointsBreakdown(detail) {
+  const lines = [];
+  lines.push(`Exact scoreline: ${detail.exact ? `+${SCORING.exactScore}` : "+0"}`);
+  lines.push(`Correct result (W/D/L): ${!detail.exact && detail.correctResult ? `+${SCORING.correctResult}` : "+0"}`);
+  lines.push(`Correct Chelsea goals: ${detail.correctChelseaGoals ? `+${SCORING.correctChelseaGoals}` : "+0"}`);
+  lines.push(`Correct opponent goals: ${detail.correctOpponentGoals ? `+${SCORING.correctOpponentGoals}` : "+0"}`);
+  lines.push(
+    `Correct Chelsea goalscorers: ${detail.correctGoalscorers > 0 ? `+${detail.correctGoalscorers * SCORING.correctGoalscorer}` : "+0"}`
+  );
+  lines.push(`Correct first Chelsea scorer: ${detail.correctScorer ? `+${SCORING.correctFirstScorer}` : "+0"}`);
+  lines.push(`Perfect bonus: ${detail.perfect ? `+${SCORING.perfectBonus}` : "+0"}`);
+  lines.push(`Total: ${detail.points}`);
+  return lines;
 }
 
 function renderUpcomingFixtures() {
