@@ -1010,8 +1010,10 @@ returns table (
   kickoff timestamptz,
   predicted_chelsea_goals integer,
   predicted_opponent_goals integer,
+  predicted_first_scorer text,
   actual_chelsea_goals integer,
   actual_opponent_goals integer,
+  actual_first_scorer text,
   exact_score_points integer,
   result_points integer,
   chelsea_goals_points integer,
@@ -1047,8 +1049,10 @@ as $$
       lc.kickoff,
       p.chelsea_goals as predicted_chelsea_goals,
       p.opponent_goals as predicted_opponent_goals,
+      p.first_scorer as predicted_first_scorer,
       lc.chelsea_goals as actual_chelsea_goals,
       lc.opponent_goals as actual_opponent_goals,
+      lc.first_scorer as actual_first_scorer,
       case
         when p.fixture_id is not null and p.chelsea_goals = lc.chelsea_goals and p.opponent_goals = lc.opponent_goals then 5
         else 0
@@ -1089,8 +1093,10 @@ as $$
     j.kickoff,
     j.predicted_chelsea_goals,
     j.predicted_opponent_goals,
+    j.predicted_first_scorer,
     j.actual_chelsea_goals,
     j.actual_opponent_goals,
+    j.actual_first_scorer,
     j.exact_score_points,
     j.result_points,
     j.chelsea_goals_points,

@@ -4607,6 +4607,10 @@ function renderLeaderboard() {
       left.setAttribute("role", "button");
       left.setAttribute("tabindex", "0");
       left.setAttribute("aria-expanded", String(state.expandedLeaderboardUserId === row.user_id));
+      const hint = document.createElement("span");
+      hint.className = "leader-breakdown-toggle";
+      hint.textContent = state.expandedLeaderboardUserId === row.user_id ? "Hide breakdown ▲" : "View breakdown ▼";
+      left.appendChild(hint);
       const toggle = () => {
         state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
         render();
@@ -4639,6 +4643,8 @@ function formatLeaderboardBreakdown(row) {
   parts.push(`Last game: Chelsea ${row.actual_chelsea_goals}-${row.actual_opponent_goals} ${row.opponent}`);
   if (row.did_submit) {
     parts.push(`Prediction: ${row.predicted_chelsea_goals}-${row.predicted_opponent_goals}`);
+    parts.push(`Predicted first Chelsea scorer: ${row.predicted_first_scorer || "None / not selected"}`);
+    parts.push(`Actual first Chelsea scorer: ${row.actual_first_scorer || "Unknown"}`);
     parts.push(`Points: ${row.points} (Score ${row.exact_score_points}, Result ${row.result_points}, Chelsea goals ${row.chelsea_goals_points}, Opponent goals ${row.opponent_goals_points}, Scorers ${row.goalscorer_points}, First scorer ${row.first_scorer_points}, Bonus ${row.perfect_bonus_points})`);
   } else {
     parts.push("No prediction submitted for this game.");
