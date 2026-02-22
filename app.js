@@ -26,6 +26,9 @@ const USER_CARDS_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const LEAGUE_LEADERBOARD_CACHE_KEY = "cfc-league-leaderboard-cache-v1";
 const LEAGUE_LEADERBOARD_CACHE_VERSION = 1;
 const LEAGUE_LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const LEAGUES_CACHE_KEY = "cfc-user-leagues-cache-v1";
+const LEAGUES_CACHE_VERSION = 1;
+const LEAGUES_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const LEAGUE_PAYLOAD_CACHE_KEY = "cfc-league-payload-cache-v1";
 const LEAGUE_PAYLOAD_CACHE_VERSION = 1;
 const LEAGUE_PAYLOAD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
@@ -1662,6 +1665,25 @@ async function reloadAuthedData() {
     return;
   }
 
+  const userId = state.session.user.id;
+  const cachedLeaguesState = readLeaguesCache(userId);
+  if (cachedLeaguesState && cachedLeaguesState.leagues.length > 0) {
+    state.leagues = cachedLeaguesState.leagues;
+    if (!state.activeLeagueId && cachedLeaguesState.activeLeagueId) {
+      state.activeLeagueId = cachedLeaguesState.activeLeagueId;
+    }
+    const cachedActiveLeague = state.leagues.find((league) => league.id === state.activeLeagueId) || state.leagues[0];
+    if (cachedActiveLeague) {
+      state.activeLeagueId = cachedActiveLeague.id;
+      const cachedPayload = readLeaguePayloadCache(cachedActiveLeague.id, userId);
+      if (cachedPayload) {
+        state.activeLeagueMembers = cachedPayload.members;
+        state.activeLeagueFixtures = cachedPayload.fixtures;
+      }
+      render();
+    }
+  }
+
   await ensureGlobalLeagueMembership();
   await loadLeaguesForUser();
   if (state.leagues.length === 0) {
@@ -1687,6 +1709,9 @@ async function reloadAuthedData() {
     if (state.topView === "leagues") {
       await loadAdminLeagues();
     }
+  }
+  if (state.session?.user?.id) {
+    writeLeaguesCache(state.session.user.id, state.leagues, state.activeLeagueId);
   }
   authedDataInitialized = true;
   })();
@@ -2148,6 +2173,9 @@ async function onJoinLeague(event) {
 
 async function onSwitchLeague(event) {
   state.activeLeagueId = event.target.value || null;
+  if (state.session?.user?.id) {
+    writeLeaguesCache(state.session.user.id, state.leagues, state.activeLeagueId);
+  }
   await loadActiveLeagueData();
   if (isGlobalLeague(getActiveLeague())) {
     await ensureOverallLeaderboardLoaded();
@@ -2744,6 +2772,9 @@ async function loadLeaguesForUser() {
     .map((row) => (row.leagues ? { ...row.leagues, is_public: row.leagues.is_public !== false } : null))
     .filter(Boolean)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  if (state.session?.user?.id) {
+    writeLeaguesCache(state.session.user.id, state.leagues, state.activeLeagueId);
+  }
 }
 
 async function loadAdminLeagues() {
@@ -3151,6 +3182,36 @@ async function loadMyPredictionsForActiveFixtures() {
 
 function getLeagueLeaderboardCacheKey(leagueId) {
   return `${LEAGUE_LEADERBOARD_CACHE_KEY}:${leagueId}`;
+}
+
+function getLeaguesCacheKey(userId) {
+  return `${LEAGUES_CACHE_KEY}:${userId}`;
+}
+
+function readLeaguesCache(userId) {
+  const cached = readObjectCache(
+    getLeaguesCacheKey(userId),
+    LEAGUES_CACHE_VERSION,
+    LEAGUES_CACHE_MAX_AGE_MS
+  );
+  if (!cached || typeof cached !== "object") {
+    return null;
+  }
+  return {
+    leagues: Array.isArray(cached.leagues) ? cached.leagues : [],
+    activeLeagueId: String(cached.activeLeagueId || "")
+  };
+}
+
+function writeLeaguesCache(userId, leagues, activeLeagueId) {
+  writeObjectCache(
+    getLeaguesCacheKey(userId),
+    LEAGUES_CACHE_VERSION,
+    {
+      leagues: Array.isArray(leagues) ? leagues : [],
+      activeLeagueId: String(activeLeagueId || "")
+    }
+  );
 }
 
 function readLeagueLeaderboardCache(leagueId) {
@@ -5037,7 +5098,7 @@ function renderFixtures() {
       badgeEl.textContent = "";
     } else if (isFallbackFixture) {
       badgeEl.classList.remove("hidden");
-      badgeEl.textContent = "Loading fixture...";
+      badgeEl.textContent = locked ? "Locked (90m cutoff)" : "Open";
     } else if (fixture.result) {
       badgeEl.classList.remove("hidden");
       badgeEl.textContent = "Result Saved";
