@@ -3394,8 +3394,9 @@ function render() {
 function renderNow() {
   const isConnected = Boolean(state.client);
   const signedIn = isConnected && Boolean(state.isAuthed && state.user);
+  const authReady = state.authResolved || !isConnected;
   const cardsEnabled = FEATURE_CARDS_ENABLED;
-  if (!signedIn && state.topView !== "predict") {
+  if (!signedIn && authReady && state.topView !== "predict") {
     state.topView = "predict";
     state.resultsTab = "fixtures";
     syncRouteHash("predict");
