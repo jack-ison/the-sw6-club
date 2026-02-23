@@ -2,6 +2,7 @@
   "name": "sw6-club",
   "private": true,
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "smoke": "bash scripts/pre-release-smoke.sh"
   }
 }

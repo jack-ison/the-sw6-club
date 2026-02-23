@@ -9,6 +9,16 @@ npm run build
 npx serve dist
 ```
 
+## Safer Release Flow
+
+Use the no-break runbook in `/Users/jackison/Documents/First Codex Project/Web Apps/docs/no-break-deploy.md`.
+
+Quick check command:
+
+```bash
+npm run smoke
+```
+
 ## Auth Gating Verification Checklist
 
 1. Logged out:
