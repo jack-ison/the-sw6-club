@@ -557,6 +557,40 @@ create table if not exists public.app_admins (
   granted_at timestamptz not null default now()
 );
 
+alter table public.app_admins enable row level security;
+revoke all on table public.app_admins from public;
+revoke all on table public.app_admins from anon;
+revoke all on table public.app_admins from authenticated;
+
+drop policy if exists app_admins_no_client_select on public.app_admins;
+create policy app_admins_no_client_select
+on public.app_admins
+for select
+to authenticated
+using (false);
+
+drop policy if exists app_admins_no_client_insert on public.app_admins;
+create policy app_admins_no_client_insert
+on public.app_admins
+for insert
+to authenticated
+with check (false);
+
+drop policy if exists app_admins_no_client_update on public.app_admins;
+create policy app_admins_no_client_update
+on public.app_admins
+for update
+to authenticated
+using (false)
+with check (false);
+
+drop policy if exists app_admins_no_client_delete on public.app_admins;
+create policy app_admins_no_client_delete
+on public.app_admins
+for delete
+to authenticated
+using (false);
+
 -- Seed the configured bootstrap admin by email if that account already exists.
 insert into public.app_admins (user_id)
 select u.id
