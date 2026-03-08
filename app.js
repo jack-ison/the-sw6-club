@@ -2693,12 +2693,22 @@ async function onSaveResult(fixture, form) {
   );
 
   if (error) {
+    const message = String(error.message || "Could not save result.");
+    const isCardSerialConflict =
+      /idx_user_fixture_cards_fixture_serial/i.test(message) ||
+      /duplicate key value/i.test(message) && /user_fixture_cards/i.test(message);
     state.adminScoreAck = {
-      message: error.message,
+      message: isCardSerialConflict
+        ? "Result save blocked by collectables auto-award conflict. Run the emergency SQL to disable auto-awards, then retry."
+        : message,
       isError: true,
       at: Date.now()
     };
-    alert(error.message);
+    alert(
+      isCardSerialConflict
+        ? "Collectables auto-award is blocking result save. Run: drop trigger if exists trg_auto_award_cards_after_result_save on public.results;"
+        : message
+    );
     render();
     return;
   }
