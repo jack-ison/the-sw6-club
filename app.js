@@ -456,6 +456,7 @@ let adminLeagueListEl = null;
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const visitorCountEl = document.getElementById("visitor-count");
+const buildVersionEl = document.getElementById("build-version");
 const adminScorePanelEl = document.getElementById("admin-score-panel");
 
 const leaderboardEl = document.getElementById("leaderboard");
@@ -593,6 +594,7 @@ function onVisibilityChange() {
 }
 
 async function initializeApp() {
+  renderBuildVersion();
   setupTopNavPreload();
   hydrateSquadCache();
   hydrateFixtureCache();
@@ -717,6 +719,19 @@ function trackEvent(name, payload = {}) {
   } catch {
     // Keep analytics optional.
   }
+}
+
+function renderBuildVersion() {
+  if (!buildVersionEl) {
+    return;
+  }
+  const sha = String(window?.__SW6_META__?.gitSha || "").trim();
+  if (!sha || sha === "unknown") {
+    buildVersionEl.classList.add("hidden");
+    return;
+  }
+  buildVersionEl.textContent = `Build: ${sha.slice(0, 7)}`;
+  buildVersionEl.classList.remove("hidden");
 }
 
 function setupTopNavPreload() {
