@@ -286,6 +286,8 @@ const state = {
   registeredUserCount: undefined,
   visitorCount: null,
   adminLeagues: [],
+  adminResultFixtures: [],
+  adminResultFixturesLoaded: false,
   adminResultFixtureId: "",
   cardDeepLinkId: "",
   pendingJoinCode: "",
@@ -638,6 +640,8 @@ async function initializeApp() {
     await getAuthUser();
     state.authResolved = true;
     state.isAdmin = false;
+    state.adminResultFixtures = [];
+    state.adminResultFixturesLoaded = false;
     authedDataInitialized = false;
     applyRouteIntent(getRouteIntentFromUrl(), { syncHash: false });
     render();
@@ -768,6 +772,9 @@ function runPostAuthWarmup() {
       runTopViewEnterEffects()
     ]);
     await loadAdminAccess();
+    if (isAdminUser()) {
+      await loadAdminResultFixtures();
+    }
     await loadVisitorCount();
     await maybeHandleJoinDeepLink();
   })().then(() => {
@@ -1362,6 +1369,8 @@ async function onLogOut() {
   state.accountMenuOpen = false;
   state.loginPanelOpen = false;
   state.isAdmin = false;
+  state.adminResultFixtures = [];
+  state.adminResultFixturesLoaded = false;
   state.forumUnreadCount = 0;
   authedDataInitialized = false;
   if (profileEditForm) profileEditForm.classList.add("hidden");
@@ -1576,6 +1585,8 @@ async function loadRegisteredUserCount(force = false) {
 async function loadAdminAccess(force = false) {
   if (!state.client || !state.session?.user) {
     state.isAdmin = false;
+    state.adminResultFixtures = [];
+    state.adminResultFixturesLoaded = false;
     return;
   }
   if (isAllowlistedAdminEmail()) {
@@ -1673,6 +1684,8 @@ async function reloadAuthedData() {
   state.leagueLastGameBreakdownByUser = {};
   state.expandedLeaderboardUserId = "";
   state.adminLeagues = [];
+  state.adminResultFixtures = [];
+  state.adminResultFixturesLoaded = false;
 
   if (!state.client || !state.session?.user) {
     state.activeLeagueId = null;
@@ -2733,6 +2746,9 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData(true);
+  if (isAdminUser()) {
+    await loadAdminResultFixtures(true);
+  }
   await loadPastGamesForUser({ force: true });
   await ensureOverallLeaderboardLoaded(true);
   state.adminScoreAck = {
@@ -2823,6 +2839,44 @@ async function loadAdminLeagues() {
     return;
   }
   state.adminLeagues = Array.isArray(data) ? data : [];
+}
+
+async function loadAdminResultFixtures(force = false) {
+  if (!state.client || !isAdminUser()) {
+    state.adminResultFixtures = [];
+    state.adminResultFixturesLoaded = false;
+    return;
+  }
+  if (!force && state.adminResultFixturesLoaded) {
+    return;
+  }
+  const { data, error } = await state.client.rpc("admin_list_result_fixtures");
+  if (error) {
+    console.warn("admin_list_result_fixtures failed:", error.message);
+    state.adminResultFixturesLoaded = true;
+    return;
+  }
+  const rows = Array.isArray(data) ? data : [];
+  state.adminResultFixtures = rows.map((row) => ({
+    id: row.id,
+    league_id: row.league_id,
+    kickoff: row.kickoff,
+    opponent: row.opponent,
+    competition: row.competition,
+    created_at: row.created_at,
+    result:
+      row.chelsea_goals === null || row.opponent_goals === null
+        ? null
+        : {
+            chelsea_goals: row.chelsea_goals,
+            opponent_goals: row.opponent_goals,
+            first_scorer: row.first_scorer,
+            chelsea_scorers: row.chelsea_scorers,
+            saved_at: row.saved_at
+          },
+    predictions: []
+  }));
+  state.adminResultFixturesLoaded = true;
 }
 
 async function loadActiveLeagueData(force = false) {
@@ -4791,7 +4845,11 @@ function getNextPendingResultFixture() {
 
 function getAdminResultFixtureOptions() {
   const now = Date.now();
-  const base = state.activeLeagueFixtures
+  const mergedSource = [
+    ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
+    ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : [])
+  ];
+  const base = mergedSource
     .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
     .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
     .slice();
@@ -4864,9 +4922,12 @@ function renderAdminScorePanel() {
   }
 
   if (options.length === 0) {
+    if (isAdminUser() && state.client && !state.adminResultFixturesLoaded) {
+      loadAdminResultFixtures(true).then(() => render());
+    }
     const status = document.createElement("p");
     status.className = "admin-score-meta";
-    status.textContent = "No completed fixtures available yet.";
+    status.textContent = "No past fixtures available yet.";
     adminScorePanelEl.appendChild(status);
     return;
   }
