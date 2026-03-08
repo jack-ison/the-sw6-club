@@ -2636,18 +2636,32 @@ async function onSaveResult(fixture, form) {
   }
   const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".result-opponent").value);
+  const scorerListRaw = String(form.querySelector(".result-chelsea-scorers")?.value || "").trim();
+  const scorerSelections = parseScorerSelections(scorerListRaw);
   let firstScorer = String(form.querySelector(".result-scorer")?.value || "").trim();
   if (chelseaGoals === null || opponentGoals === null) {
     return;
   }
+  const expandedScorers = expandScorerSelectionsForStorage(serializeScorerSelections(scorerSelections));
   if (chelseaGoals === 0) {
     firstScorer = "None";
-  } else if (!firstScorer) {
-    firstScorer = "Unknown";
+  } else {
+    if (
+      (!firstScorer || ["none", "unknown"].includes(firstScorer.toLowerCase())) &&
+      scorerSelections.length > 0
+    ) {
+      firstScorer = scorerSelections[0].name;
+    }
+    if (!firstScorer) {
+      firstScorer = "Unknown";
+    }
   }
   const scorerStorageValue =
-    firstScorer && !["none", "unknown"].includes(firstScorer.toLowerCase())
-      ? expandScorerSelectionsForStorage(firstScorer)
+    chelseaGoals > 0
+      ? expandedScorers ||
+        (firstScorer && !["none", "unknown"].includes(firstScorer.toLowerCase())
+          ? expandScorerSelectionsForStorage(firstScorer)
+          : "")
       : "";
 
   const { error } = await state.client.from("results").upsert(
@@ -4038,7 +4052,10 @@ function renderPastGames() {
     const result = fixture.result;
     const resultLine = document.createElement("p");
     resultLine.className = "past-game-line";
-    resultLine.textContent = `Result: Chelsea ${result.chelsea_goals} - ${result.opponent_goals} ${fixture.opponent} | First scorer: ${result.first_scorer}`;
+    const scorerLine = result.chelsea_scorers
+      ? compressExpandedScorerStorage(result.chelsea_scorers)
+      : result.first_scorer;
+    resultLine.textContent = `Result: Chelsea ${result.chelsea_goals} - ${result.opponent_goals} ${fixture.opponent} | Chelsea scorers: ${scorerLine || "Unknown"} | First scorer: ${result.first_scorer}`;
     li.appendChild(resultLine);
 
     if (myPrediction) {
@@ -4886,32 +4903,74 @@ function renderAdminScorePanel() {
   oppLabel.appendChild(oppInput);
 
   const scorerLabel = document.createElement("label");
-  scorerLabel.textContent = "First Chelsea scorer";
+  scorerLabel.textContent = "Chelsea scorers";
+  const scorerListInput = document.createElement("input");
+  scorerListInput.type = "text";
+  scorerListInput.className = "result-chelsea-scorers";
+  scorerListInput.placeholder = "e.g. Cole Palmer x2, Nicolas Jackson";
+  const existingScorerList =
+    targetFixture.result?.chelsea_scorers && String(targetFixture.result.chelsea_scorers).trim()
+      ? compressExpandedScorerStorage(targetFixture.result.chelsea_scorers)
+      : "";
+  scorerListInput.value = existingScorerList;
+  scorerLabel.appendChild(scorerListInput);
+
+  const scorerHint = document.createElement("p");
+  scorerHint.className = "admin-score-meta";
+  scorerHint.textContent = "Add each Chelsea scorer, comma-separated. Use x2 for braces.";
+
+  const firstScorerLabel = document.createElement("label");
+  firstScorerLabel.textContent = "First Chelsea scorer";
   const scorerInput = document.createElement("select");
   scorerInput.className = "result-scorer";
-  const scorerPlaceholder = document.createElement("option");
-  scorerPlaceholder.value = "Unknown";
-  scorerPlaceholder.textContent = "Unknown / not listed";
-  scorerInput.appendChild(scorerPlaceholder);
-  const players = getChelseaRegisteredPlayers();
-  players.forEach((player) => {
-    const option = document.createElement("option");
-    option.value = player;
-    option.textContent = player;
-    scorerInput.appendChild(option);
-  });
   const existingScorer =
     targetFixture.result?.first_scorer &&
     !["none", "unknown"].includes(String(targetFixture.result.first_scorer).toLowerCase())
       ? String(targetFixture.result.first_scorer)
       : "Unknown";
-  scorerInput.value = players.includes(existingScorer) ? existingScorer : "Unknown";
-  scorerLabel.appendChild(scorerInput);
+  const players = getChelseaRegisteredPlayers();
+
+  const refreshFirstScorerOptions = () => {
+    const selectedBefore = String(scorerInput.value || "").trim() || "Unknown";
+    scorerInput.textContent = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "Unknown";
+    placeholder.textContent = "Unknown / not listed";
+    scorerInput.appendChild(placeholder);
+
+    const listNames = parseScorerSelections(scorerListInput.value).map((entry) => entry.name);
+    const source = listNames.length > 0 ? listNames : players;
+    const seen = new Set();
+    source.forEach((name) => {
+      const clean = String(name || "").trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const option = document.createElement("option");
+      option.value = clean;
+      option.textContent = clean;
+      scorerInput.appendChild(option);
+    });
+
+    const fallback = seen.has(existingScorer.toLowerCase()) ? existingScorer : "Unknown";
+    const nextValue =
+      selectedBefore && (selectedBefore === "Unknown" || seen.has(selectedBefore.toLowerCase()))
+        ? selectedBefore
+        : fallback;
+    scorerInput.value = nextValue;
+  };
+
+  scorerListInput.addEventListener("input", refreshFirstScorerOptions);
+  refreshFirstScorerOptions();
+  firstScorerLabel.appendChild(scorerInput);
 
   grid.appendChild(chelseaLabel);
   grid.appendChild(oppLabel);
   grid.appendChild(scorerLabel);
+  grid.appendChild(firstScorerLabel);
   form.appendChild(grid);
+  form.appendChild(scorerHint);
 
   const submit = document.createElement("button");
   submit.type = "submit";
