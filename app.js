@@ -4825,7 +4825,7 @@ function renderAdminScorePanel() {
   adminScorePanelEl.textContent = "";
 
   const heading = document.createElement("h3");
-  heading.textContent = "Admin Score Input";
+  heading.textContent = "Admin Score Input (Regular)";
   adminScorePanelEl.appendChild(heading);
 
   const ack = state.adminScoreAck;
