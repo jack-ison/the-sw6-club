@@ -4902,23 +4902,6 @@ function renderAdminScorePanel() {
   oppInput.value = String(targetFixture.result?.opponent_goals ?? 0);
   oppLabel.appendChild(oppInput);
 
-  const scorerLabel = document.createElement("label");
-  scorerLabel.textContent = "Chelsea scorers";
-  const scorerListInput = document.createElement("input");
-  scorerListInput.type = "text";
-  scorerListInput.className = "result-chelsea-scorers";
-  scorerListInput.placeholder = "e.g. Cole Palmer x2, Nicolas Jackson";
-  const existingScorerList =
-    targetFixture.result?.chelsea_scorers && String(targetFixture.result.chelsea_scorers).trim()
-      ? compressExpandedScorerStorage(targetFixture.result.chelsea_scorers)
-      : "";
-  scorerListInput.value = existingScorerList;
-  scorerLabel.appendChild(scorerListInput);
-
-  const scorerHint = document.createElement("p");
-  scorerHint.className = "admin-score-meta";
-  scorerHint.textContent = "Add each Chelsea scorer, comma-separated. Use x2 for braces.";
-
   const firstScorerLabel = document.createElement("label");
   firstScorerLabel.textContent = "First Chelsea scorer";
   const scorerInput = document.createElement("select");
@@ -4929,47 +4912,27 @@ function renderAdminScorePanel() {
       ? String(targetFixture.result.first_scorer)
       : "Unknown";
   const players = getChelseaRegisteredPlayers();
-
-  const refreshFirstScorerOptions = () => {
-    const selectedBefore = String(scorerInput.value || "").trim() || "Unknown";
-    scorerInput.textContent = "";
-    const placeholder = document.createElement("option");
-    placeholder.value = "Unknown";
-    placeholder.textContent = "Unknown / not listed";
-    scorerInput.appendChild(placeholder);
-
-    const listNames = parseScorerSelections(scorerListInput.value).map((entry) => entry.name);
-    const source = listNames.length > 0 ? listNames : players;
-    const seen = new Set();
-    source.forEach((name) => {
-      const clean = String(name || "").trim();
-      if (!clean) return;
-      const key = clean.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      const option = document.createElement("option");
-      option.value = clean;
-      option.textContent = clean;
-      scorerInput.appendChild(option);
-    });
-
-    const fallback = seen.has(existingScorer.toLowerCase()) ? existingScorer : "Unknown";
-    const nextValue =
-      selectedBefore && (selectedBefore === "Unknown" || seen.has(selectedBefore.toLowerCase()))
-        ? selectedBefore
-        : fallback;
-    scorerInput.value = nextValue;
-  };
-
-  scorerListInput.addEventListener("input", refreshFirstScorerOptions);
-  refreshFirstScorerOptions();
+  const scorerPlaceholder = document.createElement("option");
+  scorerPlaceholder.value = "Unknown";
+  scorerPlaceholder.textContent = "Unknown / not listed";
+  scorerInput.appendChild(scorerPlaceholder);
+  players.forEach((player) => {
+    const option = document.createElement("option");
+    option.value = player;
+    option.textContent = player;
+    scorerInput.appendChild(option);
+  });
+  scorerInput.value = players.includes(existingScorer) ? existingScorer : "Unknown";
   firstScorerLabel.appendChild(scorerInput);
 
   grid.appendChild(chelseaLabel);
   grid.appendChild(oppLabel);
-  grid.appendChild(scorerLabel);
   grid.appendChild(firstScorerLabel);
   form.appendChild(grid);
+
+  const scorerHint = document.createElement("p");
+  scorerHint.className = "admin-score-meta";
+  scorerHint.textContent = "Regular score entry mode: set final score and first Chelsea scorer.";
   form.appendChild(scorerHint);
 
   const submit = document.createElement("button");
