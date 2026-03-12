@@ -2670,6 +2670,18 @@ async function onSaveResult(fixture, form) {
   if (chelseaGoals === null || opponentGoals === null) {
     return;
   }
+  const scorerGoalTotal = scorerSelections.reduce(
+    (sum, entry) => sum + Math.max(1, Number.parseInt(entry.count, 10) || 1),
+    0
+  );
+  if (chelseaGoals > 0 && scorerGoalTotal === 0) {
+    alert("Please enter Chelsea scorers for this result.");
+    return;
+  }
+  if (chelseaGoals > 0 && scorerGoalTotal !== chelseaGoals) {
+    alert(`Chelsea scorers total (${scorerGoalTotal}) must match Chelsea goals (${chelseaGoals}).`);
+    return;
+  }
   const expandedScorers = expandScorerSelectionsForStorage(serializeScorerSelections(scorerSelections));
   if (chelseaGoals === 0) {
     firstScorer = "None";
@@ -2686,10 +2698,7 @@ async function onSaveResult(fixture, form) {
   }
   const scorerStorageValue =
     chelseaGoals > 0
-      ? expandedScorers ||
-        (firstScorer && !["none", "unknown"].includes(firstScorer.toLowerCase())
-          ? expandScorerSelectionsForStorage(firstScorer)
-          : "")
+      ? expandedScorers
       : "";
 
   const { error } = await state.client.from("results").upsert(
