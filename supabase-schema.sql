@@ -965,16 +965,24 @@ as $$
       m.country_code
     from public.league_members m
     order by m.user_id, m.joined_at desc
+  ),
+  registered_users as (
+    select
+      u.id as user_id,
+      split_part(coalesce(u.email, 'player'), '@', 1) as email_name
+    from auth.users u
+    where coalesce(u.email, '') <> ''
   )
   select
-    s.user_id,
-    coalesce(mm.display_name, 'Player') as display_name,
+    ru.user_id,
+    coalesce(nullif(trim(mm.display_name), ''), nullif(trim(ru.email_name), ''), 'Player') as display_name,
     mm.avatar_url,
     coalesce(mm.country_code, 'GB') as country_code,
-    s.points
-  from scored s
-  left join member_meta mm on mm.user_id = s.user_id
-  order by s.points desc, display_name asc
+    coalesce(s.points, 0)::integer as points
+  from registered_users ru
+  left join scored s on s.user_id = ru.user_id
+  left join member_meta mm on mm.user_id = ru.user_id
+  order by coalesce(s.points, 0) desc, display_name asc
   limit greatest(coalesce(p_limit, 10), 1);
 $$;
 
