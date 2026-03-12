@@ -4140,9 +4140,12 @@ function renderPastGames() {
     if (myPrediction) {
       const detail = scorePrediction(myPrediction, result);
       totalPoints += detail.points;
+      const predictedScorersLine = myPrediction.predicted_scorers
+        ? compressExpandedScorerStorage(myPrediction.predicted_scorers)
+        : normalizeFirstScorerValue(myPrediction.first_scorer);
       const predictionLine = document.createElement("p");
       predictionLine.className = "past-game-line";
-      predictionLine.textContent = `Your prediction: Chelsea ${myPrediction.chelsea_goals} - ${myPrediction.opponent_goals} ${fixture.opponent} | First scorer: ${myPrediction.first_scorer} | Match points: ${detail.points}`;
+      predictionLine.textContent = `Your prediction: Chelsea ${myPrediction.chelsea_goals} - ${myPrediction.opponent_goals} ${fixture.opponent} | Chelsea scorers: ${predictedScorersLine || "None"} | First scorer: ${myPrediction.first_scorer} | Match points: ${detail.points}`;
       li.appendChild(predictionLine);
 
       const breakdown = document.createElement("details");
