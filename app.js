@@ -4096,16 +4096,49 @@ function renderPastGames() {
     });
   }
 
+  const dedupeByMatchKey = (fixtures) => {
+    const byKey = new Map();
+    fixtures.forEach((fixture) => {
+      if (!fixture || !fixture.kickoff || !fixture.opponent || !fixture.competition) {
+        return;
+      }
+      const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, fixture);
+        return;
+      }
+      const existingHasPrediction = Array.isArray(existing.predictions) && existing.predictions.length > 0;
+      const candidateHasPrediction = Array.isArray(fixture.predictions) && fixture.predictions.length > 0;
+      if (candidateHasPrediction && !existingHasPrediction) {
+        byKey.set(key, fixture);
+        return;
+      }
+      const existingSavedAt = new Date(existing.result?.saved_at || existing.kickoff).getTime();
+      const candidateSavedAt = new Date(fixture.result?.saved_at || fixture.kickoff).getTime();
+      if (Number.isFinite(candidateSavedAt) && candidateSavedAt > existingSavedAt) {
+        byKey.set(key, fixture);
+      }
+    });
+    return [...byKey.values()];
+  };
+
   const rows = Array.isArray(state.pastGamesRows) ? state.pastGamesRows : [];
   const completedFixtures = rows.length > 0
-    ? rows.map((row) => ({
-        ...row.fixture,
-        predictions: [row.prediction],
-        result: row.result,
-        computedPoints: row.points
-      }))
-    : state.activeLeagueFixtures
-        .filter((fixture) => fixture.result)
+    ? dedupeByMatchKey(
+        rows.map((row) => ({
+          ...row.fixture,
+          predictions: [row.prediction],
+          result: row.result,
+          computedPoints: row.points
+        }))
+      )
+        .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())
+    : dedupeByMatchKey(
+        state.activeLeagueFixtures
+          .filter((fixture) => fixture.result)
+          .slice()
+      )
         .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
 
   if (completedFixtures.length === 0) {
