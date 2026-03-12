@@ -2746,6 +2746,16 @@ async function onSaveResult(fixture, form) {
   }
 
   await loadActiveLeagueData(true);
+  if (Array.isArray(state.leagues) && state.leagues.length > 0) {
+    await Promise.allSettled(
+      state.leagues
+        .map((league) => league?.id)
+        .filter(Boolean)
+        .map((leagueId) => refreshLeagueLeaderboardFromServer(leagueId))
+    );
+  } else {
+    await loadLeagueLeaderboard();
+  }
   if (isAdminUser()) {
     await loadAdminResultFixtures(true);
   }
@@ -3398,7 +3408,7 @@ function writeLeagueBreakdownCache(leagueId, byUser) {
 async function refreshLeagueLeaderboardFromServer(leagueId) {
   const { data, error } = await state.client.rpc("get_league_leaderboard", { p_league_id: leagueId });
   if (error) {
-    return;
+    return false;
   }
   const rows = Array.isArray(data) ? data : [];
   writeLeagueLeaderboardCache(leagueId, rows);
@@ -3406,6 +3416,7 @@ async function refreshLeagueLeaderboardFromServer(leagueId) {
     state.activeLeagueLeaderboard = rows;
     render();
   }
+  return true;
 }
 
 async function loadLeagueLeaderboard(options = {}) {
