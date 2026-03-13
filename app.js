@@ -3428,6 +3428,60 @@ async function refreshLeagueLeaderboardFromServer(leagueId) {
   return true;
 }
 
+async function recalculateActiveLeagueLeaderboardLocally() {
+  const league = getActiveLeague();
+  if (!league || !state.client) {
+    return false;
+  }
+  const members = Array.isArray(state.activeLeagueMembers) ? state.activeLeagueMembers : [];
+  const fixtures = Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [];
+  if (members.length === 0) {
+    state.activeLeagueLeaderboard = [];
+    return true;
+  }
+
+  const completedFixtures = fixtures.filter((fixture) => fixture?.result && fixture?.id);
+  const fixtureIds = completedFixtures.map((fixture) => fixture.id);
+  const resultByFixtureId = new Map(completedFixtures.map((fixture) => [fixture.id, fixture.result]));
+
+  const pointsByUser = new Map(members.map((member) => [member.user_id, 0]));
+  if (fixtureIds.length > 0) {
+    const { data, error } = await state.client
+      .from("predictions")
+      .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers")
+      .in("fixture_id", fixtureIds);
+    if (!error && Array.isArray(data)) {
+      data.forEach((prediction) => {
+        const result = resultByFixtureId.get(prediction.fixture_id);
+        if (!result) return;
+        const current = pointsByUser.get(prediction.user_id) || 0;
+        const next = current + scorePrediction(prediction, result).points;
+        pointsByUser.set(prediction.user_id, next);
+      });
+    }
+  }
+
+  const rows = members
+    .map((member) => ({
+      user_id: member.user_id,
+      display_name: member.display_name || "Player",
+      avatar_url: member.avatar_url || null,
+      country_code: member.country_code || "GB",
+      role: member.role || "member",
+      points: pointsByUser.get(member.user_id) || 0
+    }))
+    .sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+      return String(a.display_name).localeCompare(String(b.display_name));
+    });
+
+  state.activeLeagueLeaderboard = rows;
+  writeLeagueLeaderboardCache(league.id, rows);
+  return true;
+}
+
 async function loadLeagueLeaderboard(options = {}) {
   const league = getActiveLeague();
   if (!league) {
@@ -3442,7 +3496,10 @@ async function loadLeagueLeaderboard(options = {}) {
 
   if (background) {
     if (!leagueLeaderboardRefreshPromises.has(league.id)) {
-      const promise = refreshLeagueLeaderboardFromServer(league.id).finally(() => {
+      const promise = (async () => {
+        await refreshLeagueLeaderboardFromServer(league.id);
+        await recalculateActiveLeagueLeaderboardLocally();
+      })().finally(() => {
         leagueLeaderboardRefreshPromises.delete(league.id);
       });
       leagueLeaderboardRefreshPromises.set(league.id, promise);
@@ -3455,7 +3512,10 @@ async function loadLeagueLeaderboard(options = {}) {
     return;
   }
 
-  const promise = refreshLeagueLeaderboardFromServer(league.id).finally(() => {
+  const promise = (async () => {
+    await refreshLeagueLeaderboardFromServer(league.id);
+    await recalculateActiveLeagueLeaderboardLocally();
+  })().finally(() => {
     leagueLeaderboardRefreshPromises.delete(league.id);
   });
   leagueLeaderboardRefreshPromises.set(league.id, promise);
