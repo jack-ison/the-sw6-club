@@ -5253,15 +5253,13 @@ function renderLeaderboard() {
   }
   leaderboardEl.textContent = "";
   const activeLeague = getActiveLeague();
-  const useGlobalTopTen = isGlobalLeague(activeLeague);
-  const rows = useGlobalTopTen
-    ? (state.overallLeaderboard.length > 0 ? state.overallLeaderboard.slice(0, 10) : state.activeLeagueLeaderboard)
-    : state.activeLeagueLeaderboard;
+  const isGlobalLeagueView = isGlobalLeague(activeLeague);
+  const rows = state.activeLeagueLeaderboard;
 
   if (!state.activeLeagueId || rows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = useGlobalTopTen
+    li.textContent = isGlobalLeagueView
       ? "No global rankings yet. Rankings appear after completed matches."
       : "No members yet.";
     leaderboardEl.appendChild(li);
@@ -5272,7 +5270,7 @@ function renderLeaderboard() {
     const li = document.createElement("li");
     li.classList.add("leaderboard-row");
     const safeName = row.display_name || "Player";
-    const suffix = !useGlobalTopTen && row.role === "owner" ? " (Owner)" : "";
+    const suffix = !isGlobalLeagueView && row.role === "owner" ? " (Owner)" : "";
     const left = createLeaderboardIdentity(
       index,
       `${safeName}${suffix}`.trim(),
