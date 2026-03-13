@@ -412,7 +412,6 @@ const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
 const accountSignInLink = document.getElementById("account-signin-link");
 const accountSignUpLink = document.getElementById("account-signup-link");
-const accountAdminConsoleBtn = document.getElementById("account-admin-console-btn");
 const accountEditProfileTopLink = document.getElementById("account-edit-profile-top-link");
 const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
@@ -453,7 +452,6 @@ const leagueSelect = document.getElementById("league-select");
 const copyCodeBtn = document.getElementById("copy-code-btn");
 const copyInviteLinkBtn = document.getElementById("copy-invite-link-btn");
 const leagueMetaNoteEl = document.getElementById("league-meta-note");
-const leagueLeaderboardStatusEl = document.getElementById("league-leaderboard-status");
 let adminConsoleEl = null;
 let adminLeagueListEl = null;
 let adminResultListEl = null;
@@ -462,8 +460,6 @@ const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const visitorCountEl = document.getElementById("visitor-count");
 const buildVersionEl = document.getElementById("build-version");
 const adminScorePanelEl = document.getElementById("admin-score-panel");
-
-const leaderboardEl = document.getElementById("leaderboard");
 const fixturesListEl = document.getElementById("fixtures-list");
 const fixtureTemplate = document.getElementById("fixture-template");
 const forumThreadFormEl = document.getElementById("forum-thread-form");
@@ -519,7 +515,6 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
 if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
-if (accountAdminConsoleBtn) accountAdminConsoleBtn.addEventListener("click", onOpenAdminConsole);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
 if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
 if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
@@ -985,27 +980,6 @@ function onToggleAccountMenu(event) {
   event.stopPropagation();
   state.accountMenuOpen = !state.accountMenuOpen;
   renderNavigation();
-}
-
-async function onOpenAdminConsole() {
-  if (!isAdminUser()) {
-    return;
-  }
-  await Promise.allSettled([
-    loadAdminLeagues(),
-    loadAdminResultFixtures(true)
-  ]);
-  state.topView = "predict";
-  syncRouteHash();
-  render();
-  if (typeof window !== "undefined") {
-    window.requestAnimationFrame(() => {
-      const target = document.getElementById("admin-console");
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
-  }
 }
 
 function onDocumentClick(event) {
@@ -3595,7 +3569,6 @@ function refreshVisibleSectionsFast() {
   }
   if (state.topView === "leagues") {
     renderLeagueSelect();
-    renderLeaderboard();
     renderOverallLeaderboard();
   }
   if (state.topView === "results") {
@@ -3705,13 +3678,7 @@ function renderNow() {
   if (signedIn) {
     if (showLeagues) {
       renderLeagueSelect();
-      renderLeaderboard();
-    }
-  } else {
-    if (showLeagues) {
-      if (leaderboardEl) {
-        leaderboardEl.textContent = "";
-      }
+      renderOverallLeaderboard();
     }
   }
   if (showPredict) {
@@ -4137,7 +4104,6 @@ function renderOverallLeaderboard() {
 
 function renderNavigation() {
   const signedIn = Boolean(state.client && state.isAuthed && state.user);
-  const admin = signedIn && isAdminUser();
   const cardsEnabled = FEATURE_CARDS_ENABLED;
   const showPredict = state.topView === "predict";
   const showLeagues = signedIn && state.topView === "leagues";
@@ -4172,9 +4138,6 @@ function renderNavigation() {
     topnavCardsBtn.classList.toggle("hidden", !cardsEnabled || !signedIn);
     topnavCardsBtn.classList.toggle("active", showCards);
     topnavCardsBtn.setAttribute("aria-selected", String(showCards));
-  }
-  if (accountAdminConsoleBtn) {
-    accountAdminConsoleBtn.classList.toggle("hidden", !admin);
   }
   if (predictViewEl) predictViewEl.classList.toggle("hidden", !showPredict);
   if (resultsViewEl) resultsViewEl.classList.toggle("hidden", !showResults);
@@ -4615,7 +4578,7 @@ function ensureAdminConsoleMounted() {
   list.className = "prediction-list";
   list.addEventListener("click", onAdminLeagueListClick);
   const resultsHeading = document.createElement("h4");
-  resultsHeading.textContent = "Saved Results";
+  resultsHeading.textContent = "Past Results (Admin)";
   resultsHeading.className = "no-margin";
   const resultsList = document.createElement("ul");
   resultsList.id = "admin-result-list";
@@ -5416,29 +5379,6 @@ async function onAdminLeagueListClick(event) {
 
   await reloadAuthedData();
   render();
-}
-
-function renderLeaderboard() {
-  if (leagueLeaderboardStatusEl) {
-    leagueLeaderboardStatusEl.textContent = `Global league view only. ${getLeaderboardTrustMeta()}`;
-  }
-  if (leaderboardEl) {
-    leaderboardEl.textContent = "";
-  }
-}
-
-function formatLeaderboardBreakdown(row) {
-  const parts = [];
-  parts.push(`Last game: Chelsea ${row.actual_chelsea_goals}-${row.actual_opponent_goals} ${row.opponent}`);
-  if (row.did_submit) {
-    parts.push(`Prediction: ${row.predicted_chelsea_goals}-${row.predicted_opponent_goals}`);
-    parts.push(`Predicted first Chelsea scorer: ${row.predicted_first_scorer || "None / not selected"}`);
-    parts.push(`Actual first Chelsea scorer: ${row.actual_first_scorer || "Unknown"}`);
-    parts.push(`Points: ${row.points} (Score ${row.exact_score_points}, Result ${row.result_points}, Chelsea goals ${row.chelsea_goals_points}, Opponent goals ${row.opponent_goals_points}, Scorers ${row.goalscorer_points}, First scorer ${row.first_scorer_points}, Bonus ${row.perfect_bonus_points})`);
-  } else {
-    parts.push("No prediction submitted for this game.");
-  }
-  return parts.join(" | ");
 }
 
 function renderFixtures() {

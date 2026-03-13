@@ -665,6 +665,12 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.dashboard-grid-single .subpanel {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+}
+
 .subpanel {
   border: 1px solid var(--line);
   background: rgb(255 255 255 / 86%);
