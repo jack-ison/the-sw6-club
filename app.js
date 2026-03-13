@@ -776,6 +776,7 @@ function runPostAuthWarmup() {
     ]);
     await loadAdminAccess();
     if (isAdminUser()) {
+      await loadAdminLeagues();
       await loadAdminResultFixtures();
     }
     await loadVisitorCount();
@@ -986,10 +987,14 @@ function onToggleAccountMenu(event) {
   renderNavigation();
 }
 
-function onOpenAdminConsole() {
+async function onOpenAdminConsole() {
   if (!isAdminUser()) {
     return;
   }
+  await Promise.allSettled([
+    loadAdminLeagues(),
+    loadAdminResultFixtures(true)
+  ]);
   state.topView = "predict";
   syncRouteHash();
   render();
@@ -1754,9 +1759,8 @@ async function reloadAuthedData() {
   state.pastGamesLoaded = false;
 
   if (isAdminUser()) {
-    if (state.topView === "leagues") {
-      await loadAdminLeagues();
-    }
+    await loadAdminLeagues();
+    await loadAdminResultFixtures(true);
   }
   if (state.session?.user?.id) {
     writeLeaguesCache(state.session.user.id, state.leagues, state.activeLeagueId);
