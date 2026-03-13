@@ -3453,18 +3453,25 @@ async function recalculateActiveLeagueLeaderboardLocally() {
       dedupedFixturesByMatch.set(key, pickPreferredAdminFixture(existing, fixture));
     });
   const completedFixtures = [...dedupedFixturesByMatch.values()];
-  const fixtureIds = completedFixtures.map((fixture) => fixture.id);
-  const resultByFixtureId = new Map(completedFixtures.map((fixture) => [fixture.id, fixture.result]));
+  const allFixtureIds = fixtures.filter((fixture) => fixture?.id).map((fixture) => fixture.id);
+  const resultByMatchKey = new Map(
+    completedFixtures.map((fixture) => [
+      fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition),
+      fixture.result
+    ])
+  );
   const matchKeyByFixtureId = new Map(
-    completedFixtures.map((fixture) => [fixture.id, fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition)])
+    fixtures
+      .filter((fixture) => fixture?.id)
+      .map((fixture) => [fixture.id, fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition)])
   );
 
   const pointsByUser = new Map(members.map((member) => [member.user_id, 0]));
-  if (fixtureIds.length > 0) {
+  if (allFixtureIds.length > 0) {
     const { data, error } = await state.client
       .from("predictions")
       .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
-      .in("fixture_id", fixtureIds);
+      .in("fixture_id", allFixtureIds);
     if (!error && Array.isArray(data)) {
       const predictionByUserAndMatch = new Map();
       data.forEach((prediction) => {
@@ -3486,7 +3493,8 @@ async function recalculateActiveLeagueLeaderboardLocally() {
       });
 
       [...predictionByUserAndMatch.values()].forEach((prediction) => {
-        const result = resultByFixtureId.get(prediction.fixture_id);
+        const matchKey = matchKeyByFixtureId.get(prediction.fixture_id);
+        const result = matchKey ? resultByMatchKey.get(matchKey) : null;
         if (!result) return;
         const current = pointsByUser.get(prediction.user_id) || 0;
         const next = current + scorePrediction(prediction, result).points;
