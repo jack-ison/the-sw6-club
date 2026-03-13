@@ -455,6 +455,7 @@ const leagueMetaNoteEl = document.getElementById("league-meta-note");
 const leagueLeaderboardStatusEl = document.getElementById("league-leaderboard-status");
 let adminConsoleEl = null;
 let adminLeagueListEl = null;
+let adminResultListEl = null;
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const visitorCountEl = document.getElementById("visitor-count");
@@ -4460,7 +4461,7 @@ function renderAdminConsole() {
     return;
   }
   ensureAdminConsoleMounted();
-  if (!adminConsoleEl || !adminLeagueListEl) {
+  if (!adminConsoleEl || !adminLeagueListEl || !adminResultListEl) {
     return;
   }
 
@@ -4470,24 +4471,51 @@ function renderAdminConsole() {
     li.className = "empty-state";
     li.textContent = "No leagues found.";
     adminLeagueListEl.appendChild(li);
+  } else {
+    state.adminLeagues.forEach((league) => {
+      const li = document.createElement("li");
+      li.className = "admin-league-item";
+      const meta = document.createElement("span");
+      const visibility = league.is_public ? "Public" : "Private";
+      meta.textContent = `${league.name} (${visibility} • ${league.code})`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "danger-btn";
+      btn.dataset.leagueId = league.id;
+      btn.dataset.leagueName = league.name;
+      btn.textContent = "Delete league";
+      li.appendChild(meta);
+      li.appendChild(btn);
+      adminLeagueListEl.appendChild(li);
+    });
+  }
+
+  adminResultListEl.textContent = "";
+  const updatedResults = (Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : [])
+    .filter((fixture) => fixture?.result)
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+  if (updatedResults.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = "No saved admin results yet.";
+    adminResultListEl.appendChild(li);
     return;
   }
 
-  state.adminLeagues.forEach((league) => {
+  updatedResults.forEach((fixture) => {
     const li = document.createElement("li");
     li.className = "admin-league-item";
     const meta = document.createElement("span");
-    const visibility = league.is_public ? "Public" : "Private";
-    meta.textContent = `${league.name} (${visibility} • ${league.code})`;
+    meta.textContent =
+      `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent} (${fixture.competition})`;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "danger-btn";
-    btn.dataset.leagueId = league.id;
-    btn.dataset.leagueName = league.name;
-    btn.textContent = "Delete league";
+    btn.className = "ghost-btn";
+    btn.dataset.adminFixtureId = fixture.id;
+    btn.textContent = "Edit result";
     li.appendChild(meta);
     li.appendChild(btn);
-    adminLeagueListEl.appendChild(li);
+    adminResultListEl.appendChild(li);
   });
 }
 
@@ -4522,10 +4550,19 @@ function ensureAdminConsoleMounted() {
   list.id = "admin-league-list";
   list.className = "prediction-list";
   list.addEventListener("click", onAdminLeagueListClick);
+  const resultsHeading = document.createElement("h4");
+  resultsHeading.textContent = "Saved Results";
+  resultsHeading.className = "no-margin";
+  const resultsList = document.createElement("ul");
+  resultsList.id = "admin-result-list";
+  resultsList.className = "prediction-list";
+  resultsList.addEventListener("click", onAdminLeagueListClick);
 
   section.appendChild(h3);
   section.appendChild(note);
   section.appendChild(list);
+  section.appendChild(resultsHeading);
+  section.appendChild(resultsList);
 
   const dashboard = parent.querySelector(".dashboard-grid");
   if (dashboard) {
@@ -4535,6 +4572,7 @@ function ensureAdminConsoleMounted() {
   }
   adminConsoleEl = section;
   adminLeagueListEl = list;
+  adminResultListEl = resultsList;
 }
 
 function removeAdminConsole() {
@@ -4543,6 +4581,7 @@ function removeAdminConsole() {
   }
   adminConsoleEl = null;
   adminLeagueListEl = null;
+  adminResultListEl = null;
 }
 
 function getForumThreadsCache() {
@@ -5229,6 +5268,18 @@ function renderAdminScorePanel() {
 }
 
 async function onAdminLeagueListClick(event) {
+  const editResultBtn = event.target.closest("button[data-admin-fixture-id]");
+  if (editResultBtn && isAdminUser()) {
+    state.adminResultFixtureId = editResultBtn.dataset.adminFixtureId || "";
+    state.topView = "predict";
+    syncRouteHash();
+    render();
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    return;
+  }
+
   const deleteBtn = event.target.closest("button[data-league-id]");
   if (!deleteBtn || !state.client || !isAdminUser()) {
     return;
