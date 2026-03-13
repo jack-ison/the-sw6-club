@@ -661,6 +661,10 @@ button:disabled {
   gap: 0.74rem;
 }
 
+.dashboard-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .subpanel {
   border: 1px solid var(--line);
   background: rgb(255 255 255 / 86%);

@@ -990,7 +990,7 @@ function onOpenAdminConsole() {
   if (!isAdminUser()) {
     return;
   }
-  state.topView = "leagues";
+  state.topView = "predict";
   syncRouteHash();
   render();
   if (typeof window !== "undefined") {
@@ -3705,7 +3705,9 @@ function renderNow() {
     }
   } else {
     if (showLeagues) {
-      leaderboardEl.textContent = "";
+      if (leaderboardEl) {
+        leaderboardEl.textContent = "";
+      }
     }
   }
   if (showPredict) {
@@ -4478,7 +4480,7 @@ function renderLeagueSelect() {
 }
 
 function renderAdminConsole() {
-  const show = Boolean(state.session?.user) && isAdminUser();
+  const show = Boolean(state.session?.user) && isAdminUser() && state.topView === "predict";
   if (!show) {
     removeAdminConsole();
     return;
@@ -4581,7 +4583,7 @@ function ensureAdminConsoleMounted() {
   if (adminConsoleEl && adminLeagueListEl) {
     return;
   }
-  const parent = leagueAuthContentEl || leaguePanel;
+  const parent = predictViewEl;
   if (!parent) {
     return;
   }
@@ -4622,9 +4624,12 @@ function ensureAdminConsoleMounted() {
   section.appendChild(resultsHeading);
   section.appendChild(resultsList);
 
-  const dashboard = parent.querySelector(".dashboard-grid");
-  if (dashboard) {
-    parent.insertBefore(section, dashboard);
+  if (adminScorePanelEl && adminScorePanelEl.parentNode === parent) {
+    if (adminScorePanelEl.nextSibling) {
+      parent.insertBefore(section, adminScorePanelEl.nextSibling);
+    } else {
+      parent.appendChild(section);
+    }
   } else {
     parent.appendChild(section);
   }
@@ -5411,70 +5416,11 @@ async function onAdminLeagueListClick(event) {
 
 function renderLeaderboard() {
   if (leagueLeaderboardStatusEl) {
-    leagueLeaderboardStatusEl.textContent = getLeaderboardTrustMeta();
+    leagueLeaderboardStatusEl.textContent = `Global league view only. ${getLeaderboardTrustMeta()}`;
   }
-  leaderboardEl.textContent = "";
-  const activeLeague = getActiveLeague();
-  const isGlobalLeagueView = isGlobalLeague(activeLeague);
-  const rows = state.activeLeagueLeaderboard;
-
-  if (!state.activeLeagueId || rows.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = isGlobalLeagueView
-      ? "No global rankings yet. Rankings appear after completed matches."
-      : "No members yet.";
-    leaderboardEl.appendChild(li);
-    return;
+  if (leaderboardEl) {
+    leaderboardEl.textContent = "";
   }
-
-  rows.forEach((row, index) => {
-    const li = document.createElement("li");
-    li.classList.add("leaderboard-row");
-    const safeName = row.display_name || "Player";
-    const suffix = !isGlobalLeagueView && row.role === "owner" ? " (Owner)" : "";
-    const left = createLeaderboardIdentity(
-      index,
-      `${safeName}${suffix}`.trim(),
-      row.country_code,
-      row.avatar_url,
-      Boolean(row.has_prediction)
-    );
-    const breakdown = state.leagueLastGameBreakdownByUser?.[row.user_id] || null;
-    if (breakdown) {
-      left.classList.add("leader-identity-clickable");
-      left.setAttribute("role", "button");
-      left.setAttribute("tabindex", "0");
-      left.setAttribute("aria-expanded", String(state.expandedLeaderboardUserId === row.user_id));
-      const hint = document.createElement("span");
-      hint.className = "leader-breakdown-toggle";
-      hint.textContent = state.expandedLeaderboardUserId === row.user_id ? "▲" : "▼";
-      left.appendChild(hint);
-      const toggle = () => {
-        state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
-        render();
-      };
-      left.addEventListener("click", toggle);
-      left.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          toggle();
-        }
-      });
-    }
-    li.appendChild(left);
-    const right = document.createElement("span");
-    right.className = "leader-points";
-    right.textContent = `${row.points} pts`;
-    li.appendChild(right);
-    if (breakdown && state.expandedLeaderboardUserId === row.user_id) {
-      const drop = document.createElement("div");
-      drop.className = "leader-breakdown";
-      drop.textContent = formatLeaderboardBreakdown(breakdown);
-      li.appendChild(drop);
-    }
-    leaderboardEl.appendChild(li);
-  });
 }
 
 function formatLeaderboardBreakdown(row) {
