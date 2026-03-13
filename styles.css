@@ -668,6 +668,25 @@ button:disabled {
   padding: 0.78rem;
 }
 
+.admin-result-meta {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.admin-result-meta > span,
+.admin-result-meta > small {
+  overflow-wrap: anywhere;
+}
+
+.admin-result-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .leaderboard {
   gap: 0.45rem;
 }

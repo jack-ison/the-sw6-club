@@ -3451,7 +3451,7 @@ async function recalculateActiveLeagueLeaderboardLocally() {
         dedupedFixturesByMatch.set(key, fixture);
         return;
       }
-      dedupedFixturesByMatch.set(key, pickPreferredAdminFixture(existing, fixture));
+      dedupedFixturesByMatch.set(key, pickCanonicalScoredFixture(existing, fixture));
     });
   const completedFixtures = [...dedupedFixturesByMatch.values()];
   const allFixtureIds = fixtures.filter((fixture) => fixture?.id).map((fixture) => fixture.id);
@@ -4502,19 +4502,54 @@ function renderAdminConsole() {
     return;
   }
 
+  const canonicalByMatch = new Map();
+  updatedResults.forEach((fixture) => {
+    const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const existing = canonicalByMatch.get(matchKey);
+    if (!existing) {
+      canonicalByMatch.set(matchKey, fixture);
+      return;
+    }
+    canonicalByMatch.set(matchKey, pickCanonicalScoredFixture(existing, fixture));
+  });
+
   updatedResults.forEach((fixture) => {
     const li = document.createElement("li");
     li.className = "admin-league-item";
+    const metaWrap = document.createElement("div");
+    metaWrap.className = "admin-result-meta";
     const meta = document.createElement("span");
+    const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const canonicalFixture = canonicalByMatch.get(matchKey);
+    const usingForScoring = canonicalFixture?.id === fixture.id;
+    const scorerText = normalizeScorerList(fixture.result.chelsea_scorers);
+    const savedAtText = fixture.result.saved_at ? `Saved ${formatUpdatedAt(fixture.result.saved_at)}` : "Saved time unavailable";
     meta.textContent =
       `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent} (${fixture.competition})`;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "ghost-btn";
-    btn.dataset.adminFixtureId = fixture.id;
-    btn.textContent = "Edit result";
-    li.appendChild(meta);
-    li.appendChild(btn);
+    const detail = document.createElement("small");
+    detail.className = "muted";
+    detail.textContent = `${usingForScoring ? "Used for scoring" : "Duplicate result"} • ${savedAtText}${scorerText ? ` • Scorers: ${scorerText}` : ""}`;
+    metaWrap.appendChild(meta);
+    metaWrap.appendChild(detail);
+
+    const actions = document.createElement("div");
+    actions.className = "admin-result-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "ghost-btn";
+    editBtn.dataset.adminFixtureId = fixture.id;
+    editBtn.textContent = "Edit result";
+    actions.appendChild(editBtn);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "danger-btn";
+    deleteBtn.dataset.resultFixtureId = fixture.id;
+    deleteBtn.dataset.resultFixtureLabel = `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent}`;
+    deleteBtn.textContent = "Delete result";
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(metaWrap);
+    li.appendChild(actions);
     adminResultListEl.appendChild(li);
   });
 }
@@ -5059,7 +5094,7 @@ function getAdminResultFixtureOptions() {
       byMatch.set(key, fixture);
       return;
     }
-    byMatch.set(key, pickPreferredAdminFixture(existing, fixture));
+    byMatch.set(key, pickCanonicalScoredFixture(existing, fixture));
   });
 
   return [...byMatch.values()]
@@ -5088,6 +5123,23 @@ function pickPreferredAdminFixture(current, candidate) {
     return value;
   };
   return score(candidate) > score(current) ? candidate : current;
+}
+
+function pickCanonicalScoredFixture(current, candidate) {
+  const score = (fixture) => {
+    let value = 0;
+    if (fixture?.result) value += 1_000;
+    const savedAtTs = Number.isFinite(new Date(fixture?.result?.saved_at || 0).getTime())
+      ? new Date(fixture.result.saved_at).getTime()
+      : 0;
+    value += savedAtTs / 1_000_000_000;
+    const createdAtTs = Number.isFinite(new Date(fixture?.created_at || 0).getTime())
+      ? new Date(fixture.created_at).getTime()
+      : 0;
+    value += createdAtTs / 10_000_000_000_000;
+    return value;
+  };
+  return score(candidate) >= score(current) ? candidate : current;
 }
 
 function renderAdminScorePanel() {
@@ -5277,6 +5329,34 @@ async function onAdminLeagueListClick(event) {
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+    return;
+  }
+
+  const deleteResultBtn = event.target.closest("button[data-result-fixture-id]");
+  if (deleteResultBtn && state.client && isAdminUser()) {
+    const fixtureId = deleteResultBtn.dataset.resultFixtureId || "";
+    const label = deleteResultBtn.dataset.resultFixtureLabel || "this saved result";
+    if (!fixtureId) {
+      return;
+    }
+    const ok = window.confirm(`Delete ${label}? This removes that saved result from scoring.`);
+    if (!ok) {
+      return;
+    }
+    deleteResultBtn.disabled = true;
+    const { error } = await state.client.rpc("admin_delete_result", { p_fixture_id: fixtureId });
+    if (error) {
+      alert(error.message);
+      deleteResultBtn.disabled = false;
+      return;
+    }
+    await Promise.all([
+      loadAdminResultFixtures(true),
+      loadActiveLeagueData(true),
+      loadPastGamesForUser({ force: true }),
+      ensureOverallLeaderboardLoaded(true)
+    ]);
+    render();
     return;
   }
 
