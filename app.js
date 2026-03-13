@@ -3680,7 +3680,7 @@ function renderNow() {
   renderConfigErrorBanner();
   if (!signedIn || !isAdminUser()) {
     removeAdminConsole();
-  } else if (showLeagues) {
+  } else if (showPredict) {
     renderAdminConsole();
   }
 
