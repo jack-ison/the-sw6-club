@@ -3440,7 +3440,19 @@ async function recalculateActiveLeagueLeaderboardLocally() {
     return true;
   }
 
-  const completedFixtures = fixtures.filter((fixture) => fixture?.result && fixture?.id);
+  const dedupedFixturesByMatch = new Map();
+  fixtures
+    .filter((fixture) => fixture?.result && fixture?.id)
+    .forEach((fixture) => {
+      const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+      const existing = dedupedFixturesByMatch.get(key);
+      if (!existing) {
+        dedupedFixturesByMatch.set(key, fixture);
+        return;
+      }
+      dedupedFixturesByMatch.set(key, pickPreferredAdminFixture(existing, fixture));
+    });
+  const completedFixtures = [...dedupedFixturesByMatch.values()];
   const fixtureIds = completedFixtures.map((fixture) => fixture.id);
   const resultByFixtureId = new Map(completedFixtures.map((fixture) => [fixture.id, fixture.result]));
 
