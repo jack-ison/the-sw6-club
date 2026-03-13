@@ -412,6 +412,7 @@ const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
 const accountSignInLink = document.getElementById("account-signin-link");
 const accountSignUpLink = document.getElementById("account-signup-link");
+const accountAdminConsoleBtn = document.getElementById("account-admin-console-btn");
 const accountEditProfileTopLink = document.getElementById("account-edit-profile-top-link");
 const accountQuickSignOutBtn = document.getElementById("account-signout-quick-btn");
 const openRulesInlineBtn = document.getElementById("open-rules-inline");
@@ -518,6 +519,7 @@ if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
 });
 if (loginForm) loginForm.addEventListener("submit", onLogIn);
 if (accountQuickSignOutBtn) accountQuickSignOutBtn.addEventListener("click", onLogOut);
+if (accountAdminConsoleBtn) accountAdminConsoleBtn.addEventListener("click", onOpenAdminConsole);
 if (openRulesInlineBtn) openRulesInlineBtn.addEventListener("click", onOpenRulesModal);
 if (openRulesFooterBtn) openRulesFooterBtn.addEventListener("click", onOpenRulesModal);
 if (closeRulesModalBtn) closeRulesModalBtn.addEventListener("click", onCloseRulesModal);
@@ -982,6 +984,23 @@ function onToggleAccountMenu(event) {
   event.stopPropagation();
   state.accountMenuOpen = !state.accountMenuOpen;
   renderNavigation();
+}
+
+function onOpenAdminConsole() {
+  if (!isAdminUser()) {
+    return;
+  }
+  state.topView = "leagues";
+  syncRouteHash();
+  render();
+  if (typeof window !== "undefined") {
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById("admin-console");
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }
 }
 
 function onDocumentClick(event) {
@@ -4112,6 +4131,7 @@ function renderOverallLeaderboard() {
 
 function renderNavigation() {
   const signedIn = Boolean(state.client && state.isAuthed && state.user);
+  const admin = signedIn && isAdminUser();
   const cardsEnabled = FEATURE_CARDS_ENABLED;
   const showPredict = state.topView === "predict";
   const showLeagues = signedIn && state.topView === "leagues";
@@ -4146,6 +4166,9 @@ function renderNavigation() {
     topnavCardsBtn.classList.toggle("hidden", !cardsEnabled || !signedIn);
     topnavCardsBtn.classList.toggle("active", showCards);
     topnavCardsBtn.setAttribute("aria-selected", String(showCards));
+  }
+  if (accountAdminConsoleBtn) {
+    accountAdminConsoleBtn.classList.toggle("hidden", !admin);
   }
   if (predictViewEl) predictViewEl.classList.toggle("hidden", !showPredict);
   if (resultsViewEl) resultsViewEl.classList.toggle("hidden", !showResults);
