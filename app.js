@@ -2920,7 +2920,6 @@ async function loadAdminResultFixtures(force = false) {
   const pastFixturesFallback = await state.client
     .from("fixtures")
     .select("id, league_id, kickoff, opponent, competition, created_at")
-    .lte("kickoff", new Date().toISOString())
     .order("kickoff", { ascending: false })
     .limit(400);
 
@@ -5325,6 +5324,11 @@ function renderAdminScorePanel() {
     status.className = "admin-score-meta";
     status.textContent = "No past fixtures available yet. Retrying admin result feed...";
     adminScorePanelEl.appendChild(status);
+    const debug = document.createElement("p");
+    debug.className = "admin-score-meta";
+    debug.textContent =
+      `Debug: admin fixtures ${state.adminResultFixtures.length}, active league fixtures ${state.activeLeagueFixtures.length}, past games ${state.pastGamesRows.length}`;
+    adminScorePanelEl.appendChild(debug);
     return;
   }
 
