@@ -1400,7 +1400,11 @@ drop policy if exists fixtures_select_member on public.fixtures;
 create policy fixtures_select_member
 on public.fixtures
 for select
-using (public.is_league_member(league_id));
+using (
+  public.is_league_member(league_id)
+  or public.is_configured_admin()
+  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+);
 
 drop policy if exists fixtures_insert_owner on public.fixtures;
 drop policy if exists fixtures_insert_member on public.fixtures;
@@ -1484,7 +1488,11 @@ using (
     select 1
     from public.fixtures f
     where f.id = fixture_id
-      and public.is_league_member(f.league_id)
+      and (
+        public.is_league_member(f.league_id)
+        or public.is_configured_admin()
+        or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+      )
   )
 );
 
