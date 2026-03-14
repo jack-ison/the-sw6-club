@@ -771,7 +771,7 @@ function runPostAuthWarmup() {
       runTopViewEnterEffects()
     ]);
     await loadAdminAccess();
-    if (isAdminUser() || isAllowlistedAdminEmail()) {
+    if (hasResultAdminAccess()) {
       await loadAdminLeagues();
       await loadAdminResultFixtures();
     }
@@ -1640,7 +1640,7 @@ async function trackSiteVisit() {
 }
 
 async function loadVisitorCount(force = false) {
-  if (!state.client || !state.session?.user || !isAdminUser()) {
+  if (!state.client || !state.session?.user || !hasResultAdminAccess()) {
     state.visitorCount = null;
     return;
   }
@@ -1738,7 +1738,7 @@ async function reloadAuthedData() {
   }
   state.pastGamesLoaded = false;
 
-  if (isAdminUser() || isAllowlistedAdminEmail()) {
+  if (hasResultAdminAccess()) {
     await loadAdminLeagues();
     await loadAdminResultFixtures(true);
   }
@@ -2662,9 +2662,135 @@ async function materializeFixtureForPrediction(fallbackFixture) {
   return getNextFixtureForPrediction();
 }
 
+async function materializeFixtureForAdminResult(fixture) {
+  if (!fixture || !isScheduleFixtureSyntheticId(fixture.id)) {
+    return fixture;
+  }
+  if (!state.client || !state.session?.user) {
+    alert("Please sign in first.");
+    return null;
+  }
+
+  const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+  const existingFromState = (Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : [])
+    .find((row) => row?.id && !isScheduleFixtureSyntheticId(row.id) && fixtureScheduleKey(row.kickoff, row.opponent, row.competition) === matchKey);
+  if (existingFromState) {
+    return existingFromState;
+  }
+
+  if (!state.activeLeagueId) {
+    await ensureAuthedDataLoaded(true);
+  }
+  let league = getGlobalLeagueFromState() || getActiveLeague();
+  if (!league) {
+    await ensureGlobalLeagueMembership();
+    await loadLeaguesForUser();
+    league = getGlobalLeagueFromState() || getActiveLeague();
+  }
+  if (!league) {
+    alert("Could not find a league to attach this result. Refresh and try again.");
+    return null;
+  }
+  state.activeLeagueId = league.id;
+
+  const kickoff = fixture.kickoff;
+  const opponent = fixture.opponent;
+  const competition = fixture.competition;
+  const kickoffMs = new Date(kickoff).getTime();
+  const hasKickoff = Number.isFinite(kickoffMs);
+  const windowStart = hasKickoff ? new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString() : null;
+  const windowEnd = hasKickoff ? new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString() : null;
+
+  let existing = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, created_at")
+    .eq("league_id", league.id)
+    .eq("opponent", opponent)
+    .eq("competition", competition)
+    .eq("kickoff", kickoff)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existing.error && existing.data?.id) {
+    return {
+      ...existing.data,
+      result: fixture.result || null,
+      predictions: []
+    };
+  }
+
+  if (windowStart && windowEnd) {
+    const nearMatch = await state.client
+      .from("fixtures")
+      .select("id, league_id, kickoff, opponent, competition, created_at")
+      .eq("league_id", league.id)
+      .eq("opponent", opponent)
+      .eq("competition", competition)
+      .gte("kickoff", windowStart)
+      .lte("kickoff", windowEnd)
+      .order("kickoff", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!nearMatch.error && nearMatch.data?.id) {
+      return {
+        ...nearMatch.data,
+        result: fixture.result || null,
+        predictions: []
+      };
+    }
+  }
+
+  const insertResult = await state.client.from("fixtures").insert({
+    league_id: league.id,
+    kickoff,
+    opponent,
+    competition,
+    created_by: state.session.user.id
+  });
+  if (insertResult.error) {
+    const message = String(insertResult.error.message || "Could not prepare fixture for result input.");
+    if (/policy|permission|row-level security|rls/i.test(message)) {
+      alert("Fixture permissions are blocked in Supabase. Run the latest schema SQL, then retry.");
+    } else {
+      alert(message);
+    }
+    return null;
+  }
+
+  existing = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, created_at")
+    .eq("league_id", league.id)
+    .eq("opponent", opponent)
+    .eq("competition", competition)
+    .eq("kickoff", kickoff)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing.error || !existing.data?.id) {
+    alert("Fixture was created, but could not be reloaded. Refresh and try again.");
+    return null;
+  }
+
+  return {
+    ...existing.data,
+    result: fixture.result || null,
+    predictions: []
+  };
+}
+
 async function onSaveResult(fixture, form) {
-  if (!state.session?.user || !canManageResults()) {
-    return;
+  if (!state.session?.user || !hasResultAdminAccess()) {
+    return false;
+  }
+  let targetFixture = fixture;
+  if (isScheduleFixtureSyntheticId(fixture?.id)) {
+    const materialized = await materializeFixtureForAdminResult(fixture);
+    if (!materialized) {
+      return false;
+    }
+    targetFixture = materialized;
+    state.adminResultFixtureId = materialized.id;
   }
   const chelseaGoals = parseGoals(form.querySelector(".result-chelsea").value);
   const opponentGoals = parseGoals(form.querySelector(".result-opponent").value);
@@ -2672,7 +2798,7 @@ async function onSaveResult(fixture, form) {
   const scorerSelections = parseScorerSelections(scorerListRaw);
   let firstScorer = String(form.querySelector(".result-scorer")?.value || "").trim();
   if (chelseaGoals === null || opponentGoals === null) {
-    return;
+    return false;
   }
   const scorerGoalTotal = scorerSelections.reduce(
     (sum, entry) => sum + Math.max(1, Number.parseInt(entry.count, 10) || 1),
@@ -2680,11 +2806,11 @@ async function onSaveResult(fixture, form) {
   );
   if (chelseaGoals > 0 && scorerGoalTotal === 0) {
     alert("Please enter Chelsea scorers for this result.");
-    return;
+    return false;
   }
   if (chelseaGoals > 0 && scorerGoalTotal !== chelseaGoals) {
     alert(`Chelsea scorers total (${scorerGoalTotal}) must match Chelsea goals (${chelseaGoals}).`);
-    return;
+    return false;
   }
   const expandedScorers = expandScorerSelectionsForStorage(serializeScorerSelections(scorerSelections));
   if (chelseaGoals === 0) {
@@ -2707,7 +2833,7 @@ async function onSaveResult(fixture, form) {
 
   const { error } = await state.client.from("results").upsert(
     {
-      fixture_id: fixture.id,
+      fixture_id: targetFixture.id,
       chelsea_goals: chelseaGoals,
       opponent_goals: opponentGoals,
       first_scorer: firstScorer,
@@ -2736,10 +2862,10 @@ async function onSaveResult(fixture, form) {
         : message
     );
     render();
-    return;
+    return false;
   }
 
-  await syncResultAcrossMyLeagues(fixture, {
+  await syncResultAcrossMyLeagues(targetFixture, {
     chelsea_goals: chelseaGoals,
     opponent_goals: opponentGoals,
     first_scorer: firstScorer,
@@ -2748,7 +2874,7 @@ async function onSaveResult(fixture, form) {
   });
 
   let settlementNote = "Settlement complete.";
-  const settlementResult = await state.client.rpc("get_fixture_settlement", { p_fixture_id: fixture.id });
+  const settlementResult = await state.client.rpc("get_fixture_settlement", { p_fixture_id: targetFixture.id });
   if (!settlementResult.error && Array.isArray(settlementResult.data) && settlementResult.data[0]) {
     const row = settlementResult.data[0];
     const status = String(row.status || "settled");
@@ -2769,7 +2895,7 @@ async function onSaveResult(fixture, form) {
   } else {
     await loadLeagueLeaderboard();
   }
-  if (isAdminUser()) {
+  if (hasResultAdminAccess()) {
     await loadAdminResultFixtures(true);
   }
   await loadPastGamesForUser({ force: true });
@@ -2780,6 +2906,7 @@ async function onSaveResult(fixture, form) {
     at: Date.now()
   };
   render();
+  return true;
 }
 
 async function syncResultAcrossMyLeagues(sourceFixture, payload) {
@@ -2865,7 +2992,7 @@ async function loadAdminLeagues() {
 }
 
 async function loadAdminResultFixtures(force = false) {
-  const adminAllowed = isAdminUser() || isAllowlistedAdminEmail();
+  const adminAllowed = hasResultAdminAccess();
   if (!state.client || !adminAllowed) {
     state.adminResultFixtures = [];
     state.adminResultFixturesLoaded = false;
@@ -3777,7 +3904,7 @@ function renderNow() {
   renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected, cardsEnabled });
   renderSignedOutPredictPreview({ signedIn });
   renderConfigErrorBanner();
-  const adminVisible = signedIn && (isAdminUser() || isAllowlistedAdminEmail());
+  const adminVisible = signedIn && hasResultAdminAccess();
   if (!adminVisible) {
     removeAdminConsole();
   } else if (showPredict) {
@@ -4626,10 +4753,7 @@ function renderLeagueSelect() {
 }
 
 function renderAdminConsole() {
-  const show =
-    Boolean(state.session?.user) &&
-    (isAdminUser() || isAllowlistedAdminEmail()) &&
-    state.topView === "predict";
+  const show = Boolean(state.session?.user) && hasResultAdminAccess() && state.topView === "predict";
   if (!show) {
     removeAdminConsole();
     return;
@@ -5220,6 +5344,39 @@ function getNextPendingResultFixture() {
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime())[0] || null;
 }
 
+function createScheduleFixtureSyntheticId(date, opponent, competition) {
+  const safeDate = String(date || "");
+  const safeOpponent = String(opponent || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const safeCompetition = String(competition || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `schedule:${safeDate}:${safeOpponent}:${safeCompetition}`;
+}
+
+function isScheduleFixtureSyntheticId(fixtureId) {
+  return String(fixtureId || "").startsWith("schedule:");
+}
+
+function getScheduleAdminFallbackFixtures() {
+  const now = Date.now();
+  const rows = Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : [];
+  return rows
+    .map((fixture) => {
+      const kickoff = buildFixtureKickoffIso(fixture.date, fixture.kickoffUk);
+      return {
+        id: createScheduleFixtureSyntheticId(fixture.date, fixture.opponent, fixture.competition),
+        league_id: null,
+        kickoff,
+        opponent: fixture.opponent,
+        competition: fixture.competition,
+        created_at: kickoff,
+        result: null,
+        predictions: []
+      };
+    })
+    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
+    .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+}
+
 function getAdminResultFixtureOptions() {
   const mergedSource = [
     ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
@@ -5248,6 +5405,14 @@ function getAdminResultFixtureOptions() {
       return;
     }
     byMatch.set(key, pickCanonicalScoredFixture(existing, fixture));
+  });
+
+  const scheduleFallback = getScheduleAdminFallbackFixtures();
+  scheduleFallback.forEach((fixture) => {
+    const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    if (!byMatch.has(key)) {
+      byMatch.set(key, fixture);
+    }
   });
 
   return [...byMatch.values()]
@@ -5303,7 +5468,7 @@ function renderAdminScorePanel() {
   if (!adminScorePanelEl) {
     return;
   }
-  const visible = Boolean(state.session?.user) && canManageResults() && state.topView === "predict";
+  const visible = Boolean(state.session?.user) && hasResultAdminAccess() && state.topView === "predict";
   adminScorePanelEl.classList.toggle("hidden", !visible);
   if (!visible) {
     adminScorePanelEl.textContent = "";
@@ -5328,7 +5493,7 @@ function renderAdminScorePanel() {
   }
 
   if (options.length === 0) {
-    if (isAdminUser() && state.client) {
+    if (hasResultAdminAccess() && state.client) {
       const now = Date.now();
       if (now - Number(state.adminResultFixturesLastRetryAt || 0) > 10000) {
         state.adminResultFixturesLastRetryAt = now;
@@ -5476,9 +5641,9 @@ function renderAdminScorePanel() {
     event.preventDefault();
     submit.disabled = true;
     submit.textContent = "Saving...";
-    await onSaveResult(targetFixture, form);
+    const saved = await onSaveResult(targetFixture, form);
     submit.disabled = false;
-    submit.textContent = targetFixture.result ? "Update Final Score" : "Save Final Score";
+    submit.textContent = saved || targetFixture.result ? "Update Final Score" : "Save Final Score";
   });
 
   adminScorePanelEl.appendChild(form);
@@ -5486,7 +5651,7 @@ function renderAdminScorePanel() {
 
 async function onAdminLeagueListClick(event) {
   const editResultBtn = event.target.closest("button[data-admin-fixture-id]");
-  if (editResultBtn && isAdminUser()) {
+  if (editResultBtn && hasResultAdminAccess()) {
     state.adminResultFixtureId = editResultBtn.dataset.adminFixtureId || "";
     state.topView = "predict";
     syncRouteHash();
@@ -5498,7 +5663,7 @@ async function onAdminLeagueListClick(event) {
   }
 
   const deleteResultBtn = event.target.closest("button[data-result-fixture-id]");
-  if (deleteResultBtn && state.client && isAdminUser()) {
+  if (deleteResultBtn && state.client && hasResultAdminAccess()) {
     const fixtureId = deleteResultBtn.dataset.resultFixtureId || "";
     const label = deleteResultBtn.dataset.resultFixtureLabel || "this saved result";
     if (!fixtureId) {
@@ -5526,7 +5691,7 @@ async function onAdminLeagueListClick(event) {
   }
 
   const deleteBtn = event.target.closest("button[data-league-id]");
-  if (!deleteBtn || !state.client || !isAdminUser()) {
+  if (!deleteBtn || !state.client || !hasResultAdminAccess()) {
     return;
   }
   const leagueId = deleteBtn.dataset.leagueId;
@@ -6304,15 +6469,8 @@ function isAdminUser() {
   return Boolean(state.session?.user) && Boolean(state.isAdmin);
 }
 
-function canManageResults() {
-  if (!state.session?.user) {
-    return false;
-  }
-  if (isAdminUser() || isAllowlistedAdminEmail()) {
-    return true;
-  }
-  const member = getCurrentMember();
-  return member?.role === "owner";
+function hasResultAdminAccess() {
+  return Boolean(state.session?.user) && (isAdminUser() || isAllowlistedAdminEmail());
 }
 
 function getCurrentUserEmail() {
@@ -7368,7 +7526,7 @@ function renderVisitorCount() {
   if (!visitorCountEl) {
     return;
   }
-  const show = Boolean(state.session?.user) && isAdminUser();
+  const show = Boolean(state.session?.user) && hasResultAdminAccess();
   visitorCountEl.classList.toggle("hidden", !show);
   if (!show) {
     visitorCountEl.textContent = "";
