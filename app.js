@@ -3792,6 +3792,14 @@ function renderNow() {
   }
   if (showPredict) {
     if (signedIn) {
+      if (!state.activeLeagueId) {
+        const globalLeague = getGlobalLeagueFromState();
+        const fallbackLeagueId = globalLeague?.id || state.leagues?.[0]?.id || "";
+        if (fallbackLeagueId) {
+          state.activeLeagueId = fallbackLeagueId;
+          loadActiveLeagueData(true).then(() => render());
+        }
+      }
       if (fixturesListEl) fixturesListEl.classList.remove("hidden");
       renderFixtures();
       renderAdminScorePanel();
@@ -5195,7 +5203,6 @@ function getNextPendingResultFixture() {
 }
 
 function getAdminResultFixtureOptions() {
-  const now = Date.now();
   const mergedSource = [
     ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
     ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : []),
@@ -5212,20 +5219,6 @@ function getAdminResultFixtureOptions() {
   ];
   const base = mergedSource
     .filter((fixture) => fixture?.id)
-    .filter((fixture) => {
-      const kickoffTs = new Date(fixture.kickoff).getTime();
-      const createdTs = new Date(fixture.created_at || 0).getTime();
-      if (fixture.result) {
-        return true;
-      }
-      if (Number.isFinite(kickoffTs) && kickoffTs <= now) {
-        return true;
-      }
-      if (Number.isFinite(createdTs) && createdTs <= now) {
-        return true;
-      }
-      return false;
-    })
     .slice();
 
   const byMatch = new Map();
@@ -5321,7 +5314,11 @@ function renderAdminScorePanel() {
       const now = Date.now();
       if (now - Number(state.adminResultFixturesLastRetryAt || 0) > 10000) {
         state.adminResultFixturesLastRetryAt = now;
-        loadAdminResultFixtures(true).then(() => render());
+        Promise.allSettled([
+          loadActiveLeagueData(true),
+          loadAdminResultFixtures(true),
+          loadPastGamesForUser({ force: true })
+        ]).then(() => render());
       }
     }
     const status = document.createElement("p");
