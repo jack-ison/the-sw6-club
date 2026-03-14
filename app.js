@@ -2979,6 +2979,17 @@ async function loadAdminResultFixtures(force = false) {
   if (mappedFallbackRows.some((row) => row?.result)) {
     state.adminResultFixtures = mappedFallbackRows;
   } else {
+    if (isAllowlistedAdminEmail() && state.leagues.length === 0) {
+      await ensureGlobalLeagueMembership();
+      await loadLeaguesForUser();
+      if (!state.activeLeagueId) {
+        const globalLeague = getGlobalLeagueFromState();
+        state.activeLeagueId = globalLeague?.id || state.leagues?.[0]?.id || null;
+      }
+      if (state.activeLeagueId) {
+        await loadActiveLeagueData(true);
+      }
+    }
     const fromActiveLeague = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
       .filter((fixture) => fixture?.id)
       .map((fixture) => ({
@@ -3711,6 +3722,9 @@ function renderNow() {
   const signedIn = isConnected && Boolean(state.isAuthed && state.user);
   const authReady = state.authResolved || !isConnected;
   const cardsEnabled = FEATURE_CARDS_ENABLED;
+  if (signedIn && authReady && state.leagues.length === 0 && !reloadAuthedDataPromise) {
+    reloadAuthedData().then(() => render());
+  }
   if (!signedIn && authReady && state.topView !== "predict") {
     state.topView = "predict";
     state.resultsTab = "fixtures";
@@ -5329,11 +5343,6 @@ function renderAdminScorePanel() {
     status.className = "admin-score-meta";
     status.textContent = "No past fixtures available yet. Retrying admin result feed...";
     adminScorePanelEl.appendChild(status);
-    const debug = document.createElement("p");
-    debug.className = "admin-score-meta";
-    debug.textContent =
-      `Debug: admin fixtures ${state.adminResultFixtures.length}, active league fixtures ${state.activeLeagueFixtures.length}, past games ${state.pastGamesRows.length}`;
-    adminScorePanelEl.appendChild(debug);
     return;
   }
 
