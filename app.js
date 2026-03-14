@@ -2971,7 +2971,27 @@ async function loadAdminResultFixtures(force = false) {
   const fallbackRows = [...mergedByFixtureId.values()].sort(
     (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
   );
-  state.adminResultFixtures = mapRows(fallbackRows);
+  const mappedFallbackRows = mapRows(fallbackRows);
+  if (mappedFallbackRows.some((row) => row?.result)) {
+    state.adminResultFixtures = mappedFallbackRows;
+  } else {
+    const fromActiveLeague = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
+      .filter((fixture) => fixture?.id)
+      .map((fixture) => ({
+        id: fixture.id,
+        league_id: fixture.league_id,
+        kickoff: fixture.kickoff,
+        opponent: fixture.opponent,
+        competition: fixture.competition,
+        created_at: fixture.created_at,
+        chelsea_goals: fixture.result?.chelsea_goals ?? null,
+        opponent_goals: fixture.result?.opponent_goals ?? null,
+        first_scorer: fixture.result?.first_scorer ?? null,
+        chelsea_scorers: fixture.result?.chelsea_scorers ?? "",
+        saved_at: fixture.result?.saved_at ?? null
+      }));
+    state.adminResultFixtures = mapRows(fromActiveLeague);
+  }
   state.adminResultFixturesLoaded = true;
 }
 
@@ -5178,11 +5198,34 @@ function getAdminResultFixtureOptions() {
   const now = Date.now();
   const mergedSource = [
     ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
-    ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : [])
+    ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : []),
+    ...(Array.isArray(state.pastGamesRows) ? state.pastGamesRows.map((row) => ({
+      id: row?.fixture?.id,
+      league_id: row?.fixture?.league_id || null,
+      kickoff: row?.fixture?.kickoff,
+      opponent: row?.fixture?.opponent,
+      competition: row?.fixture?.competition,
+      created_at: row?.prediction?.submitted_at || null,
+      result: row?.result || null,
+      predictions: []
+    })) : [])
   ];
   const base = mergedSource
-    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
-    .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
+    .filter((fixture) => fixture?.id)
+    .filter((fixture) => {
+      const kickoffTs = new Date(fixture.kickoff).getTime();
+      const createdTs = new Date(fixture.created_at || 0).getTime();
+      if (fixture.result) {
+        return true;
+      }
+      if (Number.isFinite(kickoffTs) && kickoffTs <= now) {
+        return true;
+      }
+      if (Number.isFinite(createdTs) && createdTs <= now) {
+        return true;
+      }
+      return false;
+    })
     .slice();
 
   const byMatch = new Map();
@@ -5203,7 +5246,11 @@ function getAdminResultFixtureOptions() {
       if (aNeedsResult !== bNeedsResult) {
         return aNeedsResult ? -1 : 1;
       }
-      return new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime();
+      const bKickoff = new Date(b.kickoff).getTime();
+      const aKickoff = new Date(a.kickoff).getTime();
+      const bCreated = new Date(b.created_at || 0).getTime();
+      const aCreated = new Date(a.created_at || 0).getTime();
+      return (Number.isFinite(bKickoff) ? bKickoff : bCreated) - (Number.isFinite(aKickoff) ? aKickoff : aCreated);
     });
 }
 
