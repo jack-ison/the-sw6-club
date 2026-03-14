@@ -136,63 +136,7 @@
             </div>
           </div>
           <div id="league-auth-content">
-          <div class="league-forms">
-            <form id="create-league-form" class="mini-form">
-              <h3>Create League</h3>
-              <label class="field-slot">
-                League type
-                <select id="league-visibility-input" required>
-                  <option value="public">Public</option>
-                  <option value="private">Private</option>
-                </select>
-              </label>
-              <label class="field-slot">
-                League name
-                <input id="league-name-input" type="text" required />
-              </label>
-              <label id="league-password-wrap" class="field-slot inactive">
-                Private league password
-                <input id="league-password-input" type="password" minlength="6" placeholder="Minimum 6 characters" />
-              </label>
-              <button type="submit">Create</button>
-            </form>
-
-            <form id="join-league-form" class="mini-form">
-              <h3>Join League</h3>
-              <label class="field-slot">
-                Join mode
-                <select id="join-mode-input" required>
-                  <option value="public">Public (League code)</option>
-                  <option value="private">Private (Name + Password)</option>
-                </select>
-              </label>
-              <label id="join-code-wrap" class="field-slot">
-                League code
-                <input id="join-code-input" type="text" placeholder="e.g., SW6A7KQ9" />
-              </label>
-              <label id="join-private-name-wrap" class="field-slot inactive">
-                Private league name
-                <input id="join-private-name-input" type="text" placeholder="Exact league name" />
-              </label>
-              <label id="join-private-password-wrap" class="field-slot inactive">
-                Private league password
-                <input id="join-private-password-input" type="password" placeholder="Password" />
-              </label>
-              <button type="submit">Join</button>
-            </form>
-          </div>
-
-          <div class="league-meta">
-            <label>
-              Active league
-              <select id="league-select"></select>
-            </label>
-            <div class="league-meta-actions">
-              <p id="league-meta-note" class="status no-margin hidden">Global League is open to all signed-in users.</p>
-              <button id="copy-code-btn" type="button" class="ghost-btn">Copy code</button>
-              <button id="copy-invite-link-btn" type="button" class="ghost-btn">Copy invite link</button>
-            </div>
-          </div>
+          <p class="status no-margin">League creation and joining are temporarily paused. All scoring is tracked in the Global League.</p>
 
           <div class="dashboard-grid dashboard-grid-single">
             <article class="subpanel">

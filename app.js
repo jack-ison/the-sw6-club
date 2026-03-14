@@ -288,6 +288,7 @@ const state = {
   adminLeagues: [],
   adminResultFixtures: [],
   adminResultFixturesLoaded: false,
+  adminResultFixturesLastRetryAt: 0,
   adminResultFixtureId: "",
   cardDeepLinkId: "",
   pendingJoinCode: "",
@@ -3671,6 +3672,11 @@ function renderNow() {
     renderTopScorers();
   }
   if (showLeagues) {
+    const globalLeague = getGlobalLeagueFromState();
+    if (globalLeague && state.activeLeagueId !== globalLeague.id) {
+      state.activeLeagueId = globalLeague.id;
+      loadActiveLeagueData(true).then(() => render());
+    }
     if (!state.overallLeaderboardLoaded) {
       ensureOverallLeaderboardLoaded().then(render);
     }
@@ -3710,6 +3716,7 @@ function renderNow() {
   if (signedIn) {
     if (showLeagues) {
       renderLeagueSelect();
+      loadLeagueLastGameBreakdown(state.activeLeagueId, { background: true }).then(() => render());
       renderOverallLeaderboard();
     }
   }
@@ -4119,11 +4126,39 @@ function renderOverallLeaderboard() {
         row.avatar_url,
         Boolean(row.has_prediction)
       );
+      const breakdown = state.leagueLastGameBreakdownByUser?.[row.user_id] || null;
+      if (breakdown) {
+        left.classList.add("leader-identity-clickable");
+        left.setAttribute("role", "button");
+        left.setAttribute("tabindex", "0");
+        left.setAttribute("aria-expanded", String(state.expandedLeaderboardUserId === row.user_id));
+        const hint = document.createElement("span");
+        hint.className = "leader-breakdown-toggle";
+        hint.textContent = state.expandedLeaderboardUserId === row.user_id ? "▲" : "▼";
+        left.appendChild(hint);
+        const toggle = () => {
+          state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
+          render();
+        };
+        left.addEventListener("click", toggle);
+        left.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggle();
+          }
+        });
+      }
       li.appendChild(left);
       const pts = document.createElement("span");
       pts.className = "leader-points";
       pts.textContent = `${row.points || 0} pts`;
       li.appendChild(pts);
+      if (breakdown && state.expandedLeaderboardUserId === row.user_id) {
+        const drop = document.createElement("div");
+        drop.className = "leader-breakdown";
+        drop.textContent = formatLeaderboardBreakdown(breakdown);
+        li.appendChild(drop);
+      }
       overallLeaderboardEl.appendChild(li);
     });
   }
@@ -4132,6 +4167,22 @@ function renderOverallLeaderboard() {
   overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus
     ? `${state.overallLeaderboardStatus} | ${trustMeta}`
     : trustMeta;
+}
+
+function formatLeaderboardBreakdown(row) {
+  const parts = [];
+  parts.push(`Last game: Chelsea ${row.actual_chelsea_goals}-${row.actual_opponent_goals} ${row.opponent}`);
+  if (row.did_submit) {
+    parts.push(`Prediction: ${row.predicted_chelsea_goals}-${row.predicted_opponent_goals}`);
+    parts.push(`Predicted first Chelsea scorer: ${row.predicted_first_scorer || "None / not selected"}`);
+    parts.push(`Actual first Chelsea scorer: ${row.actual_first_scorer || "Unknown"}`);
+    parts.push(
+      `Points: ${row.points} (Score ${row.exact_score_points}, Result ${row.result_points}, Chelsea goals ${row.chelsea_goals_points}, Opponent goals ${row.opponent_goals_points}, Scorers ${row.goalscorer_points}, First scorer ${row.first_scorer_points}, Bonus ${row.perfect_bonus_points})`
+    );
+  } else {
+    parts.push("No prediction submitted for this game.");
+  }
+  return parts.join(" | ");
 }
 
 function renderNavigation() {
@@ -5166,12 +5217,16 @@ function renderAdminScorePanel() {
   }
 
   if (options.length === 0) {
-    if (isAdminUser() && state.client && !state.adminResultFixturesLoaded) {
-      loadAdminResultFixtures(true).then(() => render());
+    if (isAdminUser() && state.client) {
+      const now = Date.now();
+      if (now - Number(state.adminResultFixturesLastRetryAt || 0) > 10000) {
+        state.adminResultFixturesLastRetryAt = now;
+        loadAdminResultFixtures(true).then(() => render());
+      }
     }
     const status = document.createElement("p");
     status.className = "admin-score-meta";
-    status.textContent = "No past fixtures available yet.";
+    status.textContent = "No past fixtures available yet. Retrying admin result feed...";
     adminScorePanelEl.appendChild(status);
     return;
   }
