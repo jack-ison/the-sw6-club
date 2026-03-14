@@ -1590,6 +1590,11 @@ async function loadAdminAccess(force = false) {
     return;
   }
   if (isAllowlistedAdminEmail()) {
+    try {
+      await state.client.rpc("bootstrap_admin_self");
+    } catch {
+      // Keep allowlisted admin UX even if bootstrap function is not deployed yet.
+    }
     state.isAdmin = true;
     return;
   }
