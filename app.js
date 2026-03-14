@@ -2867,14 +2867,7 @@ async function loadAdminResultFixtures(force = false) {
   if (!force && state.adminResultFixturesLoaded) {
     return;
   }
-  const { data, error } = await state.client.rpc("admin_list_result_fixtures");
-  if (error) {
-    console.warn("admin_list_result_fixtures failed:", error.message);
-    state.adminResultFixturesLoaded = true;
-    return;
-  }
-  const rows = Array.isArray(data) ? data : [];
-  state.adminResultFixtures = rows.map((row) => ({
+  const mapRows = (rows) => (Array.isArray(rows) ? rows : []).map((row) => ({
     id: row.id,
     league_id: row.league_id,
     kickoff: row.kickoff,
@@ -2888,11 +2881,50 @@ async function loadAdminResultFixtures(force = false) {
             chelsea_goals: row.chelsea_goals,
             opponent_goals: row.opponent_goals,
             first_scorer: row.first_scorer,
-            chelsea_scorers: row.chelsea_scorers,
+            chelsea_scorers: row.chelsea_scorers || "",
             saved_at: row.saved_at
           },
     predictions: []
   }));
+
+  const { data, error } = await state.client.rpc("admin_list_result_fixtures");
+  if (!error) {
+    state.adminResultFixtures = mapRows(data);
+    state.adminResultFixturesLoaded = true;
+    return;
+  }
+
+  console.warn("admin_list_result_fixtures failed, using fallback:", error.message);
+  const fallback = await state.client
+    .from("fixtures")
+    .select(
+      "id, league_id, kickoff, opponent, competition, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
+    )
+    .lte("kickoff", new Date().toISOString())
+    .order("kickoff", { ascending: false })
+    .limit(250);
+
+  if (fallback.error) {
+    console.warn("fallback admin result query failed:", fallback.error.message);
+    state.adminResultFixtures = [];
+    state.adminResultFixturesLoaded = true;
+    return;
+  }
+
+  const fallbackRows = (fallback.data || []).map((fixture) => ({
+    id: fixture.id,
+    league_id: fixture.league_id,
+    kickoff: fixture.kickoff,
+    opponent: fixture.opponent,
+    competition: fixture.competition,
+    created_at: fixture.created_at,
+    chelsea_goals: fixture.results?.[0]?.chelsea_goals ?? null,
+    opponent_goals: fixture.results?.[0]?.opponent_goals ?? null,
+    first_scorer: fixture.results?.[0]?.first_scorer ?? null,
+    chelsea_scorers: fixture.results?.[0]?.chelsea_scorers ?? "",
+    saved_at: fixture.results?.[0]?.saved_at ?? null
+  }));
+  state.adminResultFixtures = mapRows(fallbackRows);
   state.adminResultFixturesLoaded = true;
 }
 
@@ -4453,33 +4485,8 @@ function renderAdminConsole() {
     return;
   }
   ensureAdminConsoleMounted();
-  if (!adminConsoleEl || !adminLeagueListEl || !adminResultListEl) {
+  if (!adminConsoleEl || !adminResultListEl) {
     return;
-  }
-
-  adminLeagueListEl.textContent = "";
-  if (state.adminLeagues.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty-state";
-    li.textContent = "No leagues found.";
-    adminLeagueListEl.appendChild(li);
-  } else {
-    state.adminLeagues.forEach((league) => {
-      const li = document.createElement("li");
-      li.className = "admin-league-item";
-      const meta = document.createElement("span");
-      const visibility = league.is_public ? "Public" : "Private";
-      meta.textContent = `${league.name} (${visibility} • ${league.code})`;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "danger-btn";
-      btn.dataset.leagueId = league.id;
-      btn.dataset.leagueName = league.name;
-      btn.textContent = "Delete league";
-      li.appendChild(meta);
-      li.appendChild(btn);
-      adminLeagueListEl.appendChild(li);
-    });
   }
 
   adminResultListEl.textContent = "";
@@ -4547,7 +4554,7 @@ function renderAdminConsole() {
 }
 
 function ensureAdminConsoleMounted() {
-  if (adminConsoleEl && adminLeagueListEl) {
+  if (adminConsoleEl && adminResultListEl) {
     return;
   }
   const parent = predictViewEl;
@@ -4558,9 +4565,7 @@ function ensureAdminConsoleMounted() {
   if (existing) {
     adminConsoleEl = existing;
     adminLeagueListEl = existing.querySelector("#admin-league-list");
-    if (adminLeagueListEl) {
-      adminLeagueListEl.addEventListener("click", onAdminLeagueListClick);
-    }
+    adminResultListEl = existing.querySelector("#admin-result-list");
     return;
   }
 
@@ -4569,14 +4574,10 @@ function ensureAdminConsoleMounted() {
   section.className = "subpanel";
 
   const h3 = document.createElement("h3");
-  h3.textContent = "Admin Console";
+  h3.textContent = "Admin Results";
   const note = document.createElement("p");
   note.className = "status no-margin";
-  note.textContent = "Visible only to the configured admin account.";
-  const list = document.createElement("ul");
-  list.id = "admin-league-list";
-  list.className = "prediction-list";
-  list.addEventListener("click", onAdminLeagueListClick);
+  note.textContent = "Visible only to the configured admin account. Edit or remove saved match results below.";
   const resultsHeading = document.createElement("h4");
   resultsHeading.textContent = "Past Results (Admin)";
   resultsHeading.className = "no-margin";
@@ -4587,7 +4588,6 @@ function ensureAdminConsoleMounted() {
 
   section.appendChild(h3);
   section.appendChild(note);
-  section.appendChild(list);
   section.appendChild(resultsHeading);
   section.appendChild(resultsList);
 
@@ -4601,7 +4601,7 @@ function ensureAdminConsoleMounted() {
     parent.appendChild(section);
   }
   adminConsoleEl = section;
-  adminLeagueListEl = list;
+  adminLeagueListEl = null;
   adminResultListEl = resultsList;
 }
 
