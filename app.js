@@ -771,7 +771,7 @@ function runPostAuthWarmup() {
       runTopViewEnterEffects()
     ]);
     await loadAdminAccess();
-    if (isAdminUser()) {
+    if (isAdminUser() || isAllowlistedAdminEmail()) {
       await loadAdminLeagues();
       await loadAdminResultFixtures();
     }
@@ -1733,7 +1733,7 @@ async function reloadAuthedData() {
   }
   state.pastGamesLoaded = false;
 
-  if (isAdminUser()) {
+  if (isAdminUser() || isAllowlistedAdminEmail()) {
     await loadAdminLeagues();
     await loadAdminResultFixtures(true);
   }
@@ -2860,7 +2860,8 @@ async function loadAdminLeagues() {
 }
 
 async function loadAdminResultFixtures(force = false) {
-  if (!state.client || !isAdminUser()) {
+  const adminAllowed = isAdminUser() || isAllowlistedAdminEmail();
+  if (!state.client || !adminAllowed) {
     state.adminResultFixtures = [];
     state.adminResultFixturesLoaded = false;
     return;
@@ -2896,35 +2897,80 @@ async function loadAdminResultFixtures(force = false) {
   }
 
   console.warn("admin_list_result_fixtures failed, using fallback:", error.message);
-  const fallback = await state.client
+  const resultsFallback = await state.client
+    .from("results")
+    .select("fixture_id, chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at")
+    .order("saved_at", { ascending: false })
+    .limit(400);
+
+  const resultRows = Array.isArray(resultsFallback.data) ? resultsFallback.data : [];
+  const resultFixtureIds = [...new Set(resultRows.map((row) => row.fixture_id).filter(Boolean))];
+
+  let fixtureById = new Map();
+  if (resultFixtureIds.length > 0) {
+    const fixturesForResults = await state.client
+      .from("fixtures")
+      .select("id, league_id, kickoff, opponent, competition, created_at")
+      .in("id", resultFixtureIds);
+    if (!fixturesForResults.error && Array.isArray(fixturesForResults.data)) {
+      fixtureById = new Map(fixturesForResults.data.map((row) => [row.id, row]));
+    }
+  }
+
+  const pastFixturesFallback = await state.client
     .from("fixtures")
-    .select(
-      "id, league_id, kickoff, opponent, competition, created_at, results(chelsea_goals, opponent_goals, first_scorer, chelsea_scorers, saved_at)"
-    )
+    .select("id, league_id, kickoff, opponent, competition, created_at")
     .lte("kickoff", new Date().toISOString())
     .order("kickoff", { ascending: false })
-    .limit(250);
+    .limit(400);
 
-  if (fallback.error) {
-    console.warn("fallback admin result query failed:", fallback.error.message);
+  if (resultsFallback.error && pastFixturesFallback.error) {
+    console.warn("fallback admin result query failed:", resultsFallback.error?.message || pastFixturesFallback.error?.message);
     state.adminResultFixtures = [];
     state.adminResultFixturesLoaded = true;
     return;
   }
 
-  const fallbackRows = (fallback.data || []).map((fixture) => ({
-    id: fixture.id,
-    league_id: fixture.league_id,
-    kickoff: fixture.kickoff,
-    opponent: fixture.opponent,
-    competition: fixture.competition,
-    created_at: fixture.created_at,
-    chelsea_goals: fixture.results?.[0]?.chelsea_goals ?? null,
-    opponent_goals: fixture.results?.[0]?.opponent_goals ?? null,
-    first_scorer: fixture.results?.[0]?.first_scorer ?? null,
-    chelsea_scorers: fixture.results?.[0]?.chelsea_scorers ?? "",
-    saved_at: fixture.results?.[0]?.saved_at ?? null
-  }));
+  const mergedByFixtureId = new Map();
+  (Array.isArray(pastFixturesFallback.data) ? pastFixturesFallback.data : []).forEach((fixture) => {
+    mergedByFixtureId.set(fixture.id, {
+      id: fixture.id,
+      league_id: fixture.league_id,
+      kickoff: fixture.kickoff,
+      opponent: fixture.opponent,
+      competition: fixture.competition,
+      created_at: fixture.created_at,
+      chelsea_goals: null,
+      opponent_goals: null,
+      first_scorer: null,
+      chelsea_scorers: "",
+      saved_at: null
+    });
+  });
+
+  resultRows.forEach((result) => {
+    const fixture = fixtureById.get(result.fixture_id);
+    if (!fixture) {
+      return;
+    }
+    mergedByFixtureId.set(fixture.id, {
+      id: fixture.id,
+      league_id: fixture.league_id,
+      kickoff: fixture.kickoff,
+      opponent: fixture.opponent,
+      competition: fixture.competition,
+      created_at: fixture.created_at,
+      chelsea_goals: result.chelsea_goals,
+      opponent_goals: result.opponent_goals,
+      first_scorer: result.first_scorer,
+      chelsea_scorers: result.chelsea_scorers || "",
+      saved_at: result.saved_at
+    });
+  });
+
+  const fallbackRows = [...mergedByFixtureId.values()].sort(
+    (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
+  );
   state.adminResultFixtures = mapRows(fallbackRows);
   state.adminResultFixturesLoaded = true;
 }
@@ -3693,7 +3739,8 @@ function renderNow() {
   renderAuthGatedSections({ signedIn, authResolved: state.authResolved || !isConnected, cardsEnabled });
   renderSignedOutPredictPreview({ signedIn });
   renderConfigErrorBanner();
-  if (!signedIn || !isAdminUser()) {
+  const adminVisible = signedIn && (isAdminUser() || isAllowlistedAdminEmail());
+  if (!adminVisible) {
     removeAdminConsole();
   } else if (showPredict) {
     renderAdminConsole();
@@ -3716,7 +3763,10 @@ function renderNow() {
   if (signedIn) {
     if (showLeagues) {
       renderLeagueSelect();
-      loadLeagueLastGameBreakdown(state.activeLeagueId, { background: true }).then(() => render());
+      const targetLeagueId = state.activeLeagueId || getGlobalLeagueFromState()?.id || "";
+      if (targetLeagueId) {
+        loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
+      }
       renderOverallLeaderboard();
     }
   }
@@ -4530,7 +4580,10 @@ function renderLeagueSelect() {
 }
 
 function renderAdminConsole() {
-  const show = Boolean(state.session?.user) && isAdminUser() && state.topView === "predict";
+  const show =
+    Boolean(state.session?.user) &&
+    (isAdminUser() || isAllowlistedAdminEmail()) &&
+    state.topView === "predict";
   if (!show) {
     removeAdminConsole();
     return;
