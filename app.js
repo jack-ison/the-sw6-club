@@ -3138,7 +3138,7 @@ async function loadAdminResultFixtures(force = false) {
 
   if (resultsFallback.error && pastFixturesFallback.error) {
     console.warn("fallback admin result query failed:", resultsFallback.error?.message || pastFixturesFallback.error?.message);
-    state.adminResultFixtures = [];
+    state.adminResultFixtures = getScheduleAdminFallbackFixtures();
     state.adminResultFixturesLoaded = true;
     return;
   }
@@ -3213,7 +3213,11 @@ async function loadAdminResultFixtures(force = false) {
         chelsea_scorers: fixture.result?.chelsea_scorers ?? "",
         saved_at: fixture.result?.saved_at ?? null
       }));
-    state.adminResultFixtures = mapRows(fromActiveLeague);
+    if (fromActiveLeague.length > 0) {
+      state.adminResultFixtures = mapRows(fromActiveLeague);
+    } else {
+      state.adminResultFixtures = getScheduleAdminFallbackFixtures();
+    }
   }
   state.adminResultFixturesLoaded = true;
 }
@@ -5601,13 +5605,15 @@ function getAdminResultFixtureOptions() {
     }
   });
 
-  return [...byMatch.values()]
-    .filter((fixture) => {
-      const kickoffMs = new Date(fixture.kickoff).getTime();
-      const isPastOrNow = Number.isFinite(kickoffMs) ? kickoffMs <= Date.now() : false;
-      return isPastOrNow || Boolean(fixture.result);
-    })
-    .sort((a, b) => {
+  const allOptions = [...byMatch.values()];
+  const filteredPastOrScored = allOptions.filter((fixture) => {
+    const kickoffMs = new Date(fixture.kickoff).getTime();
+    const isPastOrNow = Number.isFinite(kickoffMs) ? kickoffMs <= Date.now() : false;
+    return isPastOrNow || Boolean(fixture.result);
+  });
+  const source = filteredPastOrScored.length > 0 ? filteredPastOrScored : allOptions;
+
+  return source.sort((a, b) => {
       const now = Date.now();
       const aKickoffMs = new Date(a.kickoff).getTime();
       const bKickoffMs = new Date(b.kickoff).getTime();
