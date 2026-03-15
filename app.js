@@ -273,6 +273,7 @@ const state = {
   pastGamesRows: [],
   pastGamesLoaded: false,
   scorerCompetition: "all",
+  leagueCompetitionFilter: "all",
   scorerDataByCompetition: cloneCompetitionDataMap(FALLBACK_TOP_SCORERS_BY_COMPETITION),
   leaderboardScope: "global",
   accountMenuOpen: false,
@@ -409,6 +410,9 @@ const statsUclTabBtn = document.getElementById("stats-ucl-tab");
 const statsFaTabBtn = document.getElementById("stats-fa-tab");
 const overallLeaderboardEl = document.getElementById("overall-leaderboard");
 const overallLeaderboardStatusEl = document.getElementById("overall-leaderboard-status");
+const leagueCompetitionFilterEl = document.getElementById("league-competition-filter");
+const leagueFixtureStatusEl = document.getElementById("league-fixture-status");
+const leagueFixtureListEl = document.getElementById("league-fixture-list");
 const pastGamesListEl = document.getElementById("past-games-list");
 const pastGamesStatusEl = document.getElementById("past-games-status");
 const profileEditShellEl = document.getElementById("profile-edit-shell");
@@ -512,6 +516,11 @@ if (statsAllTabBtn) statsAllTabBtn.addEventListener("click", () => setScorerComp
 if (statsPlTabBtn) statsPlTabBtn.addEventListener("click", () => setScorerCompetition("premier_league"));
 if (statsUclTabBtn) statsUclTabBtn.addEventListener("click", () => setScorerCompetition("champions_league"));
 if (statsFaTabBtn) statsFaTabBtn.addEventListener("click", () => setScorerCompetition("fa_cup"));
+if (leagueCompetitionFilterEl) {
+  leagueCompetitionFilterEl.addEventListener("change", (event) => {
+    setLeagueCompetitionFilter(event.target.value || "all");
+  });
+}
 if (upcomingToggleBtn) upcomingToggleBtn.addEventListener("click", () => {
   state.showAllUpcoming = !state.showAllUpcoming;
   renderUpcomingFixtures();
@@ -957,6 +966,14 @@ function setScorerCompetition(competition) {
   state.scorerCompetition = SCORER_COMPETITION_KEYS.includes(competition) ? competition : "all";
   renderTopScorers();
   renderNavigation();
+}
+
+function setLeagueCompetitionFilter(filter) {
+  state.leagueCompetitionFilter = ["all", "premier_league", "champions_league", "fa_cup"].includes(filter)
+    ? filter
+    : "all";
+  renderOverallLeaderboard();
+  renderLeagueFixturesPreview();
 }
 
 function setCardsFixtureFilter(filter) {
@@ -3899,6 +3916,7 @@ function refreshVisibleSectionsFast() {
   if (state.topView === "leagues") {
     renderLeagueSelect();
     renderOverallLeaderboard();
+    renderLeagueFixturesPreview();
   }
   if (state.topView === "results") {
     if (state.resultsTab === "fixtures") renderUpcomingFixtures();
@@ -3980,6 +3998,7 @@ function renderNow() {
       ensureOverallLeaderboardLoaded().then(render);
     }
     renderOverallLeaderboard();
+    renderLeagueFixturesPreview();
   }
   if (showForum) {
     renderForumPanel();
@@ -4021,6 +4040,7 @@ function renderNow() {
         loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
       }
       renderOverallLeaderboard();
+      renderLeagueFixturesPreview();
     }
   }
   if (showPredict) {
@@ -4423,16 +4443,129 @@ function getSubmittedUserIdsForNextFixture() {
   return new Set(predictions.map((row) => row?.user_id).filter(Boolean));
 }
 
+function matchesLeagueCompetitionFilter(competition, filter = state.leagueCompetitionFilter) {
+  if (filter === "all") {
+    return true;
+  }
+  const value = String(competition || "").toLowerCase();
+  if (filter === "premier_league") {
+    return value.includes("premier league");
+  }
+  if (filter === "champions_league") {
+    return value.includes("champions league");
+  }
+  if (filter === "fa_cup") {
+    return value.includes("fa cup");
+  }
+  return true;
+}
+
+function getLeagueCompetitionFilterLabel(filter = state.leagueCompetitionFilter) {
+  if (filter === "premier_league") return "Premier League";
+  if (filter === "champions_league") return "Champions League";
+  if (filter === "fa_cup") return "FA Cup";
+  return "All competitions";
+}
+
+function renderLeagueFixturesPreview() {
+  if (!leagueFixtureListEl || !leagueFixtureStatusEl) {
+    return;
+  }
+  if (leagueCompetitionFilterEl) {
+    leagueCompetitionFilterEl.value = ["all", "premier_league", "champions_league", "fa_cup"].includes(state.leagueCompetitionFilter)
+      ? state.leagueCompetitionFilter
+      : "all";
+  }
+  leagueFixtureListEl.textContent = "";
+  const fixtures = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
+    .filter((fixture) => matchesLeagueCompetitionFilter(fixture?.competition))
+    .slice()
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+
+  if (fixtures.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty-state";
+    li.textContent = `No fixtures in ${getLeagueCompetitionFilterLabel()} yet.`;
+    leagueFixtureListEl.appendChild(li);
+    leagueFixtureStatusEl.textContent = "Switch competition to view more fixtures.";
+    return;
+  }
+
+  fixtures.slice(0, 20).forEach((fixture) => {
+    const li = document.createElement("li");
+    const hasResult = Boolean(fixture?.result);
+    const scorePart = hasResult
+      ? `Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent}`
+      : `Chelsea vs ${fixture.opponent}`;
+    li.textContent = `${formatKickoff(fixture.kickoff)} | ${scorePart} (${fixture.competition})`;
+    leagueFixtureListEl.appendChild(li);
+  });
+  leagueFixtureStatusEl.textContent = `${getLeagueCompetitionFilterLabel()} fixtures shown (${Math.min(20, fixtures.length)} of ${fixtures.length}).`;
+}
+
+function getCompetitionFilteredLeaderboardRows() {
+  const members = Array.isArray(state.activeLeagueMembers) ? state.activeLeagueMembers : [];
+  const fixtures = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
+    .filter((fixture) => fixture?.result && matchesLeagueCompetitionFilter(fixture?.competition));
+
+  const byUser = new Map();
+  members.forEach((member) => {
+    if (!member?.user_id) return;
+    byUser.set(member.user_id, {
+      user_id: member.user_id,
+      display_name: member.display_name || "Player",
+      country_code: member.country_code || "GB",
+      avatar_url: member.avatar_url || "",
+      points: 0
+    });
+  });
+
+  fixtures.forEach((fixture) => {
+    const predictions = Array.isArray(fixture.predictions) ? fixture.predictions : [];
+    predictions.forEach((prediction) => {
+      if (!prediction?.user_id) return;
+      const existing = byUser.get(prediction.user_id) || {
+        user_id: prediction.user_id,
+        display_name: "Player",
+        country_code: "GB",
+        avatar_url: "",
+        points: 0
+      };
+      const detail = scorePrediction(prediction, fixture.result);
+      existing.points = Number(existing.points || 0) + Number(detail.points || 0);
+      byUser.set(prediction.user_id, existing);
+    });
+  });
+
+  return [...byUser.values()]
+    .sort((a, b) => {
+      const diff = Number(b.points || 0) - Number(a.points || 0);
+      if (diff !== 0) return diff;
+      return String(a.display_name || "").localeCompare(String(b.display_name || ""), undefined, { sensitivity: "base" });
+    })
+    .slice(0, 10);
+}
+
 function renderOverallLeaderboard() {
   if (!overallLeaderboardEl || !overallLeaderboardStatusEl) {
     return;
   }
 
+  if (leagueCompetitionFilterEl) {
+    leagueCompetitionFilterEl.value = ["all", "premier_league", "champions_league", "fa_cup"].includes(state.leagueCompetitionFilter)
+      ? state.leagueCompetitionFilter
+      : "all";
+  }
+
+  const isAllCompetitions = state.leagueCompetitionFilter === "all";
+  const leaderboardRows = isAllCompetitions ? state.overallLeaderboard : getCompetitionFilteredLeaderboardRows();
   overallLeaderboardEl.textContent = "";
-  if (state.overallLeaderboard.length === 0) {
+  if (leaderboardRows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No players ranked yet. Rankings appear after the first completed match.";
+    li.textContent = isAllCompetitions
+      ? "No players ranked yet. Rankings appear after the first completed match."
+      : `No players ranked yet for ${getLeagueCompetitionFilterLabel()}.`;
     const cta = document.createElement("button");
     cta.type = "button";
     cta.className = "ghost-btn";
@@ -4442,7 +4575,7 @@ function renderOverallLeaderboard() {
     overallLeaderboardEl.appendChild(li);
   } else {
     const submittedForNextFixture = getSubmittedUserIdsForNextFixture();
-    state.overallLeaderboard.forEach((row, index) => {
+    leaderboardRows.forEach((row, index) => {
       const li = document.createElement("li");
       const left = createLeaderboardIdentity(
         index,
@@ -4489,8 +4622,11 @@ function renderOverallLeaderboard() {
   }
 
   const trustMeta = getLeaderboardTrustMeta();
-  overallLeaderboardStatusEl.textContent = state.overallLeaderboardStatus
-    ? `${state.overallLeaderboardStatus} | ${trustMeta}`
+  const baseStatus = isAllCompetitions
+    ? state.overallLeaderboardStatus
+    : `Top players in ${getLeagueCompetitionFilterLabel()}.`;
+  overallLeaderboardStatusEl.textContent = baseStatus
+    ? `${baseStatus} | ${trustMeta}`
     : trustMeta;
 }
 
@@ -4836,6 +4972,9 @@ function renderTopScorers() {
 }
 
 function renderLeagueSelect() {
+  if (!leagueSelect) {
+    return;
+  }
   leagueSelect.textContent = "";
   if (state.leagues.length === 0) {
     const option = document.createElement("option");

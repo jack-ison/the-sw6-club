@@ -137,6 +137,15 @@
           </div>
           <div id="league-auth-content">
           <p class="status no-margin">League creation and joining are temporarily paused. All scoring is tracked in the Global League.</p>
+          <div class="league-competition-filter-row">
+            <label for="league-competition-filter">Competition</label>
+            <select id="league-competition-filter">
+              <option value="all">All competitions</option>
+              <option value="premier_league">Premier League</option>
+              <option value="champions_league">Champions League</option>
+              <option value="fa_cup">FA Cup</option>
+            </select>
+          </div>
 
           <div class="dashboard-grid dashboard-grid-single">
             <article class="subpanel">
@@ -144,6 +153,11 @@
               <p class="status no-margin">One shared league table across all users.</p>
               <ul id="overall-leaderboard" class="leaderboard"></ul>
               <p id="overall-leaderboard-status" class="status no-margin"></p>
+            </article>
+            <article class="subpanel">
+              <h3>League Fixtures</h3>
+              <p id="league-fixture-status" class="status no-margin">Fixtures for the selected competition.</p>
+              <ul id="league-fixture-list" class="upcoming-list"></ul>
             </article>
           </div>
           </div>
