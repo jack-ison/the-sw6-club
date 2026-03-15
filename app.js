@@ -4930,7 +4930,8 @@ function renderAdminConsole() {
   }
 
   adminResultListEl.textContent = "";
-  const rows = getAdminResultFixtureOptions().sort(
+  const rowsBase = getAdminResultFixtureOptions();
+  const rows = (Array.isArray(rowsBase) && rowsBase.length > 0 ? rowsBase : getStaticAdminFallbackFixtures()).sort(
     (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
   );
   adminResultFixtureLookup = new Map(rows.map((fixture) => [fixture.id, fixture]));
@@ -5536,35 +5537,59 @@ function isScheduleFixtureSyntheticId(fixtureId) {
   return String(fixtureId || "").startsWith("schedule:");
 }
 
+function toAdminScheduleFixtureRow(fixture) {
+  const date = String(fixture?.date || "").trim();
+  const opponent = String(fixture?.opponent || "").trim();
+  const competition = String(fixture?.competition || "").trim();
+  if (!date || !opponent || !competition) {
+    return null;
+  }
+  const kickoff = buildFixtureKickoffIso(date, fixture.kickoffUk);
+  if (!Number.isFinite(new Date(kickoff).getTime())) {
+    return null;
+  }
+  return {
+    id: createScheduleFixtureSyntheticId(date, opponent, competition),
+    league_id: null,
+    kickoff,
+    opponent,
+    competition,
+    created_at: kickoff,
+    result: null,
+    predictions: []
+  };
+}
+
+function getStaticAdminFallbackFixtures() {
+  return FALLBACK_FIXTURES
+    .map((fixture) => toAdminScheduleFixtureRow(fixture))
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+}
+
 function getScheduleAdminFallbackFixtures() {
-  const rows = [...FALLBACK_FIXTURES, ...(Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : [])];
+  const safeUpcoming = (Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : []).filter(
+    (fixture) =>
+      fixture &&
+      typeof fixture === "object" &&
+      typeof fixture.date === "string" &&
+      typeof fixture.opponent === "string" &&
+      typeof fixture.competition === "string"
+  );
+  const rows = [...FALLBACK_FIXTURES, ...safeUpcoming];
   const byKey = new Map();
   rows.forEach((fixture) => {
-    const key = fixtureScheduleKey(
-      buildFixtureKickoffIso(fixture.date, fixture.kickoffUk),
-      fixture.opponent,
-      fixture.competition
-    );
+    const parsed = toAdminScheduleFixtureRow(fixture);
+    if (!parsed) {
+      return;
+    }
+    const key = fixtureScheduleKey(parsed.kickoff, parsed.opponent, parsed.competition);
     if (!byKey.has(key)) {
-      byKey.set(key, fixture);
+      byKey.set(key, parsed);
     }
   });
-  return [...byKey.values()]
-    .map((fixture) => {
-      const kickoff = buildFixtureKickoffIso(fixture.date, fixture.kickoffUk);
-      return {
-        id: createScheduleFixtureSyntheticId(fixture.date, fixture.opponent, fixture.competition),
-        league_id: null,
-        kickoff,
-        opponent: fixture.opponent,
-        competition: fixture.competition,
-        created_at: kickoff,
-        result: null,
-        predictions: []
-      };
-    })
-    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
-    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+  const rowsOut = [...byKey.values()].sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+  return rowsOut.length > 0 ? rowsOut : getStaticAdminFallbackFixtures();
 }
 
 function getAdminResultFixtureOptions() {
@@ -5684,7 +5709,10 @@ function renderAdminScorePanel() {
     return;
   }
 
-  const options = getAdminResultFixtureOptions();
+  let options = getAdminResultFixtureOptions();
+  if (!Array.isArray(options) || options.length === 0) {
+    options = getStaticAdminFallbackFixtures();
+  }
   adminScorePanelEl.textContent = "";
 
   const heading = document.createElement("h3");
