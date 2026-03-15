@@ -4020,11 +4020,25 @@ function renderNow() {
       if (targetLeagueId) {
         const hasBreakdownRows = Object.keys(state.leagueLastGameBreakdownByUser || {}).length > 0;
         if (!hasBreakdownRows && !leagueBreakdownRefreshPromises.has(targetLeagueId)) {
-          loadLeagueLastGameBreakdown(targetLeagueId, { force: true }).then(() => {
-            if (state.topView === "leagues") {
-              render();
-            }
-          });
+          Promise.resolve()
+            .then(async () => {
+              await ensureGlobalLeagueMembership();
+              await loadLeaguesForUser();
+              const canonicalGlobalLeague = getGlobalLeagueFromState();
+              const resolvedLeagueId = canonicalGlobalLeague?.id || targetLeagueId;
+              if (resolvedLeagueId && state.activeLeagueId !== resolvedLeagueId) {
+                state.activeLeagueId = resolvedLeagueId;
+              }
+              return loadLeagueLastGameBreakdown(resolvedLeagueId || targetLeagueId, { force: true });
+            })
+            .then(() => {
+              if (state.topView === "leagues") {
+                render();
+              }
+            })
+            .catch(() => {
+              // Keep leaderboard visible even if breakdown recovery fails.
+            });
         } else {
           loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
         }
