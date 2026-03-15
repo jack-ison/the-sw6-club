@@ -2584,6 +2584,50 @@ async function syncPredictionAcrossMyLeagues(sourceFixture, payload) {
   }
 }
 
+async function deletePredictionAcrossMyLeagues(sourceFixture) {
+  if (!state.client || !state.session?.user || !sourceFixture) {
+    return;
+  }
+  const leagueIds = (state.leagues || []).map((league) => league.id).filter(Boolean);
+  if (leagueIds.length === 0) {
+    return;
+  }
+
+  const kickoffMs = new Date(sourceFixture.kickoff).getTime();
+  if (!Number.isFinite(kickoffMs)) {
+    return;
+  }
+  const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+
+  const fixtureRows = await state.client
+    .from("fixtures")
+    .select("id")
+    .in("league_id", leagueIds)
+    .eq("opponent", sourceFixture.opponent)
+    .eq("competition", sourceFixture.competition)
+    .gte("kickoff", windowStart)
+    .lte("kickoff", windowEnd);
+
+  if (fixtureRows.error || !Array.isArray(fixtureRows.data) || fixtureRows.data.length === 0) {
+    return;
+  }
+
+  const fixtureIds = fixtureRows.data.map((row) => row.id).filter(Boolean);
+  if (fixtureIds.length === 0) {
+    return;
+  }
+
+  const { error } = await state.client
+    .from("predictions")
+    .delete()
+    .eq("user_id", state.session.user.id)
+    .in("fixture_id", fixtureIds);
+  if (error) {
+    console.warn("Cross-league prediction delete skipped:", error.message);
+  }
+}
+
 async function materializeFixtureForPrediction(fallbackFixture) {
   if (!state.client || !state.session?.user) {
     alert("Please sign in first.");
@@ -3267,26 +3311,29 @@ async function refreshLeaderboardPredictionFlags(leagueId) {
   if (!state.client || !leagueId) {
     return;
   }
-  const currentUserId = state.session?.user?.id || "";
   const nextFixture = getNextFixtureForPrediction();
-  const currentUserHasPrediction = Boolean(
-    currentUserId &&
-    nextFixture?.predictions?.some((row) => row.user_id === currentUserId)
-  );
+  if (!nextFixture) {
+    state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
+      ...row,
+      has_prediction: false
+    }));
+    state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
+      ...row,
+      has_prediction: false
+    }));
+    return;
+  }
   const { data, error } = await state.client.rpc("get_next_fixture_prediction_status", {
     p_league_id: leagueId
   });
   if (error) {
-    if (!currentUserId) {
-      return;
-    }
     state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
       ...row,
-      has_prediction: row?.user_id === currentUserId ? currentUserHasPrediction : Boolean(row?.has_prediction)
+      has_prediction: false
     }));
     state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
       ...row,
-      has_prediction: row?.user_id === currentUserId ? currentUserHasPrediction : Boolean(row?.has_prediction)
+      has_prediction: false
     }));
     return;
   }
@@ -4357,6 +4404,19 @@ function getLeaderboardTrustMeta() {
   return `Last updated: ${latestLabel} | Completed fixtures: ${completedCount}`;
 }
 
+function getSubmittedUserIdsForNextFixture() {
+  const nextFixture = getNextFixtureForPrediction();
+  if (!nextFixture) {
+    return new Set();
+  }
+  const kickoffMs = new Date(nextFixture.kickoff).getTime();
+  if (!Number.isFinite(kickoffMs) || kickoffMs <= Date.now()) {
+    return new Set();
+  }
+  const predictions = Array.isArray(nextFixture.predictions) ? nextFixture.predictions : [];
+  return new Set(predictions.map((row) => row?.user_id).filter(Boolean));
+}
+
 function renderOverallLeaderboard() {
   if (!overallLeaderboardEl || !overallLeaderboardStatusEl) {
     return;
@@ -4375,6 +4435,7 @@ function renderOverallLeaderboard() {
     li.appendChild(cta);
     overallLeaderboardEl.appendChild(li);
   } else {
+    const submittedForNextFixture = getSubmittedUserIdsForNextFixture();
     state.overallLeaderboard.forEach((row, index) => {
       const li = document.createElement("li");
       const left = createLeaderboardIdentity(
@@ -4382,7 +4443,7 @@ function renderOverallLeaderboard() {
         row.display_name || "Player",
         row.country_code || "GB",
         row.avatar_url,
-        Boolean(row.has_prediction)
+        submittedForNextFixture.has(row.user_id)
       );
       const breakdown = state.leagueLastGameBreakdownByUser?.[row.user_id] || null;
       if (breakdown) {
@@ -6163,6 +6224,64 @@ function renderFixtures() {
       }
       onSavePrediction(fixture, predictionForm, savePredictionBtn);
     });
+
+    if (isAuthed && myPrediction && canSubmitPrediction) {
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "ghost-btn";
+      removeBtn.textContent = "Remove Prediction";
+      removeBtn.addEventListener("click", async () => {
+        if (!state.client || !state.session?.user) {
+          return;
+        }
+        const ok = window.confirm("Remove your saved prediction for this fixture?");
+        if (!ok) {
+          return;
+        }
+        removeBtn.disabled = true;
+        removeBtn.textContent = "Removing...";
+        const { error } = await state.client
+          .from("predictions")
+          .delete()
+          .eq("fixture_id", fixture.id)
+          .eq("user_id", state.session.user.id);
+        if (error) {
+          removeBtn.disabled = false;
+          removeBtn.textContent = "Remove Prediction";
+          alert(error.message);
+          return;
+        }
+
+        await deletePredictionAcrossMyLeagues(fixture);
+        state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
+          row.id === fixture.id
+            ? {
+                ...row,
+                predictions: (Array.isArray(row.predictions) ? row.predictions : [])
+                  .filter((rowPrediction) => rowPrediction.user_id !== state.session.user.id)
+              }
+            : row
+        );
+        state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
+          ...row,
+          has_prediction: row?.user_id === state.session.user.id ? false : Boolean(row?.has_prediction)
+        }));
+        state.overallLeaderboard = state.overallLeaderboard.map((row) => ({
+          ...row,
+          has_prediction: row?.user_id === state.session.user.id ? false : Boolean(row?.has_prediction)
+        }));
+        state.lastPredictionAck = null;
+        render();
+        Promise.allSettled([
+          loadActiveLeagueData(true),
+          ensureOverallLeaderboardLoaded(true),
+          state.activeLeagueId ? refreshLeaderboardPredictionFlags(state.activeLeagueId) : Promise.resolve()
+        ]).then(() => {
+          refreshVisibleSectionsFast();
+        });
+      });
+      predictionForm.appendChild(removeBtn);
+    }
 
     fixturesListEl.appendChild(fragment);
   });
