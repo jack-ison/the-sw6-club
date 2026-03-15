@@ -1396,7 +1396,7 @@ async function loadOverallLeaderboard() {
     return;
   }
 
-  const { data, error } = await state.client.rpc("get_overall_leaderboard", { p_limit: 10 });
+  const { data, error } = await state.client.rpc("get_overall_leaderboard", { p_limit: 15 });
   if (error) {
     state.overallLeaderboard = [];
     state.overallLeaderboardStatus = state.isAuthed
