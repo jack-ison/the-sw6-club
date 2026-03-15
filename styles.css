@@ -671,23 +671,6 @@ button:disabled {
   margin: 0 auto;
 }
 
-.league-competition-filter-row {
-  margin-top: 0.7rem;
-  display: grid;
-  gap: 0.35rem;
-  max-width: 360px;
-}
-
-.league-competition-filter-row label {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: var(--text-soft);
-}
-
-#league-competition-filter {
-  width: 100%;
-}
-
 .subpanel {
   border: 1px solid var(--line);
   background: rgb(255 255 255 / 86%);
