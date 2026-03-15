@@ -2785,6 +2785,35 @@ async function materializeFixtureForAdminResult(fixture) {
   };
 }
 
+async function resolveAdminFixtureIdsForDelete(fixture) {
+  if (!fixture || !state.client) {
+    return [];
+  }
+  if (!isScheduleFixtureSyntheticId(fixture.id)) {
+    return [fixture.id];
+  }
+  const kickoffMs = new Date(fixture.kickoff).getTime();
+  let query = state.client
+    .from("fixtures")
+    .select("id, kickoff")
+    .eq("opponent", fixture.opponent)
+    .eq("competition", fixture.competition)
+    .order("kickoff", { ascending: false })
+    .limit(50);
+
+  if (Number.isFinite(kickoffMs)) {
+    const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+    const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+    query = query.gte("kickoff", windowStart).lte("kickoff", windowEnd);
+  }
+
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) {
+    return [];
+  }
+  return [...new Set(data.map((row) => row?.id).filter(Boolean))];
+}
+
 async function onSaveResult(fixture, form) {
   if (!state.session?.user || !hasResultAdminAccess()) {
     return false;
@@ -4770,9 +4799,38 @@ function renderAdminConsole() {
   }
 
   adminResultListEl.textContent = "";
-  const updatedResults = getAdminResultFixtureOptions()
-    .filter((fixture) => fixture?.result)
-    .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+  const mergedSources = [
+    ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : []),
+    ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
+    ...(Array.isArray(state.pastGamesRows)
+      ? state.pastGamesRows.map((row) => ({
+          id: row?.fixture?.id,
+          league_id: row?.fixture?.league_id || null,
+          kickoff: row?.fixture?.kickoff,
+          opponent: row?.fixture?.opponent,
+          competition: row?.fixture?.competition,
+          created_at: row?.prediction?.submitted_at || null,
+          result: row?.result || null,
+          predictions: []
+        }))
+      : [])
+  ];
+  const byFixtureId = new Map();
+  mergedSources.forEach((fixture) => {
+    if (!fixture?.id || !fixture?.result) {
+      return;
+    }
+    const existing = byFixtureId.get(fixture.id);
+    if (!existing) {
+      byFixtureId.set(fixture.id, fixture);
+      return;
+    }
+    byFixtureId.set(fixture.id, pickCanonicalScoredFixture(existing, fixture));
+  });
+
+  const updatedResults = [...byFixtureId.values()].sort(
+    (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
+  );
   if (updatedResults.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
@@ -5538,9 +5596,13 @@ function renderAdminScorePanel() {
     return;
   }
 
+  const now = Date.now();
+  const defaultPendingFixture =
+    options.find((fixture) => !fixture.result && Number.isFinite(new Date(fixture.kickoff).getTime()) && new Date(fixture.kickoff).getTime() <= now)
+    || null;
   const selectedId = state.adminResultFixtureId && options.some((fixture) => fixture.id === state.adminResultFixtureId)
     ? state.adminResultFixtureId
-    : options[0].id;
+    : (defaultPendingFixture?.id || options[0].id);
   state.adminResultFixtureId = selectedId;
   const targetFixture = options.find((fixture) => fixture.id === selectedId) || options[0];
 
@@ -5659,10 +5721,76 @@ function renderAdminScorePanel() {
   scorerHint.textContent = "Add Chelsea scorers comma-separated. Use x2/x3 for multiple goals.";
   form.appendChild(scorerHint);
 
+  const actions = document.createElement("div");
+  actions.className = "admin-result-actions";
+
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = targetFixture.result ? "Update Final Score" : "Save Final Score";
-  form.appendChild(submit);
+  actions.appendChild(submit);
+
+  const deleteSelectedBtn = document.createElement("button");
+  deleteSelectedBtn.type = "button";
+  deleteSelectedBtn.className = "danger-btn";
+  deleteSelectedBtn.textContent = "Delete Saved Result";
+  deleteSelectedBtn.addEventListener("click", async () => {
+    if (!state.client || !hasResultAdminAccess()) {
+      return;
+    }
+    const fixtureIds = await resolveAdminFixtureIdsForDelete(targetFixture);
+    if (fixtureIds.length === 0) {
+      state.adminScoreAck = {
+        message: "No saved result found for this fixture.",
+        isError: true,
+        at: Date.now()
+      };
+      render();
+      return;
+    }
+    const ok = window.confirm("Delete saved result(s) for this fixture? This cannot be undone.");
+    if (!ok) {
+      return;
+    }
+    deleteSelectedBtn.disabled = true;
+    deleteSelectedBtn.textContent = "Deleting...";
+    const settled = await Promise.allSettled(
+      fixtureIds.map((fixtureId) => state.client.rpc("admin_delete_result", { p_fixture_id: fixtureId }))
+    );
+    const successCount = settled.filter((row) => row.status === "fulfilled" && !row.value?.error).length;
+    const failed = settled.find((row) => row.status === "fulfilled" && row.value?.error) || settled.find((row) => row.status === "rejected");
+    if (successCount === 0) {
+      const message =
+        failed?.status === "fulfilled"
+          ? String(failed.value?.error?.message || "Could not delete saved result.")
+          : String(failed?.reason?.message || "Could not delete saved result.");
+      state.adminScoreAck = {
+        message,
+        isError: true,
+        at: Date.now()
+      };
+      deleteSelectedBtn.disabled = false;
+      deleteSelectedBtn.textContent = "Delete Saved Result";
+      render();
+      return;
+    }
+
+    await Promise.allSettled([
+      loadAdminResultFixtures(true),
+      loadActiveLeagueData(true),
+      loadPastGamesForUser({ force: true }),
+      ensureOverallLeaderboardLoaded(true)
+    ]);
+    state.adminScoreAck = {
+      message: successCount > 1 ? `Deleted ${successCount} saved results for this fixture.` : "Saved result deleted.",
+      isError: false,
+      at: Date.now()
+    };
+    deleteSelectedBtn.disabled = false;
+    deleteSelectedBtn.textContent = "Delete Saved Result";
+    render();
+  });
+  actions.appendChild(deleteSelectedBtn);
+  form.appendChild(actions);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -6500,13 +6628,34 @@ function hasResultAdminAccess() {
   return Boolean(state.session?.user) && (isAdminUser() || isAllowlistedAdminEmail());
 }
 
+function getCurrentUserEmails() {
+  const emails = new Set();
+  const direct = state.session?.user?.email;
+  const meta = state.session?.user?.user_metadata?.email;
+  if (typeof direct === "string" && direct.trim()) {
+    emails.add(direct.trim().toLowerCase());
+  }
+  if (typeof meta === "string" && meta.trim()) {
+    emails.add(meta.trim().toLowerCase());
+  }
+  const identities = Array.isArray(state.session?.user?.identities) ? state.session.user.identities : [];
+  identities.forEach((identity) => {
+    const identityEmail = identity?.identity_data?.email;
+    if (typeof identityEmail === "string" && identityEmail.trim()) {
+      emails.add(identityEmail.trim().toLowerCase());
+    }
+  });
+  return [...emails];
+}
+
 function getCurrentUserEmail() {
-  return String(state.session?.user?.email || "").trim().toLowerCase();
+  const emails = getCurrentUserEmails();
+  return emails[0] || "";
 }
 
 function isAllowlistedAdminEmail() {
-  const email = getCurrentUserEmail();
-  return Boolean(email) && ADMIN_EMAIL_ALLOWLIST.has(email);
+  const emails = getCurrentUserEmails();
+  return emails.some((email) => ADMIN_EMAIL_ALLOWLIST.has(email));
 }
 
 function countryCodeToFlag(code) {
