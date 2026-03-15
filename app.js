@@ -5754,7 +5754,7 @@ function renderAdminScorePanel() {
     deleteSelectedBtn.disabled = true;
     deleteSelectedBtn.textContent = "Deleting...";
     const settled = await Promise.allSettled(
-      fixtureIds.map((fixtureId) => state.client.rpc("admin_delete_result", { p_fixture_id: fixtureId }))
+      fixtureIds.map((fixtureId) => deleteSavedResultForFixtureId(fixtureId))
     );
     const successCount = settled.filter((row) => row.status === "fulfilled" && !row.value?.error).length;
     const failed = settled.find((row) => row.status === "fulfilled" && row.value?.error) || settled.find((row) => row.status === "rejected");
@@ -5829,7 +5829,7 @@ async function onAdminLeagueListClick(event) {
       return;
     }
     deleteResultBtn.disabled = true;
-    const { error } = await state.client.rpc("admin_delete_result", { p_fixture_id: fixtureId });
+    const { error } = await deleteSavedResultForFixtureId(fixtureId);
     if (error) {
       alert(error.message);
       deleteResultBtn.disabled = false;
@@ -5869,6 +5869,22 @@ async function onAdminLeagueListClick(event) {
 
   await reloadAuthedData();
   render();
+}
+
+async function deleteSavedResultForFixtureId(fixtureId) {
+  if (!state.client || !fixtureId) {
+    return { error: { message: "Invalid fixture id." } };
+  }
+  const rpcResult = await state.client.rpc("admin_delete_result", { p_fixture_id: fixtureId });
+  if (!rpcResult.error) {
+    return { error: null };
+  }
+  // Fallback when RPC permissions are stale but direct table delete is allowed.
+  const directDelete = await state.client.from("results").delete().eq("fixture_id", fixtureId);
+  if (!directDelete.error) {
+    return { error: null };
+  }
+  return { error: rpcResult.error || directDelete.error };
 }
 
 function renderFixtures() {
