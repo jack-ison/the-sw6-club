@@ -4018,7 +4018,16 @@ function renderNow() {
       renderLeagueSelect();
       const targetLeagueId = state.activeLeagueId || getGlobalLeagueFromState()?.id || "";
       if (targetLeagueId) {
-        loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
+        const hasBreakdownRows = Object.keys(state.leagueLastGameBreakdownByUser || {}).length > 0;
+        if (!hasBreakdownRows && !leagueBreakdownRefreshPromises.has(targetLeagueId)) {
+          loadLeagueLastGameBreakdown(targetLeagueId, { force: true }).then(() => {
+            if (state.topView === "leagues") {
+              render();
+            }
+          });
+        } else {
+          loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
+        }
       }
       renderOverallLeaderboard();
     }
