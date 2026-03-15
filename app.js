@@ -77,7 +77,8 @@ const DEFAULT_CARD_TEMPLATES = [
   { id: 8, slug: "clean-sheet", name: "Clean Sheet", description: "Opponent scored zero.", rarity: "common", active: true }
 ];
 const ADMIN_EMAIL_ALLOWLIST = new Set([
-  "jackwilliamison@gmail.com"
+  "jackwilliamison@gmail.com",
+  "jackwilliamson@gmail.com"
 ]);
 const FALLBACK_FIXTURES = [
   { date: "2026-02-21", opponent: "Burnley", competition: "Premier League", kickoffUk: "15:00" },
@@ -2681,11 +2682,16 @@ async function materializeFixtureForAdminResult(fixture) {
   if (!state.activeLeagueId) {
     await ensureAuthedDataLoaded(true);
   }
-  let league = getGlobalLeagueFromState() || getActiveLeague();
+  const currentUserId = state.session.user.id;
+  const ownedLeague =
+    (Array.isArray(state.leagues) ? state.leagues : []).find((league) => league?.owner_id === currentUserId) || null;
+  let league = ownedLeague || getActiveLeague() || getGlobalLeagueFromState();
   if (!league) {
     await ensureGlobalLeagueMembership();
     await loadLeaguesForUser();
-    league = getGlobalLeagueFromState() || getActiveLeague();
+    const retryOwnedLeague =
+      (Array.isArray(state.leagues) ? state.leagues : []).find((entry) => entry?.owner_id === currentUserId) || null;
+    league = retryOwnedLeague || getActiveLeague() || getGlobalLeagueFromState();
   }
   if (!league) {
     alert("Could not find a league to attach this result. Refresh and try again.");
@@ -5356,9 +5362,19 @@ function isScheduleFixtureSyntheticId(fixtureId) {
 }
 
 function getScheduleAdminFallbackFixtures() {
-  const now = Date.now();
-  const rows = Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : [];
-  return rows
+  const rows = [...FALLBACK_FIXTURES, ...(Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : [])];
+  const byKey = new Map();
+  rows.forEach((fixture) => {
+    const key = fixtureScheduleKey(
+      buildFixtureKickoffIso(fixture.date, fixture.kickoffUk),
+      fixture.opponent,
+      fixture.competition
+    );
+    if (!byKey.has(key)) {
+      byKey.set(key, fixture);
+    }
+  });
+  return [...byKey.values()]
     .map((fixture) => {
       const kickoff = buildFixtureKickoffIso(fixture.date, fixture.kickoffUk);
       return {
@@ -5373,7 +5389,6 @@ function getScheduleAdminFallbackFixtures() {
       };
     })
     .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
-    .filter((fixture) => new Date(fixture.kickoff).getTime() <= now)
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
 }
 
