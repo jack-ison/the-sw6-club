@@ -457,6 +457,7 @@ const leagueMetaNoteEl = document.getElementById("league-meta-note");
 let adminConsoleEl = null;
 let adminLeagueListEl = null;
 let adminResultListEl = null;
+let adminResultFixtureLookup = new Map();
 const deadlineCountdownEl = document.getElementById("deadline-countdown");
 const matchdayAttendanceEl = document.getElementById("matchday-attendance");
 const visitorCountEl = document.getElementById("visitor-count");
@@ -4860,48 +4861,22 @@ function renderAdminConsole() {
   }
 
   adminResultListEl.textContent = "";
-  const mergedSources = [
-    ...(Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : []),
-    ...(Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : []),
-    ...(Array.isArray(state.pastGamesRows)
-      ? state.pastGamesRows.map((row) => ({
-          id: row?.fixture?.id,
-          league_id: row?.fixture?.league_id || null,
-          kickoff: row?.fixture?.kickoff,
-          opponent: row?.fixture?.opponent,
-          competition: row?.fixture?.competition,
-          created_at: row?.prediction?.submitted_at || null,
-          result: row?.result || null,
-          predictions: []
-        }))
-      : [])
-  ];
-  const byFixtureId = new Map();
-  mergedSources.forEach((fixture) => {
-    if (!fixture?.id || !fixture?.result) {
-      return;
-    }
-    const existing = byFixtureId.get(fixture.id);
-    if (!existing) {
-      byFixtureId.set(fixture.id, fixture);
-      return;
-    }
-    byFixtureId.set(fixture.id, pickCanonicalScoredFixture(existing, fixture));
-  });
-
-  const updatedResults = [...byFixtureId.values()].sort(
+  const rows = getAdminResultFixtureOptions().sort(
     (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
   );
-  if (updatedResults.length === 0) {
+  adminResultFixtureLookup = new Map(rows.map((fixture) => [fixture.id, fixture]));
+  if (rows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No saved admin results yet.";
+    li.textContent = "No past fixtures available yet.";
     adminResultListEl.appendChild(li);
     return;
   }
 
   const canonicalByMatch = new Map();
-  updatedResults.forEach((fixture) => {
+  rows
+    .filter((fixture) => fixture?.result)
+    .forEach((fixture) => {
     const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
     const existing = canonicalByMatch.get(matchKey);
     if (!existing) {
@@ -4911,22 +4886,31 @@ function renderAdminConsole() {
     canonicalByMatch.set(matchKey, pickCanonicalScoredFixture(existing, fixture));
   });
 
-  updatedResults.forEach((fixture) => {
+  rows.forEach((fixture) => {
     const li = document.createElement("li");
     li.className = "admin-league-item";
     const metaWrap = document.createElement("div");
     metaWrap.className = "admin-result-meta";
     const meta = document.createElement("span");
-    const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
-    const canonicalFixture = canonicalByMatch.get(matchKey);
-    const usingForScoring = canonicalFixture?.id === fixture.id;
-    const scorerText = normalizeScorerList(fixture.result.chelsea_scorers);
-    const savedAtText = fixture.result.saved_at ? `Saved ${formatUpdatedAt(fixture.result.saved_at)}` : "Saved time unavailable";
-    meta.textContent =
-      `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent} (${fixture.competition})`;
+    const hasSavedResult = Boolean(fixture.result);
+    if (hasSavedResult) {
+      meta.textContent =
+        `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent} (${fixture.competition})`;
+    } else {
+      meta.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent} (${fixture.competition})`;
+    }
     const detail = document.createElement("small");
     detail.className = "muted";
-    detail.textContent = `${usingForScoring ? "Used for scoring" : "Duplicate result"} • ${savedAtText}${scorerText ? ` • Scorers: ${scorerText}` : ""}`;
+    if (hasSavedResult) {
+      const matchKey = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+      const canonicalFixture = canonicalByMatch.get(matchKey);
+      const usingForScoring = canonicalFixture?.id === fixture.id;
+      const scorerText = normalizeScorerList(fixture.result.chelsea_scorers);
+      const savedAtText = fixture.result.saved_at ? `Saved ${formatUpdatedAt(fixture.result.saved_at)}` : "Saved time unavailable";
+      detail.textContent = `${usingForScoring ? "Used for scoring" : "Duplicate result"} • ${savedAtText}${scorerText ? ` • Scorers: ${scorerText}` : ""}`;
+    } else {
+      detail.textContent = "No saved result yet.";
+    }
     metaWrap.appendChild(meta);
     metaWrap.appendChild(detail);
 
@@ -4942,8 +4926,10 @@ function renderAdminConsole() {
     deleteBtn.type = "button";
     deleteBtn.className = "danger-btn";
     deleteBtn.dataset.resultFixtureId = fixture.id;
-    deleteBtn.dataset.resultFixtureLabel = `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent}`;
-    deleteBtn.textContent = "Delete result";
+    deleteBtn.dataset.resultFixtureLabel = hasSavedResult
+      ? `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent}`
+      : `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent}`;
+    deleteBtn.textContent = hasSavedResult ? "Delete result" : "Clear any saved result";
     actions.appendChild(deleteBtn);
 
     li.appendChild(metaWrap);
@@ -5011,6 +4997,7 @@ function removeAdminConsole() {
   adminConsoleEl = null;
   adminLeagueListEl = null;
   adminResultListEl = null;
+  adminResultFixtureLookup = new Map();
 }
 
 function getForumThreadsCache() {
@@ -5886,8 +5873,9 @@ async function onAdminLeagueListClick(event) {
   const deleteResultBtn = event.target.closest("button[data-result-fixture-id]");
   if (deleteResultBtn && state.client && hasResultAdminAccess()) {
     const fixtureId = deleteResultBtn.dataset.resultFixtureId || "";
+    const fixture = adminResultFixtureLookup.get(fixtureId) || null;
     const label = deleteResultBtn.dataset.resultFixtureLabel || "this saved result";
-    if (!fixtureId) {
+    if (!fixtureId && !fixture) {
       return;
     }
     const ok = window.confirm(`Delete ${label}? This removes that saved result from scoring.`);
@@ -5895,9 +5883,23 @@ async function onAdminLeagueListClick(event) {
       return;
     }
     deleteResultBtn.disabled = true;
-    const { error } = await deleteSavedResultForFixtureId(fixtureId);
-    if (error) {
-      alert(error.message);
+    const fixtureIds = fixture ? await resolveAdminFixtureIdsForDelete(fixture) : [fixtureId];
+    if (fixtureIds.length === 0) {
+      alert("No saved result found for this fixture.");
+      deleteResultBtn.disabled = false;
+      return;
+    }
+    const settled = await Promise.allSettled(
+      fixtureIds.map((id) => deleteSavedResultForFixtureId(id))
+    );
+    const successCount = settled.filter((row) => row.status === "fulfilled" && !row.value?.error).length;
+    if (successCount === 0) {
+      const failed = settled.find((row) => row.status === "fulfilled" && row.value?.error) || settled.find((row) => row.status === "rejected");
+      const message =
+        failed?.status === "fulfilled"
+          ? String(failed.value?.error?.message || "Could not delete saved result.")
+          : String(failed?.reason?.message || "Could not delete saved result.");
+      alert(message);
       deleteResultBtn.disabled = false;
       return;
     }
