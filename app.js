@@ -7179,8 +7179,25 @@ function serializeScorerSelections(selections) {
 
 function getUpcomingFixturesForDisplay() {
   const now = Date.now();
-  return state.upcomingFixtures.filter((fixture) => {
-    const kickoff = new Date(`${fixture.date}T00:00:00`).getTime();
+  const mergedRows = [...FALLBACK_FIXTURES, ...(Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : [])];
+  const dedupedByScheduleKey = new Map();
+
+  mergedRows.forEach((fixture) => {
+    const kickoffIso = buildFixtureKickoffIso(fixture.date, fixture.kickoffUk);
+    if (!Number.isFinite(new Date(kickoffIso).getTime())) {
+      return;
+    }
+    const key = fixtureScheduleKey(kickoffIso, fixture.opponent, fixture.competition);
+    // Prefer live-synced row when duplicate keys exist.
+    const existing = dedupedByScheduleKey.get(key);
+    const isLiveFixture = (Array.isArray(state.upcomingFixtures) ? state.upcomingFixtures : []).includes(fixture);
+    if (!existing || isLiveFixture) {
+      dedupedByScheduleKey.set(key, fixture);
+    }
+  });
+
+  return [...dedupedByScheduleKey.values()].filter((fixture) => {
+    const kickoff = new Date(buildFixtureKickoffIso(fixture.date, fixture.kickoffUk)).getTime();
     return Number.isFinite(kickoff) && kickoff >= now - 24 * 60 * 60 * 1000;
   });
 }
