@@ -36,7 +36,7 @@ const PAST_GAMES_CACHE_KEY = "cfc-past-games-cache-v1";
 const PAST_GAMES_CACHE_VERSION = 1;
 const PAST_GAMES_CACHE_MAX_AGE_MS = 60 * 1000;
 const LEAGUE_BREAKDOWN_CACHE_KEY = "cfc-league-breakdown-cache-v1";
-const LEAGUE_BREAKDOWN_CACHE_VERSION = 1;
+const LEAGUE_BREAKDOWN_CACHE_VERSION = 2;
 const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 1;
@@ -3383,8 +3383,13 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
       state.leagueLastGameBreakdownByUser = {};
       return;
     }
+    const now = Date.now();
+    const rows = (Array.isArray(data) ? data : []).filter((row) => {
+      const kickoffMs = new Date(row?.kickoff || 0).getTime();
+      return Number.isFinite(kickoffMs) && kickoffMs <= now;
+    });
     const byUser = {};
-    (Array.isArray(data) ? data : []).forEach((row) => {
+    rows.forEach((row) => {
       if (!row?.user_id) return;
       byUser[row.user_id] = row;
     });
@@ -4490,6 +4495,10 @@ function renderOverallLeaderboard() {
 }
 
 function formatLeaderboardBreakdown(row) {
+  const kickoffMs = new Date(row?.kickoff || 0).getTime();
+  if (!Number.isFinite(kickoffMs) || kickoffMs > Date.now()) {
+    return "Last completed game breakdown is not available yet.";
+  }
   const parts = [];
   parts.push(`Last game: Chelsea ${row.actual_chelsea_goals}-${row.actual_opponent_goals} ${row.opponent}`);
   if (row.did_submit) {
