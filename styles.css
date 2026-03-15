@@ -757,6 +757,18 @@ button:disabled {
   cursor: pointer;
 }
 
+.leader-breakdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.95rem;
+  color: #1d3e73;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
 .leader-identity-clickable:focus-visible {
   outline: 2px solid #4d7fd6;
   outline-offset: 2px;

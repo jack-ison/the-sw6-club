@@ -3377,9 +3377,24 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
     return;
   }
   const runPromise = (async () => {
-    const { data, error } = await state.client.rpc("get_league_last_game_breakdown", {
-      p_league_id: leagueId
-    });
+    const globalLeague = getGlobalLeagueFromState();
+    const isGlobalLeagueActive = Boolean(globalLeague?.id) && globalLeague.id === leagueId;
+
+    let data = null;
+    let error = null;
+
+    if (isGlobalLeagueActive) {
+      const globalResult = await state.client.rpc("get_global_last_game_breakdown");
+      data = globalResult.data;
+      error = globalResult.error;
+    }
+    if (error || !Array.isArray(data)) {
+      const leagueResult = await state.client.rpc("get_league_last_game_breakdown", {
+        p_league_id: leagueId
+      });
+      data = leagueResult.data;
+      error = leagueResult.error;
+    }
     if (error) {
       state.leagueLastGameBreakdownByUser = {};
       return;
