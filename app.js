@@ -3161,16 +3161,17 @@ async function loadAdminResultFixtures(force = false) {
 
   resultRows.forEach((result) => {
     const fixture = fixtureById.get(result.fixture_id);
-    if (!fixture) {
+    const resolvedId = fixture?.id || result.fixture_id;
+    if (!resolvedId) {
       return;
     }
-    mergedByFixtureId.set(fixture.id, {
-      id: fixture.id,
-      league_id: fixture.league_id,
-      kickoff: fixture.kickoff,
-      opponent: fixture.opponent,
-      competition: fixture.competition,
-      created_at: fixture.created_at,
+    mergedByFixtureId.set(resolvedId, {
+      id: resolvedId,
+      league_id: fixture?.league_id || null,
+      kickoff: fixture?.kickoff || result.saved_at || "",
+      opponent: fixture?.opponent || "Unknown opponent",
+      competition: fixture?.competition || "Saved result",
+      created_at: fixture?.created_at || result.saved_at || "",
       chelsea_goals: result.chelsea_goals,
       opponent_goals: result.opponent_goals,
       first_scorer: result.first_scorer,
@@ -4870,10 +4871,12 @@ function renderAdminConsole() {
   }
 
   adminResultListEl.textContent = "";
-  const rows = getAdminResultFixtureOptions().sort(
-    (a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime()
-  );
-  adminResultFixtureLookup = new Map(rows.map((fixture) => [fixture.id, fixture]));
+  const rows = getAdminSavedResultsForDisplay().sort((a, b) => {
+    const aTs = new Date(a.result?.saved_at || a.kickoff || a.created_at || 0).getTime();
+    const bTs = new Date(b.result?.saved_at || b.kickoff || b.created_at || 0).getTime();
+    return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0);
+  });
+  adminResultFixtureLookup = new Map(rows.map((fixture) => [String(fixture.id), fixture]));
   if (rows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
@@ -4928,13 +4931,13 @@ function renderAdminConsole() {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "ghost-btn";
-    editBtn.dataset.adminFixtureId = fixture.id;
+    editBtn.dataset.adminFixtureId = String(fixture.id);
     editBtn.textContent = "Edit result";
     actions.appendChild(editBtn);
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "danger-btn";
-    deleteBtn.dataset.resultFixtureId = fixture.id;
+    deleteBtn.dataset.resultFixtureId = String(fixture.id);
     deleteBtn.dataset.resultFixtureLabel = hasSavedResult
       ? `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent}`
       : `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent}`;
@@ -5577,6 +5580,16 @@ function getAdminResultFixtureOptions() {
     });
 }
 
+function getAdminSavedResultsForDisplay() {
+  return getAdminResultFixtureOptions()
+    .filter((fixture) => Boolean(fixture?.result))
+    .sort((a, b) => {
+      const aTs = new Date(a.result?.saved_at || a.kickoff || a.created_at || 0).getTime();
+      const bTs = new Date(b.result?.saved_at || b.kickoff || b.created_at || 0).getTime();
+      return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0);
+    });
+}
+
 function pickPreferredAdminFixture(current, candidate) {
   const score = (fixture) => {
     let value = 0;
@@ -5639,6 +5652,51 @@ function renderAdminScorePanel() {
     adminScorePanelEl.appendChild(ackEl);
   }
 
+  const savedResults = getAdminSavedResultsForDisplay();
+  const savedHeading = document.createElement("p");
+  savedHeading.className = "admin-score-meta";
+  savedHeading.textContent = "Previous saved scores";
+  adminScorePanelEl.appendChild(savedHeading);
+  if (savedResults.length === 0) {
+    const noneSaved = document.createElement("p");
+    noneSaved.className = "admin-score-meta";
+    noneSaved.textContent = "No saved scores yet.";
+    adminScorePanelEl.appendChild(noneSaved);
+  } else {
+    const savedList = document.createElement("ul");
+    savedList.className = "prediction-list";
+    savedResults.slice(0, 25).forEach((fixture) => {
+      const item = document.createElement("li");
+      item.className = "admin-league-item";
+      const metaWrap = document.createElement("div");
+      metaWrap.className = "admin-result-meta";
+      const line = document.createElement("span");
+      line.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea ${fixture.result.chelsea_goals}-${fixture.result.opponent_goals} ${fixture.opponent} (${fixture.competition})`;
+      const small = document.createElement("small");
+      small.className = "muted";
+      small.textContent = fixture.result?.saved_at
+        ? `Saved ${formatUpdatedAt(fixture.result.saved_at)}`
+        : "Saved time unavailable";
+      metaWrap.appendChild(line);
+      metaWrap.appendChild(small);
+      const actions = document.createElement("div");
+      actions.className = "admin-result-actions";
+      const loadBtn = document.createElement("button");
+      loadBtn.type = "button";
+      loadBtn.className = "ghost-btn";
+      loadBtn.textContent = "Load to edit";
+      loadBtn.addEventListener("click", () => {
+        state.adminResultFixtureId = String(fixture.id);
+        render();
+      });
+      actions.appendChild(loadBtn);
+      item.appendChild(metaWrap);
+      item.appendChild(actions);
+      savedList.appendChild(item);
+    });
+    adminScorePanelEl.appendChild(savedList);
+  }
+
   if (options.length === 0) {
     if (hasResultAdminAccess() && state.client) {
       const now = Date.now();
@@ -5662,11 +5720,11 @@ function renderAdminScorePanel() {
   const defaultPendingFixture =
     options.find((fixture) => !fixture.result && Number.isFinite(new Date(fixture.kickoff).getTime()) && new Date(fixture.kickoff).getTime() <= now)
     || null;
-  const selectedId = state.adminResultFixtureId && options.some((fixture) => fixture.id === state.adminResultFixtureId)
-    ? state.adminResultFixtureId
-    : (defaultPendingFixture?.id || options[0].id);
+  const selectedId = state.adminResultFixtureId && options.some((fixture) => String(fixture.id) === String(state.adminResultFixtureId))
+    ? String(state.adminResultFixtureId)
+    : String(defaultPendingFixture?.id || options[0].id);
   state.adminResultFixtureId = selectedId;
-  const targetFixture = options.find((fixture) => fixture.id === selectedId) || options[0];
+  const targetFixture = options.find((fixture) => String(fixture.id) === String(selectedId)) || options[0];
 
   const selectorWrap = document.createElement("label");
   selectorWrap.className = "admin-score-meta";
@@ -5674,12 +5732,12 @@ function renderAdminScorePanel() {
   const selector = document.createElement("select");
   options.forEach((fixture) => {
     const option = document.createElement("option");
-    option.value = fixture.id;
+    option.value = String(fixture.id);
     const statusLabel = fixture.result ? "Result saved" : "Needs result";
     option.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent} (${fixture.competition}) — ${statusLabel}`;
     selector.appendChild(option);
   });
-  selector.value = targetFixture.id;
+  selector.value = String(targetFixture.id);
   selector.addEventListener("change", (event) => {
     state.adminResultFixtureId = event.target.value || "";
     render();
@@ -5869,7 +5927,7 @@ function renderAdminScorePanel() {
 async function onAdminLeagueListClick(event) {
   const editResultBtn = event.target.closest("button[data-admin-fixture-id]");
   if (editResultBtn && hasResultAdminAccess()) {
-    state.adminResultFixtureId = editResultBtn.dataset.adminFixtureId || "";
+    state.adminResultFixtureId = String(editResultBtn.dataset.adminFixtureId || "");
     state.topView = "predict";
     syncRouteHash();
     render();
@@ -5881,8 +5939,8 @@ async function onAdminLeagueListClick(event) {
 
   const deleteResultBtn = event.target.closest("button[data-result-fixture-id]");
   if (deleteResultBtn && state.client && hasResultAdminAccess()) {
-    const fixtureId = deleteResultBtn.dataset.resultFixtureId || "";
-    const fixture = adminResultFixtureLookup.get(fixtureId) || null;
+    const fixtureId = String(deleteResultBtn.dataset.resultFixtureId || "");
+    const fixture = adminResultFixtureLookup.get(String(fixtureId)) || null;
     const label = deleteResultBtn.dataset.resultFixtureLabel || "this saved result";
     if (!fixtureId && !fixture) {
       return;
