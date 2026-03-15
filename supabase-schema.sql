@@ -621,7 +621,10 @@ using (false);
 insert into public.app_admins (user_id)
 select u.id
 from auth.users u
-where lower(coalesce(u.email, '')) = lower('jackwilliamison@gmail.com')
+where lower(coalesce(u.email, '')) in (
+  lower('jackwilliamison@gmail.com'),
+  lower('jackwilliamson@gmail.com')
+)
 on conflict (user_id) do nothing;
 
 create or replace function public.is_bootstrap_admin_email()
@@ -631,7 +634,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com');
+  select lower(coalesce(auth.jwt() ->> 'email', '')) in (
+    lower('jackwilliamison@gmail.com'),
+    lower('jackwilliamson@gmail.com')
+  );
 $$;
 
 grant execute on function public.is_bootstrap_admin_email() to authenticated;
@@ -1403,7 +1409,7 @@ for select
 using (
   public.is_league_member(league_id)
   or public.is_configured_admin()
-  or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+  or public.is_bootstrap_admin_email()
 );
 
 drop policy if exists fixtures_insert_owner on public.fixtures;
@@ -1491,7 +1497,7 @@ using (
       and (
         public.is_league_member(f.league_id)
         or public.is_configured_admin()
-        or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+        or public.is_bootstrap_admin_email()
       )
   )
 );
@@ -1508,7 +1514,7 @@ using (
       and (
         public.is_league_owner(f.league_id)
         or public.is_configured_admin()
-        or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+        or public.is_bootstrap_admin_email()
       )
   )
 )
@@ -1520,7 +1526,7 @@ with check (
       and (
         public.is_league_owner(f.league_id)
         or public.is_configured_admin()
-        or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+        or public.is_bootstrap_admin_email()
       )
   )
 );
@@ -1649,7 +1655,7 @@ begin
 
   if not (
     public.is_configured_admin()
-    or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('jackwilliamison@gmail.com')
+    or public.is_bootstrap_admin_email()
   ) then
     raise exception 'Forbidden';
   end if;

@@ -4770,7 +4770,7 @@ function renderAdminConsole() {
   }
 
   adminResultListEl.textContent = "";
-  const updatedResults = (Array.isArray(state.adminResultFixtures) ? state.adminResultFixtures : [])
+  const updatedResults = getAdminResultFixtureOptions()
     .filter((fixture) => fixture?.result)
     .sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
   if (updatedResults.length === 0) {
@@ -5432,16 +5432,28 @@ function getAdminResultFixtureOptions() {
 
   return [...byMatch.values()]
     .sort((a, b) => {
-      const aNeedsResult = !a.result;
-      const bNeedsResult = !b.result;
-      if (aNeedsResult !== bNeedsResult) {
-        return aNeedsResult ? -1 : 1;
+      const now = Date.now();
+      const aKickoffMs = new Date(a.kickoff).getTime();
+      const bKickoffMs = new Date(b.kickoff).getTime();
+      const aPast = Number.isFinite(aKickoffMs) ? aKickoffMs <= now : false;
+      const bPast = Number.isFinite(bKickoffMs) ? bKickoffMs <= now : false;
+      const aHasResult = Boolean(a.result);
+      const bHasResult = Boolean(b.result);
+
+      const bucket = (past, hasResult) => {
+        if (!hasResult && past) return 0; // Highest priority: past games still needing result input.
+        if (hasResult) return 1; // Then saved results (editable / removable).
+        return 2; // Lowest priority: future games.
+      };
+      const aBucket = bucket(aPast, aHasResult);
+      const bBucket = bucket(bPast, bHasResult);
+      if (aBucket !== bBucket) {
+        return aBucket - bBucket;
       }
-      const bKickoff = new Date(b.kickoff).getTime();
-      const aKickoff = new Date(a.kickoff).getTime();
+
       const bCreated = new Date(b.created_at || 0).getTime();
       const aCreated = new Date(a.created_at || 0).getTime();
-      return (Number.isFinite(bKickoff) ? bKickoff : bCreated) - (Number.isFinite(aKickoff) ? aKickoff : aCreated);
+      return (Number.isFinite(bKickoffMs) ? bKickoffMs : bCreated) - (Number.isFinite(aKickoffMs) ? aKickoffMs : aCreated);
     });
 }
 
