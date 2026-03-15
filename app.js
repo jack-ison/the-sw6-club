@@ -1719,19 +1719,19 @@ async function reloadAuthedData() {
     }
   }
 
-  await ensureGlobalLeagueMembership();
+  const ensuredGlobalLeagueId = await ensureGlobalLeagueMembership();
   await loadLeaguesForUser();
   if (state.leagues.length === 0) {
     await ensureDefaultLeagueForUser();
     await loadLeaguesForUser();
   }
   const globalLeague = getGlobalLeagueFromState();
-  if (!state.activeLeagueId && state.leagues[0]) {
-    state.activeLeagueId = globalLeague?.id || state.leagues[0].id;
+  if (!state.activeLeagueId && (state.leagues[0] || ensuredGlobalLeagueId)) {
+    state.activeLeagueId = globalLeague?.id || ensuredGlobalLeagueId || state.leagues[0]?.id || null;
   }
 
-  if (!state.leagues.some((league) => league.id === state.activeLeagueId)) {
-    state.activeLeagueId = globalLeague?.id || state.leagues[0]?.id || null;
+  if (state.activeLeagueId && !state.leagues.some((league) => league.id === state.activeLeagueId)) {
+    state.activeLeagueId = globalLeague?.id || ensuredGlobalLeagueId || state.leagues[0]?.id || null;
   }
 
   if (state.activeLeagueId) {
@@ -1979,15 +1979,15 @@ async function ensureDefaultLeagueForUser() {
 
 async function ensureGlobalLeagueMembership() {
   if (!state.client || !state.session?.user) {
-    return;
+    return null;
   }
 
-  const { error } = await state.client.rpc("ensure_global_league_membership", {
+  const { data, error } = await state.client.rpc("ensure_global_league_membership", {
     p_display_name: getCurrentUserDisplayName(),
     p_country_code: getCurrentUserCountryCode()
   });
   if (!error) {
-    return;
+    return data || null;
   }
 
   // Fallback for projects where migration hasn't been run yet.
@@ -2003,7 +2003,7 @@ async function ensureGlobalLeagueMembership() {
   const existingLeague = existingLeagueResult.data || null;
   const leagueId = existingLeague?.id || (await createLeagueLegacyPublic(GLOBAL_LEAGUE_NAME, ownerId))?.id;
   if (!leagueId) {
-    return;
+    return null;
   }
 
   await state.client.from("league_members").upsert(
@@ -2016,6 +2016,7 @@ async function ensureGlobalLeagueMembership() {
     },
     { onConflict: "league_id,user_id" }
   );
+  return leagueId;
 }
 
 async function onCreateLeague(event) {
@@ -4022,10 +4023,10 @@ function renderNow() {
         if (!hasBreakdownRows && !leagueBreakdownRefreshPromises.has(targetLeagueId)) {
           Promise.resolve()
             .then(async () => {
-              await ensureGlobalLeagueMembership();
+              const ensuredGlobalLeagueId = await ensureGlobalLeagueMembership();
               await loadLeaguesForUser();
               const canonicalGlobalLeague = getGlobalLeagueFromState();
-              const resolvedLeagueId = canonicalGlobalLeague?.id || targetLeagueId;
+              const resolvedLeagueId = canonicalGlobalLeague?.id || ensuredGlobalLeagueId || targetLeagueId;
               if (resolvedLeagueId && state.activeLeagueId !== resolvedLeagueId) {
                 state.activeLeagueId = resolvedLeagueId;
               }
@@ -4042,6 +4043,22 @@ function renderNow() {
         } else {
           loadLeagueLastGameBreakdown(targetLeagueId, { background: true });
         }
+      } else {
+        Promise.resolve()
+          .then(async () => {
+            const ensuredGlobalLeagueId = await ensureGlobalLeagueMembership();
+            if (!ensuredGlobalLeagueId) return;
+            state.activeLeagueId = ensuredGlobalLeagueId;
+            await loadLeagueLastGameBreakdown(ensuredGlobalLeagueId, { force: true });
+          })
+          .then(() => {
+            if (state.topView === "leagues") {
+              render();
+            }
+          })
+          .catch(() => {
+            // Keep leaderboard visible even if breakdown recovery fails.
+          });
       }
       renderOverallLeaderboard();
     }
