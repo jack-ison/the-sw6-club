@@ -6747,8 +6747,19 @@ function getActiveLeague() {
 }
 
 function getGlobalLeagueFromState() {
-  return state.leagues.find((league) => String(league.name || "").trim().toLowerCase() === GLOBAL_LEAGUE_NAME.toLowerCase())
-    || null;
+  const globals = state.leagues.filter(
+    (league) => String(league.name || "").trim().toLowerCase() === GLOBAL_LEAGUE_NAME.toLowerCase()
+  );
+  if (globals.length === 0) {
+    return null;
+  }
+  globals.sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime();
+    const bTime = new Date(b.created_at || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+  return globals[0];
 }
 
 function isGlobalLeague(league) {
