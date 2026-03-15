@@ -6900,6 +6900,23 @@ function getCurrentUserEmails() {
   return [...emails];
 }
 
+function normalizeAdminEmailCandidate(rawEmail) {
+  const email = String(rawEmail || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return "";
+  }
+  const [localRaw, domainRaw] = email.split("@");
+  if (!localRaw || !domainRaw) {
+    return "";
+  }
+  const domain = domainRaw === "googlemail.com" ? "gmail.com" : domainRaw;
+  let local = localRaw;
+  if (domain === "gmail.com") {
+    local = local.split("+")[0].replace(/\./g, "");
+  }
+  return `${local}@${domain}`;
+}
+
 function getCurrentUserEmail() {
   const emails = getCurrentUserEmails();
   return emails[0] || "";
@@ -6907,7 +6924,7 @@ function getCurrentUserEmail() {
 
 function isAllowlistedAdminEmail() {
   const emails = getCurrentUserEmails();
-  return emails.some((email) => ADMIN_EMAIL_ALLOWLIST.has(email));
+  return emails.some((email) => ADMIN_EMAIL_ALLOWLIST.has(normalizeAdminEmailCandidate(email)));
 }
 
 function countryCodeToFlag(code) {
