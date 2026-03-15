@@ -3399,11 +3399,7 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
       state.leagueLastGameBreakdownByUser = {};
       return;
     }
-    const now = Date.now();
-    const rows = (Array.isArray(data) ? data : []).filter((row) => {
-      const kickoffMs = new Date(row?.kickoff || 0).getTime();
-      return Number.isFinite(kickoffMs) && kickoffMs <= now;
-    });
+    const rows = Array.isArray(data) ? data : [];
     const byUser = {};
     rows.forEach((row) => {
       if (!row?.user_id) return;

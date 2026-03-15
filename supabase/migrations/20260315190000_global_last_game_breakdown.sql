@@ -79,6 +79,7 @@ as $$
   latest_completed as (
     select *
     from canonical_results
+    where kickoff <= now()
     order by kickoff desc nulls last, coalesce(saved_at, kickoff) desc
     limit 1
   ),
@@ -201,7 +202,6 @@ as $$
         end
     )::integer as points
   from joined j
-  where auth.uid() is not null
   order by points desc, user_id asc;
 $$;
 
