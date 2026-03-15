@@ -5489,6 +5489,11 @@ function getAdminResultFixtureOptions() {
   });
 
   return [...byMatch.values()]
+    .filter((fixture) => {
+      const kickoffMs = new Date(fixture.kickoff).getTime();
+      const isPastOrNow = Number.isFinite(kickoffMs) ? kickoffMs <= Date.now() : false;
+      return isPastOrNow || Boolean(fixture.result);
+    })
     .sort((a, b) => {
       const now = Date.now();
       const aKickoffMs = new Date(a.kickoff).getTime();
