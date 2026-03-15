@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -21,6 +21,7 @@ const optionalFiles = [
   "favicon.png"
 ];
 const optionalDirs = ["assets", "images"];
+const htmlFiles = [...requiredFiles, ...optionalFiles].filter((file) => file.endsWith(".html"));
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(distDir, { recursive: true });
@@ -66,6 +67,20 @@ const buildMeta = {
   buildTime: new Date().toISOString()
 };
 
+const assetVersion = String(buildMeta.gitSha !== "unknown" ? buildMeta.gitSha : buildMeta.buildTime)
+  .replace(/[^a-z0-9]/gi, "")
+  .slice(0, 12)
+  .toLowerCase();
+
+function applyAssetVersion(htmlSource) {
+  return htmlSource.replace(/((?:src|href)=["'])([^"']+\.(?:css|js))(["'])/gi, (full, prefix, url, suffix) => {
+    if (/^(https?:)?\/\//i.test(url) || url.includes("?")) {
+      return full;
+    }
+    return `${prefix}${url}?v=${assetVersion}${suffix}`;
+  });
+}
+
 await writeFile(
   join(distDir, "runtime-config.js"),
   `window.__SW6_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`,
@@ -77,5 +92,14 @@ await writeFile(
   `window.__SW6_META__ = ${JSON.stringify(buildMeta)};\n`,
   "utf8"
 );
+
+for (const htmlFile of htmlFiles) {
+  const distHtmlPath = join(distDir, htmlFile);
+  if (!existsSync(distHtmlPath)) {
+    continue;
+  }
+  const htmlSource = await readFile(distHtmlPath, "utf8");
+  await writeFile(distHtmlPath, applyAssetVersion(htmlSource), "utf8");
+}
 
 console.log("Build complete: dist/");
