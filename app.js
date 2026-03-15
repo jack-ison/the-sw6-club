@@ -39,7 +39,7 @@ const LEAGUE_BREAKDOWN_CACHE_KEY = "cfc-league-breakdown-cache-v1";
 const LEAGUE_BREAKDOWN_CACHE_VERSION = 2;
 const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
-const OVERALL_LEADERBOARD_CACHE_VERSION = 1;
+const OVERALL_LEADERBOARD_CACHE_VERSION = 2;
 const OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS = 60 * 1000;
 const ACTIVE_LEAGUE_HYDRATE_MIN_INTERVAL_MS = 30 * 1000;
 const COMPLETED_RESULTS_SYNC_MIN_INTERVAL_MS = 2 * 60 * 1000;
@@ -972,7 +972,6 @@ function setLeagueCompetitionFilter(filter) {
   state.leagueCompetitionFilter = ["all", "premier_league", "champions_league", "fa_cup"].includes(filter)
     ? filter
     : "all";
-  renderOverallLeaderboard();
   renderLeagueFixturesPreview();
 }
 
@@ -4503,49 +4502,6 @@ function renderLeagueFixturesPreview() {
   leagueFixtureStatusEl.textContent = `${getLeagueCompetitionFilterLabel()} fixtures shown (${Math.min(20, fixtures.length)} of ${fixtures.length}).`;
 }
 
-function getCompetitionFilteredLeaderboardRows() {
-  const members = Array.isArray(state.activeLeagueMembers) ? state.activeLeagueMembers : [];
-  const fixtures = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
-    .filter((fixture) => fixture?.result && matchesLeagueCompetitionFilter(fixture?.competition));
-
-  const byUser = new Map();
-  members.forEach((member) => {
-    if (!member?.user_id) return;
-    byUser.set(member.user_id, {
-      user_id: member.user_id,
-      display_name: member.display_name || "Player",
-      country_code: member.country_code || "GB",
-      avatar_url: member.avatar_url || "",
-      points: 0
-    });
-  });
-
-  fixtures.forEach((fixture) => {
-    const predictions = Array.isArray(fixture.predictions) ? fixture.predictions : [];
-    predictions.forEach((prediction) => {
-      if (!prediction?.user_id) return;
-      const existing = byUser.get(prediction.user_id) || {
-        user_id: prediction.user_id,
-        display_name: "Player",
-        country_code: "GB",
-        avatar_url: "",
-        points: 0
-      };
-      const detail = scorePrediction(prediction, fixture.result);
-      existing.points = Number(existing.points || 0) + Number(detail.points || 0);
-      byUser.set(prediction.user_id, existing);
-    });
-  });
-
-  return [...byUser.values()]
-    .sort((a, b) => {
-      const diff = Number(b.points || 0) - Number(a.points || 0);
-      if (diff !== 0) return diff;
-      return String(a.display_name || "").localeCompare(String(b.display_name || ""), undefined, { sensitivity: "base" });
-    })
-    .slice(0, 10);
-}
-
 function renderOverallLeaderboard() {
   if (!overallLeaderboardEl || !overallLeaderboardStatusEl) {
     return;
@@ -4557,15 +4513,12 @@ function renderOverallLeaderboard() {
       : "all";
   }
 
-  const isAllCompetitions = state.leagueCompetitionFilter === "all";
-  const leaderboardRows = isAllCompetitions ? state.overallLeaderboard : getCompetitionFilteredLeaderboardRows();
+  const leaderboardRows = state.overallLeaderboard;
   overallLeaderboardEl.textContent = "";
   if (leaderboardRows.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = isAllCompetitions
-      ? "No players ranked yet. Rankings appear after the first completed match."
-      : `No players ranked yet for ${getLeagueCompetitionFilterLabel()}.`;
+    li.textContent = "No players ranked yet. Rankings appear after the first completed match.";
     const cta = document.createElement("button");
     cta.type = "button";
     cta.className = "ghost-btn";
@@ -4622,9 +4575,7 @@ function renderOverallLeaderboard() {
   }
 
   const trustMeta = getLeaderboardTrustMeta();
-  const baseStatus = isAllCompetitions
-    ? state.overallLeaderboardStatus
-    : `Top players in ${getLeagueCompetitionFilterLabel()}.`;
+  const baseStatus = state.overallLeaderboardStatus;
   overallLeaderboardStatusEl.textContent = baseStatus
     ? `${baseStatus} | ${trustMeta}`
     : trustMeta;

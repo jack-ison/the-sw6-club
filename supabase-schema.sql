@@ -978,58 +978,136 @@ stable
 security definer
 set search_path = public
 as $$
-  with scored as (
+  with global_league as (
+    select l.id
+    from public.leagues l
+    where lower(trim(l.name)) = lower('Global League')
+    order by l.created_at asc nulls last, l.id asc
+    limit 1
+  ),
+  global_fixtures as (
+    select
+      f.id,
+      f.kickoff,
+      f.opponent,
+      f.competition,
+      f.created_at,
+      timezone('UTC', f.kickoff)::date as kickoff_date,
+      regexp_replace(lower(trim(coalesce(f.opponent, ''))), '[^a-z0-9]+', '', 'g') as opponent_key,
+      regexp_replace(lower(trim(coalesce(f.competition, ''))), '[^a-z0-9]+', '', 'g') as competition_key
+    from public.fixtures f
+    join global_league gl on gl.id = f.league_id
+  ),
+  result_candidates as (
+    select
+      gf.id as fixture_id,
+      concat_ws('::', gf.kickoff_date::text, gf.opponent_key, gf.competition_key) as match_key,
+      r.chelsea_goals,
+      r.opponent_goals,
+      r.first_scorer,
+      r.chelsea_scorers,
+      r.saved_at,
+      row_number() over (
+        partition by concat_ws('::', gf.kickoff_date::text, gf.opponent_key, gf.competition_key)
+        order by coalesce(r.saved_at, gf.created_at, gf.kickoff) desc, gf.created_at desc nulls last, gf.id desc
+      ) as row_num
+    from global_fixtures gf
+    join public.results r on r.fixture_id = gf.id
+  ),
+  canonical_results as (
+    select
+      fixture_id,
+      match_key,
+      chelsea_goals,
+      opponent_goals,
+      first_scorer,
+      chelsea_scorers,
+      saved_at
+    from result_candidates
+    where row_num = 1
+  ),
+  prediction_candidates as (
     select
       p.user_id,
+      p.chelsea_goals,
+      p.opponent_goals,
+      p.first_scorer,
+      p.predicted_scorers,
+      p.submitted_at,
+      gf.id as fixture_id,
+      concat_ws('::', gf.kickoff_date::text, gf.opponent_key, gf.competition_key) as match_key,
+      row_number() over (
+        partition by p.user_id, concat_ws('::', gf.kickoff_date::text, gf.opponent_key, gf.competition_key)
+        order by coalesce(p.submitted_at, gf.created_at, gf.kickoff) desc, gf.created_at desc nulls last, gf.id desc
+      ) as row_num
+    from global_fixtures gf
+    join public.predictions p on p.fixture_id = gf.id
+  ),
+  canonical_predictions as (
+    select
+      user_id,
+      chelsea_goals,
+      opponent_goals,
+      first_scorer,
+      predicted_scorers,
+      submitted_at,
+      fixture_id,
+      match_key
+    from prediction_candidates
+    where row_num = 1
+  ),
+  scored as (
+    select
+      cp.user_id,
       sum(
         (case
-          when p.chelsea_goals = r.chelsea_goals
-               and p.opponent_goals = r.opponent_goals then 5
+          when cp.chelsea_goals = cr.chelsea_goals
+               and cp.opponent_goals = cr.opponent_goals then 5
           when (
             case
-              when p.chelsea_goals > p.opponent_goals then 'W'
-              when p.chelsea_goals < p.opponent_goals then 'L'
+              when cp.chelsea_goals > cp.opponent_goals then 'W'
+              when cp.chelsea_goals < cp.opponent_goals then 'L'
               else 'D'
             end
           ) = (
             case
-              when r.chelsea_goals > r.opponent_goals then 'W'
-              when r.chelsea_goals < r.opponent_goals then 'L'
+              when cr.chelsea_goals > cr.opponent_goals then 'W'
+              when cr.chelsea_goals < cr.opponent_goals then 'L'
               else 'D'
             end
           ) then 2
           else 0
         end)
         +
-        (case when p.chelsea_goals = r.chelsea_goals then 1 else 0 end)
+        (case when cp.chelsea_goals = cr.chelsea_goals then 1 else 0 end)
         +
-        (case when p.opponent_goals = r.opponent_goals then 1 else 0 end)
+        (case when cp.opponent_goals = cr.opponent_goals then 1 else 0 end)
         +
-        public.count_matching_scorers(p.predicted_scorers, r.chelsea_scorers)
+        public.count_matching_scorers(cp.predicted_scorers, cr.chelsea_scorers)
         +
         (case
-          when r.chelsea_goals > 0
-               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
-               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
-               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          when cr.chelsea_goals > 0
+               and lower(trim(cp.first_scorer)) = lower(trim(cr.first_scorer))
+               and lower(trim(cp.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(cr.first_scorer)) not in ('', 'none', 'unknown')
           then 2
           else 0
         end)
         +
         (case
-          when p.chelsea_goals = r.chelsea_goals
-               and p.opponent_goals = r.opponent_goals
-               and r.chelsea_goals > 0
-               and lower(trim(p.first_scorer)) = lower(trim(r.first_scorer))
-               and lower(trim(p.first_scorer)) not in ('', 'none', 'unknown')
-               and lower(trim(r.first_scorer)) not in ('', 'none', 'unknown')
+          when cp.chelsea_goals = cr.chelsea_goals
+               and cp.opponent_goals = cr.opponent_goals
+               and cr.chelsea_goals > 0
+               and lower(trim(cp.first_scorer)) = lower(trim(cr.first_scorer))
+               and lower(trim(cp.first_scorer)) not in ('', 'none', 'unknown')
+               and lower(trim(cr.first_scorer)) not in ('', 'none', 'unknown')
           then 1
           else 0
         end)
       )::integer as points
-    from public.predictions p
-    join public.results r on r.fixture_id = p.fixture_id
-    group by p.user_id
+    from canonical_predictions cp
+    join canonical_results cr on cr.match_key = cp.match_key
+    group by cp.user_id
   ),
   member_meta as (
     select distinct on (m.user_id)
