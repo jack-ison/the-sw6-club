@@ -23,10 +23,16 @@ Use this checklist before pushing to `main`.
 1. Commit only intended files.
 2. Push to `main`.
 3. Wait for Vercel production deployment to complete.
-4. Hard-refresh site and re-check:
+4. Verify production build hash matches pushed commit:
+   - `npm run release:verify -- <commit_sha_prefix> thesw6club.com`
+5. Hard-refresh site and re-check:
    - next fixture visible
    - prediction submit works
    - leaderboard loads
+
+Cache-bust convention for support/debug:
+- Append a query parameter to force fresh static asset fetch, for example:
+  - `https://thesw6club.com/?refresh=<commit_sha_prefix>`
 
 ## 4) Fast rollback
 

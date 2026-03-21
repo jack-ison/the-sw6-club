@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",
-    "smoke": "bash scripts/pre-release-smoke.sh"
+    "smoke": "bash scripts/pre-release-smoke.sh",
+    "release:verify": "bash scripts/check-production-build.sh"
   }
 }

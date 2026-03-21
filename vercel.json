@@ -4,6 +4,24 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/build-meta.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/runtime-config.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {

@@ -41,6 +41,7 @@ const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 2;
 const OVERALL_LEADERBOARD_CACHE_MAX_AGE_MS = 60 * 1000;
+const OVERALL_LEADERBOARD_BACKGROUND_REFRESH_INTERVAL_MS = 45 * 1000;
 const ACTIVE_LEAGUE_HYDRATE_MIN_INTERVAL_MS = 30 * 1000;
 const COMPLETED_RESULTS_SYNC_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const SQUAD_CACHE_KEY = "cfc-team-squads-cache-v1";
@@ -226,6 +227,7 @@ let renderScheduled = false;
 let deadlineCountdownIntervalId = null;
 const draftAutosaveTimers = new Map();
 let detachedAuthedFormsApplied = null;
+let overallLeaderboardBackgroundRefreshAt = 0;
 const TOP_VIEW_MODULE_URLS = {
   predict: "",
   leagues: "./view-leagues.js",
@@ -301,7 +303,8 @@ const state = {
   draftNeedsReviewFixtureId: "",
   previewTop10Loaded: false,
   upcomingLastUpdatedAt: "",
-  leaderboardBreakdownLoading: false
+  leaderboardBreakdownLoading: false,
+  overallLeaderboardFetchedAt: 0
 };
 
 function readRuntimeConfig() {
@@ -337,6 +340,8 @@ function hydrateOverallLeaderboardCache() {
   state.overallLeaderboard = rows;
   state.overallLeaderboardStatus = status || (rows.length > 0 ? "Top players in the Global League." : "No completed match results yet.");
   state.overallLeaderboardLoaded = true;
+  // Force a background refresh after hydration so stale cache never lingers too long.
+  state.overallLeaderboardFetchedAt = Date.now() - OVERALL_LEADERBOARD_BACKGROUND_REFRESH_INTERVAL_MS;
 }
 
 function persistOverallLeaderboardCache(rows, status) {
@@ -767,13 +772,18 @@ function setupTopNavPreload() {
 function runPostAuthWarmup() {
   const runId = ++authWarmupRunId;
   (async () => {
-    await Promise.allSettled([
+    const tasks = [
       trackSiteVisit(),
       loadRegisteredUserCount(),
-      loadForumUnreadCount(),
-      loadMyCards({ background: true }),
       runTopViewEnterEffects()
-    ]);
+    ];
+    if (state.session?.user) {
+      tasks.push(loadForumUnreadCount());
+      if (state.topView === "cards") {
+        tasks.push(loadMyCards({ background: true }));
+      }
+    }
+    await Promise.allSettled(tasks);
     await loadAdminAccess();
     if (hasResultAdminAccess()) {
       await loadAdminLeagues();
@@ -1395,6 +1405,7 @@ async function loadOverallLeaderboard() {
     state.overallLeaderboard = [];
     state.overallLeaderboardStatus = "Leaderboard unavailable right now.";
     state.overallLeaderboardLoaded = true;
+    state.overallLeaderboardFetchedAt = Date.now();
     return;
   }
 
@@ -1405,6 +1416,7 @@ async function loadOverallLeaderboard() {
       ? "No global points data yet."
       : "Sign in to view live standings.";
     state.overallLeaderboardLoaded = true;
+    state.overallLeaderboardFetchedAt = Date.now();
     return;
   }
 
@@ -1412,6 +1424,7 @@ async function loadOverallLeaderboard() {
   state.overallLeaderboardStatus =
     state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players in the Global League.";
   state.overallLeaderboardLoaded = true;
+  state.overallLeaderboardFetchedAt = Date.now();
   persistOverallLeaderboardCache(state.overallLeaderboard, state.overallLeaderboardStatus);
 }
 
@@ -1431,6 +1444,28 @@ async function ensureOverallLeaderboardLoaded(force = false) {
     overallLeaderboardLoadPromise = null;
   });
   await overallLeaderboardLoadPromise;
+}
+
+function refreshOverallLeaderboardInBackground() {
+  if (!state.client || overallLeaderboardLoadPromise) {
+    return;
+  }
+  const now = Date.now();
+  if (now - Number(state.overallLeaderboardFetchedAt || 0) < OVERALL_LEADERBOARD_BACKGROUND_REFRESH_INTERVAL_MS) {
+    return;
+  }
+  if (now - overallLeaderboardBackgroundRefreshAt < 8 * 1000) {
+    return;
+  }
+  overallLeaderboardBackgroundRefreshAt = now;
+  overallLeaderboardLoadPromise = loadOverallLeaderboard().finally(() => {
+    overallLeaderboardLoadPromise = null;
+  });
+  overallLeaderboardLoadPromise.then(() => {
+    if (state.topView === "leagues") {
+      renderOverallLeaderboard();
+    }
+  });
 }
 
 function readNumericCache(cacheKey, maxAgeMs) {
@@ -2442,6 +2477,100 @@ async function resolveServerPredictableFixture(sourceFixture) {
   return null;
 }
 
+function getFixtureMatchKeyValue(fixture) {
+  return fixtureScheduleKey(fixture?.kickoff, fixture?.opponent, fixture?.competition);
+}
+
+async function fetchLatestPredictionForMatch(sourceFixture, userId) {
+  if (!state.client || !sourceFixture?.id || !userId) {
+    return null;
+  }
+  const leagueId = sourceFixture.league_id || state.activeLeagueId || getActiveLeague()?.id || null;
+  if (!leagueId) {
+    return null;
+  }
+
+  const kickoffMs = new Date(sourceFixture.kickoff).getTime();
+  if (!Number.isFinite(kickoffMs)) {
+    return null;
+  }
+  const targetMatchKey = getFixtureMatchKeyValue(sourceFixture);
+  const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+
+  const fixturesResult = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, created_at")
+    .eq("league_id", leagueId)
+    .eq("opponent", sourceFixture.opponent)
+    .eq("competition", sourceFixture.competition)
+    .gte("kickoff", windowStart)
+    .lte("kickoff", windowEnd)
+    .order("kickoff", { ascending: true })
+    .limit(40);
+  if (fixturesResult.error || !Array.isArray(fixturesResult.data) || fixturesResult.data.length === 0) {
+    return null;
+  }
+  const sameMatchFixtureIds = fixturesResult.data
+    .filter((fixture) => getFixtureMatchKeyValue(fixture) === targetMatchKey)
+    .map((fixture) => fixture.id)
+    .filter(Boolean);
+  if (sameMatchFixtureIds.length === 0) {
+    return null;
+  }
+
+  const predictionsResult = await state.client
+    .from("predictions")
+    .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
+    .eq("user_id", userId)
+    .in("fixture_id", [...new Set(sameMatchFixtureIds)]);
+
+  if (predictionsResult.error || !Array.isArray(predictionsResult.data) || predictionsResult.data.length === 0) {
+    return null;
+  }
+
+  return predictionsResult.data
+    .slice()
+    .sort((a, b) => {
+      const aTs = Number.isFinite(new Date(a?.submitted_at || 0).getTime()) ? new Date(a.submitted_at).getTime() : 0;
+      const bTs = Number.isFinite(new Date(b?.submitted_at || 0).getTime()) ? new Date(b.submitted_at).getTime() : 0;
+      if (bTs !== aTs) {
+        return bTs - aTs;
+      }
+      return String(b?.fixture_id || "").localeCompare(String(a?.fixture_id || ""));
+    })[0] || null;
+}
+
+function applyCanonicalPredictionToActiveFixtures(sourceFixture, prediction) {
+  if (!sourceFixture || !prediction?.fixture_id) {
+    return;
+  }
+  const targetMatchKey = getFixtureMatchKeyValue(sourceFixture);
+  let canonicalFixtureId = prediction.fixture_id;
+  if (!state.activeLeagueFixtures.some((fixture) => fixture?.id === canonicalFixtureId)) {
+    const matchRows = state.activeLeagueFixtures.filter(
+      (fixture) => getFixtureMatchKeyValue(fixture) === targetMatchKey
+    );
+    canonicalFixtureId = matchRows[0]?.id || canonicalFixtureId;
+  }
+
+  state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) => {
+    if (getFixtureMatchKeyValue(row) !== targetMatchKey) {
+      return row;
+    }
+    if (row.id === canonicalFixtureId) {
+      return {
+        ...row,
+        predictions: [prediction]
+      };
+    }
+    return {
+      ...row,
+      predictions: []
+    };
+  });
+}
+
 async function onSavePrediction(fixture, form, submitBtn = null) {
   const resetSubmitButton = (label = null) => {
     if (!submitBtn) return;
@@ -2615,6 +2744,18 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     return;
   }
 
+  const canonicalPrediction =
+    (await fetchLatestPredictionForMatch(targetFixture, state.session.user.id))
+    || {
+      fixture_id: predictionPayload.fixture_id,
+      user_id: state.session.user.id,
+      chelsea_goals: chelseaGoals,
+      opponent_goals: opponentGoals,
+      first_scorer: firstScorer,
+      predicted_scorers: predictedScorers,
+      submitted_at: submittedAt
+    };
+
   if (submitBtn) {
     submitBtn.disabled = false;
     submitBtn.textContent = hadExistingPrediction ? "Prediction updated" : "Prediction saved";
@@ -2626,16 +2767,21 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   state.draftNeedsReviewFixtureId = "";
   state.draftLoadedFixtureId = "";
   clearDraftPrediction(targetFixture.id);
+  if (canonicalPrediction.fixture_id && canonicalPrediction.fixture_id !== targetFixture.id) {
+    clearDraftPrediction(canonicalPrediction.fixture_id);
+  }
   cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
-
+  if (canonicalPrediction.fixture_id && canonicalPrediction.fixture_id !== targetFixture.id) {
+    cachePredictionScorers(canonicalPrediction.fixture_id, state.session.user.id, selectedScorers);
+  }
   const savedPrediction = {
-    fixture_id: predictionPayload.fixture_id,
+    fixture_id: canonicalPrediction.fixture_id,
     user_id: state.session.user.id,
-    chelsea_goals: chelseaGoals,
-    opponent_goals: opponentGoals,
-    first_scorer: firstScorer,
-    predicted_scorers: predictedScorers,
-    submitted_at: submittedAt
+    chelsea_goals: canonicalPrediction.chelsea_goals,
+    opponent_goals: canonicalPrediction.opponent_goals,
+    first_scorer: canonicalPrediction.first_scorer,
+    predicted_scorers: canonicalPrediction.predicted_scorers,
+    submitted_at: canonicalPrediction.submitted_at || submittedAt
   };
 
   syncPredictionAcrossMyLeagues(targetFixture, {
@@ -2648,14 +2794,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     // Keep local save success even if cross-league propagation is temporarily unavailable.
   });
 
-  state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
-    row.id === predictionPayload.fixture_id
-      ? {
-          ...row,
-          predictions: [savedPrediction]
-        }
-      : row
-  );
+  applyCanonicalPredictionToActiveFixtures(targetFixture, savedPrediction);
   state.activeLeagueLeaderboard = state.activeLeagueLeaderboard.map((row) => ({
     ...row,
     has_prediction:
@@ -2671,11 +2810,11 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         : Boolean(row?.has_prediction)
   }));
   state.lastPredictionAck = {
-    fixtureId: predictionPayload.fixture_id,
+    fixtureId: savedPrediction.fixture_id || predictionPayload.fixture_id,
     updated: hadExistingPrediction,
     at: Date.now()
   };
-  render();
+  refreshVisibleSectionsFast();
   // Background refresh keeps UX snappy after submit without blocking the confirmation state.
   Promise.allSettled([
     loadActiveLeagueData(true),
@@ -4387,6 +4526,7 @@ function renderNow() {
     if (!state.overallLeaderboardLoaded) {
       ensureOverallLeaderboardLoaded().then(render);
     }
+    refreshOverallLeaderboardInBackground();
     renderOverallLeaderboard();
   }
   if (showForum) {
@@ -4472,7 +4612,6 @@ function renderNow() {
             // Keep leaderboard visible even if breakdown recovery fails.
           });
       }
-      renderOverallLeaderboard();
     }
   }
   if (showPredict) {
@@ -6533,7 +6672,23 @@ function renderFixtures() {
   if (fixturesToRender.length === 0) {
     const li = document.createElement("li");
     li.className = "empty-state";
-    li.textContent = "No upcoming fixture available for prediction.";
+    li.textContent = "Could not load the next fixture right now.";
+    if (isAuthed) {
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "ghost-btn";
+      retryBtn.textContent = "Retry fixture load";
+      retryBtn.addEventListener("click", () => {
+        Promise.allSettled([
+          syncUpcomingFixturesFromChelsea(true),
+          loadActiveLeagueData(true),
+          loadPastGamesForUser({ force: true })
+        ]).then(() => {
+          refreshVisibleSectionsFast();
+        });
+      });
+      li.appendChild(retryBtn);
+    }
     fixturesListEl.appendChild(li);
     return;
   }
@@ -8365,9 +8520,33 @@ function getNextFixtureForPrediction() {
   grouped.forEach((bucket) => {
     const withMine =
       state.session?.user
-        ? bucket.find((fixture) => fixture.predictions?.some((row) => row.user_id === state.session.user.id))
+        ? bucket
+          .filter((fixture) => {
+            const predictions = Array.isArray(fixture?.predictions) ? fixture.predictions : [];
+            return predictions.some((row) => row.user_id === state.session.user.id);
+          })
+          .sort((a, b) => {
+            const aPrediction = (Array.isArray(a?.predictions) ? a.predictions : [])
+              .filter((row) => row.user_id === state.session.user.id)
+              .sort((r1, r2) => new Date(r2.submitted_at || 0).getTime() - new Date(r1.submitted_at || 0).getTime())[0];
+            const bPrediction = (Array.isArray(b?.predictions) ? b.predictions : [])
+              .filter((row) => row.user_id === state.session.user.id)
+              .sort((r1, r2) => new Date(r2.submitted_at || 0).getTime() - new Date(r1.submitted_at || 0).getTime())[0];
+            const aTs = Number.isFinite(new Date(aPrediction?.submitted_at || 0).getTime())
+              ? new Date(aPrediction.submitted_at).getTime()
+              : 0;
+            const bTs = Number.isFinite(new Date(bPrediction?.submitted_at || 0).getTime())
+              ? new Date(bPrediction.submitted_at).getTime()
+              : 0;
+            if (bTs !== aTs) {
+              return bTs - aTs;
+            }
+            const aCreated = Number.isFinite(new Date(a?.created_at || 0).getTime()) ? new Date(a.created_at).getTime() : 0;
+            const bCreated = Number.isFinite(new Date(b?.created_at || 0).getTime()) ? new Date(b.created_at).getTime() : 0;
+            return bCreated - aCreated;
+          })[0]
         : null;
-    if (withMine) {
+    if (withMine?.id) {
       deduped.push(withMine);
       return;
     }
