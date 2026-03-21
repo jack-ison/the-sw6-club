@@ -2509,10 +2509,22 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   }
 
   const nextRealFixture = getNextFixtureForPrediction();
-  if (nextRealFixture && nextRealFixture.id !== targetFixture.id) {
-    alert("Only the next fixture can be predicted.");
-    resetSubmitButton("Save Prediction");
-    return;
+  if (nextRealFixture) {
+    const nextMatchKey = fixtureScheduleKey(
+      nextRealFixture.kickoff,
+      nextRealFixture.opponent,
+      nextRealFixture.competition
+    );
+    const targetMatchKey = fixtureScheduleKey(
+      targetFixture.kickoff,
+      targetFixture.opponent,
+      targetFixture.competition
+    );
+    if (nextMatchKey !== targetMatchKey) {
+      alert("Only the next fixture can be predicted.");
+      resetSubmitButton("Save Prediction");
+      return;
+    }
   }
 
   const requestedUpdate = String(submitBtn?.textContent || "").toLowerCase().includes("update");
