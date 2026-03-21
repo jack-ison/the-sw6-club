@@ -2357,6 +2357,90 @@ function hydrateProfileEditorFields() {
   if (profileEditStatus) profileEditStatus.classList.add("hidden");
 }
 
+async function canSubmitPredictionForFixtureId(fixtureId) {
+  if (!state.client || !fixtureId) {
+    return null;
+  }
+  const result = await state.client.rpc("can_submit_prediction", { p_fixture_id: fixtureId });
+  if (result.error) {
+    if (isMissingFunctionError(result.error, "can_submit_prediction")) {
+      return null;
+    }
+    return null;
+  }
+  return Boolean(result.data);
+}
+
+async function resolveServerPredictableFixture(sourceFixture) {
+  if (!state.client || !sourceFixture) {
+    return null;
+  }
+  const leagueId = sourceFixture.league_id || state.activeLeagueId || getActiveLeague()?.id || null;
+  if (!leagueId) {
+    return null;
+  }
+
+  const candidatesById = new Map();
+  const addCandidate = (row) => {
+    if (!row?.id) return;
+    if (!candidatesById.has(row.id)) {
+      candidatesById.set(row.id, row);
+    }
+  };
+
+  addCandidate(sourceFixture);
+
+  const kickoffMs = new Date(sourceFixture.kickoff).getTime();
+  if (Number.isFinite(kickoffMs)) {
+    const windowStart = new Date(kickoffMs - 18 * 60 * 60 * 1000).toISOString();
+    const windowEnd = new Date(kickoffMs + 18 * 60 * 60 * 1000).toISOString();
+    const sameMatch = await state.client
+      .from("fixtures")
+      .select("id, league_id, kickoff, opponent, competition, created_at")
+      .eq("league_id", leagueId)
+      .eq("opponent", sourceFixture.opponent)
+      .eq("competition", sourceFixture.competition)
+      .gte("kickoff", windowStart)
+      .lte("kickoff", windowEnd)
+      .order("kickoff", { ascending: true })
+      .limit(25);
+    if (!sameMatch.error && Array.isArray(sameMatch.data)) {
+      sameMatch.data.forEach(addCandidate);
+    }
+  }
+
+  const futureFixtures = await state.client
+    .from("fixtures")
+    .select("id, league_id, kickoff, opponent, competition, created_at")
+    .eq("league_id", leagueId)
+    .gt("kickoff", new Date().toISOString())
+    .order("kickoff", { ascending: true })
+    .limit(40);
+
+  if (!futureFixtures.error && Array.isArray(futureFixtures.data) && futureFixtures.data.length > 0) {
+    const futureIds = futureFixtures.data.map((row) => row.id).filter(Boolean);
+    const resultRows = await state.client
+      .from("results")
+      .select("fixture_id")
+      .in("fixture_id", futureIds);
+    const fixtureIdsWithResults = new Set(
+      (Array.isArray(resultRows.data) ? resultRows.data : []).map((row) => row?.fixture_id).filter(Boolean)
+    );
+    futureFixtures.data
+      .filter((row) => !fixtureIdsWithResults.has(row.id))
+      .slice(0, 10)
+      .forEach(addCandidate);
+  }
+
+  for (const candidate of candidatesById.values()) {
+    const allowed = await canSubmitPredictionForFixtureId(candidate.id);
+    if (allowed === true) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 async function onSavePrediction(fixture, form, submitBtn = null) {
   const resetSubmitButton = (label = null) => {
     if (!submitBtn) return;
@@ -2388,6 +2472,28 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
       return;
     }
     targetFixture = materialized;
+  }
+
+  const canSubmitCheck = await canSubmitPredictionForFixtureId(targetFixture?.id);
+  if (canSubmitCheck === false) {
+    let resolvedFixture = await resolveServerPredictableFixture(targetFixture);
+    if (!resolvedFixture?.id) {
+      await ensureAuthedDataLoaded(true);
+      const refreshedNextFixture = getNextFixtureForPrediction();
+      if (refreshedNextFixture?.id) {
+        const refreshedAllowed = await canSubmitPredictionForFixtureId(refreshedNextFixture.id);
+        if (refreshedAllowed === true) {
+          resolvedFixture = refreshedNextFixture;
+        }
+      }
+    }
+    if (resolvedFixture?.id) {
+      targetFixture = resolvedFixture;
+    } else {
+      alert("This fixture is not open for prediction right now. Please refresh and try again.");
+      resetSubmitButton("Save Prediction");
+      return;
+    }
   }
 
   if (!state.session?.user) {
@@ -2440,18 +2546,35 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   }
 
   const submittedAt = new Date().toISOString();
-  const { error } = await state.client.from("predictions").upsert(
-    {
-      fixture_id: targetFixture.id,
-      user_id: state.session.user.id,
-      chelsea_goals: chelseaGoals,
-      opponent_goals: opponentGoals,
-      first_scorer: firstScorer,
-      predicted_scorers: predictedScorers,
-      submitted_at: submittedAt
-    },
+  const predictionPayload = {
+    fixture_id: targetFixture.id,
+    user_id: state.session.user.id,
+    chelsea_goals: chelseaGoals,
+    opponent_goals: opponentGoals,
+    first_scorer: firstScorer,
+    predicted_scorers: predictedScorers,
+    submitted_at: submittedAt
+  };
+  let { error } = await state.client.from("predictions").upsert(
+    predictionPayload,
     { onConflict: "fixture_id,user_id" }
   );
+
+  const rlsPredictionError = /row-level security|violates row-level security policy|table \"predictions\"/i.test(
+    String(error?.message || "")
+  );
+  if (error && rlsPredictionError) {
+    const resolvedFixture = await resolveServerPredictableFixture(targetFixture);
+    if (resolvedFixture?.id && resolvedFixture.id !== targetFixture.id) {
+      targetFixture = resolvedFixture;
+      predictionPayload.fixture_id = resolvedFixture.id;
+      const retry = await state.client.from("predictions").upsert(
+        predictionPayload,
+        { onConflict: "fixture_id,user_id" }
+      );
+      error = retry.error || null;
+    }
+  }
 
   if (error) {
     if (submitBtn) {
@@ -2476,7 +2599,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   cachePredictionScorers(targetFixture.id, state.session.user.id, selectedScorers);
 
   const savedPrediction = {
-    fixture_id: targetFixture.id,
+    fixture_id: predictionPayload.fixture_id,
     user_id: state.session.user.id,
     chelsea_goals: chelseaGoals,
     opponent_goals: opponentGoals,
@@ -2496,7 +2619,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   });
 
   state.activeLeagueFixtures = state.activeLeagueFixtures.map((row) =>
-    row.id === targetFixture.id
+    row.id === predictionPayload.fixture_id
       ? {
           ...row,
           predictions: [savedPrediction]
@@ -2518,7 +2641,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
         : Boolean(row?.has_prediction)
   }));
   state.lastPredictionAck = {
-    fixtureId: targetFixture.id,
+    fixtureId: predictionPayload.fixture_id,
     updated: hadExistingPrediction,
     at: Date.now()
   };
