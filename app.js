@@ -4404,7 +4404,12 @@ function renderNow() {
   if (!adminVisible) {
     removeAdminConsole();
   } else if (showPredict) {
-    renderAdminConsole();
+    try {
+      renderAdminConsole();
+    } catch (error) {
+      console.error("renderAdminConsole failed", error);
+      removeAdminConsole();
+    }
   }
 
   if (sessionStatus) {
@@ -4481,8 +4486,23 @@ function renderNow() {
         }
       }
       if (fixturesListEl) fixturesListEl.classList.remove("hidden");
-      renderFixtures();
-      renderAdminScorePanel();
+      try {
+        renderFixtures();
+      } catch (error) {
+        console.error("renderFixtures failed", error);
+        if (fixturesListEl) {
+          fixturesListEl.textContent = "";
+          const li = document.createElement("li");
+          li.className = "empty-state";
+          li.textContent = "Could not load prediction form. Please refresh.";
+          fixturesListEl.appendChild(li);
+        }
+      }
+      try {
+        renderAdminScorePanel();
+      } catch (error) {
+        console.error("renderAdminScorePanel failed", error);
+      }
     } else {
       if (fixturesListEl) {
         fixturesListEl.textContent = "";
