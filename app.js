@@ -36,7 +36,7 @@ const PAST_GAMES_CACHE_KEY = "cfc-past-games-cache-v1";
 const PAST_GAMES_CACHE_VERSION = 1;
 const PAST_GAMES_CACHE_MAX_AGE_MS = 60 * 1000;
 const LEAGUE_BREAKDOWN_CACHE_KEY = "cfc-league-breakdown-cache-v1";
-const LEAGUE_BREAKDOWN_CACHE_VERSION = 2;
+const LEAGUE_BREAKDOWN_CACHE_VERSION = 3;
 const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 2;
@@ -334,7 +334,7 @@ function hydrateOverallLeaderboardCache() {
   const rows = Array.isArray(cached.rows) ? cached.rows : [];
   const status = typeof cached.status === "string" ? cached.status : "";
   state.overallLeaderboard = rows;
-  state.overallLeaderboardStatus = status || (rows.length > 0 ? "Top players across all leagues." : "No completed match results yet.");
+  state.overallLeaderboardStatus = status || (rows.length > 0 ? "Top players in the Global League." : "No completed match results yet.");
   state.overallLeaderboardLoaded = true;
 }
 
@@ -1409,7 +1409,7 @@ async function loadOverallLeaderboard() {
 
   state.overallLeaderboard = Array.isArray(data) ? data : [];
   state.overallLeaderboardStatus =
-    state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players across all leagues.";
+    state.overallLeaderboard.length === 0 ? "No completed match results yet." : "Top players in the Global League.";
   state.overallLeaderboardLoaded = true;
   persistOverallLeaderboardCache(state.overallLeaderboard, state.overallLeaderboardStatus);
 }
@@ -2525,7 +2525,8 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   render();
   // Background refresh keeps UX snappy after submit without blocking the confirmation state.
   Promise.allSettled([
-    loadActiveLeagueData(),
+    loadActiveLeagueData(true),
+    loadPastGamesForUser({ force: true }),
     ensureOverallLeaderboardLoaded(true),
     state.activeLeagueId ? refreshLeaderboardPredictionFlags(state.activeLeagueId) : Promise.resolve()
   ]).then(() => {
@@ -3355,6 +3356,174 @@ async function refreshLeaderboardPredictionFlags(leagueId) {
   }));
 }
 
+async function getBreakdownUserIds(leagueId, includeRegisteredUsers) {
+  const userIds = new Set();
+  if (includeRegisteredUsers) {
+    (Array.isArray(state.overallLeaderboard) ? state.overallLeaderboard : []).forEach((row) => {
+      if (row?.user_id) {
+        userIds.add(row.user_id);
+      }
+    });
+    if (userIds.size === 0 && state.client) {
+      const overallResult = await state.client.rpc("get_overall_leaderboard", { p_limit: 250 });
+      if (!overallResult.error && Array.isArray(overallResult.data)) {
+        overallResult.data.forEach((row) => {
+          if (row?.user_id) {
+            userIds.add(row.user_id);
+          }
+        });
+      }
+    }
+  }
+
+  if (userIds.size === 0 && state.client && leagueId) {
+    const membersResult = await state.client
+      .from("league_members")
+      .select("user_id")
+      .eq("league_id", leagueId);
+    if (!membersResult.error && Array.isArray(membersResult.data)) {
+      membersResult.data.forEach((row) => {
+        if (row?.user_id) {
+          userIds.add(row.user_id);
+        }
+      });
+    }
+  }
+
+  if (userIds.size === 0 && state.activeLeagueId === leagueId) {
+    (Array.isArray(state.activeLeagueMembers) ? state.activeLeagueMembers : []).forEach((member) => {
+      if (member?.user_id) {
+        userIds.add(member.user_id);
+      }
+    });
+  }
+  return [...userIds];
+}
+
+async function computeLastGameBreakdownFallback(leagueId, { includeRegisteredUsers = false } = {}) {
+  if (!state.client || !leagueId) {
+    return [];
+  }
+  const fixturesResult = await fetchLeagueFixturesWithResults(leagueId);
+  if (fixturesResult.error || !Array.isArray(fixturesResult.data)) {
+    return [];
+  }
+
+  const fixturesWithResults = fixturesResult.data
+    .map((fixture) => ({
+      ...fixture,
+      result: Array.isArray(fixture.results) ? fixture.results[0] || null : fixture.results || null
+    }))
+    .filter((fixture) => fixture?.result && Number.isFinite(new Date(fixture.kickoff).getTime()));
+
+  if (fixturesWithResults.length === 0) {
+    return [];
+  }
+
+  const canonicalByMatch = new Map();
+  fixturesWithResults.forEach((fixture) => {
+    const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const existing = canonicalByMatch.get(key);
+    if (!existing) {
+      canonicalByMatch.set(key, fixture);
+      return;
+    }
+    canonicalByMatch.set(key, pickCanonicalScoredFixture(existing, fixture));
+  });
+
+  const completed = [...canonicalByMatch.values()]
+    .filter((fixture) => new Date(fixture.kickoff).getTime() <= Date.now())
+    .sort((a, b) => {
+      const aKickoff = new Date(a.kickoff).getTime();
+      const bKickoff = new Date(b.kickoff).getTime();
+      if (bKickoff !== aKickoff) {
+        return bKickoff - aKickoff;
+      }
+      const aSaved = new Date(a.result?.saved_at || 0).getTime();
+      const bSaved = new Date(b.result?.saved_at || 0).getTime();
+      return (Number.isFinite(bSaved) ? bSaved : 0) - (Number.isFinite(aSaved) ? aSaved : 0);
+    });
+
+  const latestFixture = completed[0];
+  if (!latestFixture?.result) {
+    return [];
+  }
+
+  const latestMatchKey = fixtureScheduleKey(latestFixture.kickoff, latestFixture.opponent, latestFixture.competition);
+  const sameMatchFixtureIds = fixturesWithResults
+    .filter((fixture) => fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition) === latestMatchKey)
+    .map((fixture) => fixture.id)
+    .filter(Boolean);
+
+  let predictionRows = [];
+  if (sameMatchFixtureIds.length > 0) {
+    const predictionsResult = await state.client
+      .from("predictions")
+      .select("fixture_id, user_id, chelsea_goals, opponent_goals, first_scorer, predicted_scorers, submitted_at")
+      .in("fixture_id", [...new Set(sameMatchFixtureIds)]);
+    if (!predictionsResult.error && Array.isArray(predictionsResult.data)) {
+      predictionRows = predictionsResult.data;
+    }
+  }
+
+  const latestPredictionByUser = new Map();
+  predictionRows.forEach((row) => {
+    if (!row?.user_id) {
+      return;
+    }
+    const existing = latestPredictionByUser.get(row.user_id);
+    if (!existing) {
+      latestPredictionByUser.set(row.user_id, row);
+      return;
+    }
+    const existingTs = new Date(existing.submitted_at || 0).getTime();
+    const rowTs = new Date(row.submitted_at || 0).getTime();
+    if (rowTs >= existingTs) {
+      latestPredictionByUser.set(row.user_id, row);
+    }
+  });
+
+  const userIds = new Set(await getBreakdownUserIds(leagueId, includeRegisteredUsers));
+  if (userIds.size === 0) {
+    predictionRows.forEach((row) => {
+      if (row?.user_id) userIds.add(row.user_id);
+    });
+  }
+
+  const rows = [...userIds].map((userId) => {
+    const prediction = latestPredictionByUser.get(userId) || null;
+    const didSubmit = Boolean(prediction);
+    const score = prediction ? scorePrediction(prediction, latestFixture.result) : null;
+    return {
+      user_id: userId,
+      did_submit: didSubmit,
+      opponent: latestFixture.opponent,
+      kickoff: latestFixture.kickoff,
+      predicted_chelsea_goals: prediction ? prediction.chelsea_goals : null,
+      predicted_opponent_goals: prediction ? prediction.opponent_goals : null,
+      predicted_first_scorer: prediction ? prediction.first_scorer : null,
+      actual_chelsea_goals: latestFixture.result.chelsea_goals,
+      actual_opponent_goals: latestFixture.result.opponent_goals,
+      actual_first_scorer: latestFixture.result.first_scorer,
+      exact_score_points: score ? score.exactScorePoints : 0,
+      result_points: score ? score.resultPoints : 0,
+      chelsea_goals_points: score ? score.chelseaGoalsPoints : 0,
+      opponent_goals_points: score ? score.opponentGoalsPoints : 0,
+      goalscorer_points: score ? score.goalscorerPoints : 0,
+      first_scorer_points: score ? score.firstScorerPoints : 0,
+      perfect_bonus_points: score ? score.perfectBonusPoints : 0,
+      points: score ? score.points : 0
+    };
+  });
+
+  return rows.sort((a, b) => {
+    if (b.points !== a.points) {
+      return b.points - a.points;
+    }
+    return String(a.user_id || "").localeCompare(String(b.user_id || ""));
+  });
+}
+
 async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
   const force = Boolean(options.force);
   const background = Boolean(options.background);
@@ -3385,7 +3554,7 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
     const globalLeague = getGlobalLeagueFromState();
     const isGlobalLeagueActive = Boolean(globalLeague?.id) && globalLeague.id === leagueId;
 
-    let data = null;
+    let data = [];
     let error = null;
 
     if (isGlobalLeagueActive) {
@@ -3393,14 +3562,20 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
       data = globalResult.data;
       error = globalResult.error;
     }
-    if (error || !Array.isArray(data)) {
+    if (error || !Array.isArray(data) || data.length === 0) {
       const leagueResult = await state.client.rpc("get_league_last_game_breakdown", {
         p_league_id: leagueId
       });
       data = leagueResult.data;
       error = leagueResult.error;
     }
-    if (error) {
+    if (error || !Array.isArray(data) || data.length === 0) {
+      data = await computeLastGameBreakdownFallback(leagueId, {
+        includeRegisteredUsers: isGlobalLeagueActive
+      });
+      error = null;
+    }
+    if (error || !Array.isArray(data)) {
       state.leagueLastGameBreakdownByUser = {};
       return;
     }
@@ -4461,8 +4636,22 @@ function getLeaderboardTrustMeta() {
     }
   });
 
-  const completedCount = completedFixtureIds.size;
-  const latestLabel = latestSavedAt ? formatKickoff(new Date(latestSavedAt).toISOString()) : "n/a";
+  let completedCount = completedFixtureIds.size;
+  let latestLabel = latestSavedAt ? formatKickoff(new Date(latestSavedAt).toISOString()) : "n/a";
+
+  if (completedCount === 0) {
+    const breakdownRows = Object.values(state.leagueLastGameBreakdownByUser || {});
+    if (breakdownRows.length > 0) {
+      const latestKickoffMs = breakdownRows
+        .map((row) => new Date(row?.kickoff || 0).getTime())
+        .filter((value) => Number.isFinite(value) && value <= Date.now())
+        .sort((a, b) => b - a)[0];
+      if (Number.isFinite(latestKickoffMs)) {
+        completedCount = 1;
+        latestLabel = formatKickoff(new Date(latestKickoffMs).toISOString());
+      }
+    }
+  }
   return `Last updated: ${latestLabel} | Completed fixtures: ${completedCount}`;
 }
 
@@ -6779,27 +6968,21 @@ function scorePrediction(prediction, result) {
   const correctOpponentGoals = prediction.opponent_goals === result.opponent_goals;
   const perfect = exact && correctScorer;
 
-  let points = 0;
-  if (exact) {
-    points += SCORING.exactScore;
-  } else if (correctResult) {
-    points += SCORING.correctResult;
-  }
-  if (correctChelseaGoals) {
-    points += SCORING.correctChelseaGoals;
-  }
-  if (correctOpponentGoals) {
-    points += SCORING.correctOpponentGoals;
-  }
-  if (correctGoalscorers > 0) {
-    points += correctGoalscorers * SCORING.correctGoalscorer;
-  }
-  if (correctScorer) {
-    points += SCORING.correctFirstScorer;
-  }
-  if (perfect) {
-    points += SCORING.perfectBonus;
-  }
+  const exactScorePoints = exact ? SCORING.exactScore : 0;
+  const resultPoints = !exact && correctResult ? SCORING.correctResult : 0;
+  const chelseaGoalsPoints = correctChelseaGoals ? SCORING.correctChelseaGoals : 0;
+  const opponentGoalsPoints = correctOpponentGoals ? SCORING.correctOpponentGoals : 0;
+  const goalscorerPoints = correctGoalscorers > 0 ? correctGoalscorers * SCORING.correctGoalscorer : 0;
+  const firstScorerPoints = correctScorer ? SCORING.correctFirstScorer : 0;
+  const perfectBonusPoints = perfect ? SCORING.perfectBonus : 0;
+  const points =
+    exactScorePoints +
+    resultPoints +
+    chelseaGoalsPoints +
+    opponentGoalsPoints +
+    goalscorerPoints +
+    firstScorerPoints +
+    perfectBonusPoints;
 
   return {
     points,
@@ -6809,7 +6992,14 @@ function scorePrediction(prediction, result) {
     correctGoalscorers,
     correctChelseaGoals,
     correctOpponentGoals,
-    perfect
+    perfect,
+    exactScorePoints,
+    resultPoints,
+    chelseaGoalsPoints,
+    opponentGoalsPoints,
+    goalscorerPoints,
+    firstScorerPoints,
+    perfectBonusPoints
   };
 }
 
@@ -7795,6 +7985,14 @@ function normalizeOpponentName(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function canonicalOpponentKey(value) {
+  const key = normalizeOpponentName(value);
+  if (key === "psg" || key === "parisgermain") {
+    return "parissaintgermain";
+  }
+  return key;
+}
+
 function findNearestTeam(block, startIndex, direction) {
   for (
     let idx = startIndex + direction;
@@ -7849,7 +8047,12 @@ function fixtureScheduleKey(kickoff, opponent, competition) {
   const dateKey = Number.isFinite(new Date(kickoff).getTime())
     ? new Date(kickoff).toISOString().slice(0, 10)
     : "";
-  return `${dateKey}::${String(opponent || "").trim().toLowerCase()}::${String(competition || "").trim().toLowerCase()}`;
+  const opponentKey = canonicalOpponentKey(opponent);
+  const competitionKey = String(competition || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  return `${dateKey}::${opponentKey}::${competitionKey}`;
 }
 
 function getNextFixtureForPrediction() {
