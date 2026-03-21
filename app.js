@@ -300,7 +300,8 @@ const state = {
   draftLoadedFixtureId: "",
   draftNeedsReviewFixtureId: "",
   previewTop10Loaded: false,
-  upcomingLastUpdatedAt: ""
+  upcomingLastUpdatedAt: "",
+  leaderboardBreakdownLoading: false
 };
 
 function readRuntimeConfig() {
@@ -4889,6 +4890,25 @@ function renderOverallLeaderboard() {
   }
 
   const leaderboardRows = state.overallLeaderboard;
+  const breakdownByUser = state.leagueLastGameBreakdownByUser || {};
+  const hasBreakdownRows = Object.keys(breakdownByUser).length > 0;
+  const canLoadBreakdown = Boolean(state.client && state.isAuthed && state.user);
+  if (canLoadBreakdown && !hasBreakdownRows && !state.leaderboardBreakdownLoading) {
+    state.leaderboardBreakdownLoading = true;
+    const targetLeagueId = state.activeLeagueId || getGlobalLeagueFromState()?.id || "";
+    if (targetLeagueId) {
+      loadLeagueLastGameBreakdown(targetLeagueId, { force: true })
+        .finally(() => {
+          state.leaderboardBreakdownLoading = false;
+          if (state.topView === "leagues") {
+            render();
+          }
+        });
+    } else {
+      state.leaderboardBreakdownLoading = false;
+    }
+  }
+
   overallLeaderboardEl.textContent = "";
   if (leaderboardRows.length === 0) {
     const li = document.createElement("li");
@@ -4912,8 +4932,8 @@ function renderOverallLeaderboard() {
         row.avatar_url,
         submittedForNextFixture.has(row.user_id)
       );
-      const breakdown = state.leagueLastGameBreakdownByUser?.[row.user_id] || null;
-      if (breakdown) {
+      const breakdown = breakdownByUser[row.user_id] || null;
+      if (canLoadBreakdown) {
         left.classList.add("leader-identity-clickable");
         left.setAttribute("role", "button");
         left.setAttribute("tabindex", "0");
@@ -4924,6 +4944,19 @@ function renderOverallLeaderboard() {
         left.appendChild(hint);
         const toggle = () => {
           state.expandedLeaderboardUserId = state.expandedLeaderboardUserId === row.user_id ? "" : row.user_id;
+          if (state.expandedLeaderboardUserId === row.user_id && !breakdown && !state.leaderboardBreakdownLoading) {
+            const targetLeagueId = state.activeLeagueId || getGlobalLeagueFromState()?.id || "";
+            if (targetLeagueId) {
+              state.leaderboardBreakdownLoading = true;
+              loadLeagueLastGameBreakdown(targetLeagueId, { force: true })
+                .finally(() => {
+                  state.leaderboardBreakdownLoading = false;
+                  if (state.topView === "leagues") {
+                    render();
+                  }
+                });
+            }
+          }
           render();
         };
         left.addEventListener("click", toggle);
@@ -4939,10 +4972,16 @@ function renderOverallLeaderboard() {
       pts.className = "leader-points";
       pts.textContent = `${row.points || 0} pts`;
       li.appendChild(pts);
-      if (breakdown && state.expandedLeaderboardUserId === row.user_id) {
+      if (canLoadBreakdown && state.expandedLeaderboardUserId === row.user_id) {
         const drop = document.createElement("div");
         drop.className = "leader-breakdown";
-        drop.textContent = formatLeaderboardBreakdown(breakdown);
+        if (breakdown) {
+          drop.textContent = formatLeaderboardBreakdown(breakdown);
+        } else if (state.leaderboardBreakdownLoading) {
+          drop.textContent = "Loading last-game breakdown...";
+        } else {
+          drop.textContent = "Last-game breakdown is temporarily unavailable.";
+        }
         li.appendChild(drop);
       }
       overallLeaderboardEl.appendChild(li);
