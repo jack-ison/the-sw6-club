@@ -2474,6 +2474,22 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
     targetFixture = materialized;
   }
 
+  const hydrateResolvedFixture = (resolvedFixture) => {
+    if (!resolvedFixture) {
+      return resolvedFixture;
+    }
+    const fromState = (Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [])
+      .find((row) => row?.id === resolvedFixture.id);
+    return {
+      ...resolvedFixture,
+      predictions: Array.isArray(resolvedFixture.predictions)
+        ? resolvedFixture.predictions
+        : Array.isArray(fromState?.predictions)
+          ? fromState.predictions
+          : []
+    };
+  };
+
   const canSubmitCheck = await canSubmitPredictionForFixtureId(targetFixture?.id);
   if (canSubmitCheck === false) {
     let resolvedFixture = await resolveServerPredictableFixture(targetFixture);
@@ -2488,7 +2504,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
       }
     }
     if (resolvedFixture?.id) {
-      targetFixture = resolvedFixture;
+      targetFixture = hydrateResolvedFixture(resolvedFixture);
     } else {
       alert("This fixture is not open for prediction right now. Please refresh and try again.");
       resetSubmitButton("Save Prediction");
@@ -2528,9 +2544,10 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   }
 
   const requestedUpdate = String(submitBtn?.textContent || "").toLowerCase().includes("update");
+  const targetPredictionRows = Array.isArray(targetFixture?.predictions) ? targetFixture.predictions : [];
   const hadExistingPrediction =
     requestedUpdate ||
-    targetFixture.predictions.some((row) => row.user_id === state.session.user.id);
+    targetPredictionRows.some((row) => row.user_id === state.session.user.id);
   const idleLabel = hadExistingPrediction ? "Update Prediction" : "Save Prediction";
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -2578,7 +2595,7 @@ async function onSavePrediction(fixture, form, submitBtn = null) {
   if (error && rlsPredictionError) {
     const resolvedFixture = await resolveServerPredictableFixture(targetFixture);
     if (resolvedFixture?.id && resolvedFixture.id !== targetFixture.id) {
-      targetFixture = resolvedFixture;
+      targetFixture = hydrateResolvedFixture(resolvedFixture);
       predictionPayload.fixture_id = resolvedFixture.id;
       const retry = await state.client.from("predictions").upsert(
         predictionPayload,
