@@ -85,6 +85,7 @@ const FALLBACK_FIXTURES = [
   { date: "2026-03-01", opponent: "Arsenal", competition: "Premier League", kickoffUk: "16:30" },
   { date: "2026-03-04", opponent: "Aston Villa", competition: "Premier League", kickoffUk: "19:30" },
   { date: "2026-03-14", opponent: "Newcastle United", competition: "Premier League", kickoffUk: "17:30" },
+  { date: "2026-03-18", opponent: "PSG", competition: "Champions League", kickoffUk: "20:00" },
   { date: "2026-03-21", opponent: "Everton", competition: "Premier League", kickoffUk: "17:30" },
   { date: "2026-04-11", opponent: "Manchester City", competition: "Premier League", kickoffUk: "TBC" },
   { date: "2026-04-18", opponent: "Manchester United", competition: "Premier League", kickoffUk: "TBC" },
