@@ -5081,7 +5081,8 @@ function renderPastGames() {
     const li = document.createElement("li");
     li.className = "past-game-item";
 
-    const myPrediction = fixture.predictions.find((row) => row.user_id === state.session.user.id);
+    const fixturePredictions = Array.isArray(fixture?.predictions) ? fixture.predictions : [];
+    const myPrediction = fixturePredictions.find((row) => row.user_id === state.session.user.id);
     const headline = document.createElement("p");
     headline.className = "past-game-head";
     headline.textContent = `${formatKickoff(fixture.kickoff)} | Chelsea vs ${fixture.opponent}`;
@@ -6397,6 +6398,9 @@ async function deleteSavedResultForFixtureId(fixtureId) {
 }
 
 function renderFixtures() {
+  if (!fixturesListEl || !fixtureTemplate?.content) {
+    return;
+  }
   fixturesListEl.textContent = "";
   const isAuthed = Boolean(state.isAuthed && state.user);
 
@@ -6413,6 +6417,7 @@ function renderFixtures() {
   }
 
   fixturesToRender.forEach((fixture) => {
+    try {
     const fragment = fixtureTemplate.content.cloneNode(true);
     const fixtureBody = fragment.querySelector(".fixture-body");
     const titleEl = fragment.querySelector(".fixture-title");
@@ -6446,8 +6451,9 @@ function renderFixtures() {
     const canSubmitPrediction = isAuthed && !locked && canWriteActions();
     const hasStarted = Date.now() >= new Date(fixture.kickoff).getTime();
 
+    const fixturePredictions = Array.isArray(fixture?.predictions) ? fixture.predictions : [];
     const myPrediction = isAuthed
-      ? fixture.predictions.find((row) => row.user_id === state.user.id)
+      ? fixturePredictions.find((row) => row.user_id === state.user.id)
       : null;
     if (!isAuthed) {
       badgeEl.classList.add("hidden");
@@ -6727,6 +6733,13 @@ function renderFixtures() {
     }
 
     fixturesListEl.appendChild(fragment);
+    } catch (error) {
+      console.error("renderFixtures failed for fixture", fixture?.id, error);
+      const li = document.createElement("li");
+      li.className = "empty-state";
+      li.textContent = "Could not render prediction form. Please refresh.";
+      fixturesListEl.appendChild(li);
+    }
   });
 }
 
@@ -7081,7 +7094,8 @@ function summarizeMemberScore(userId) {
       if (!fixture.result) {
         return acc;
       }
-      const prediction = fixture.predictions.find((row) => row.user_id === userId);
+      const fixturePredictions = Array.isArray(fixture?.predictions) ? fixture.predictions : [];
+      const prediction = fixturePredictions.find((row) => row.user_id === userId);
       if (!prediction) {
         return acc;
       }
