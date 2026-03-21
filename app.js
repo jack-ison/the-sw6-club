@@ -36,7 +36,7 @@ const PAST_GAMES_CACHE_KEY = "cfc-past-games-cache-v1";
 const PAST_GAMES_CACHE_VERSION = 1;
 const PAST_GAMES_CACHE_MAX_AGE_MS = 60 * 1000;
 const LEAGUE_BREAKDOWN_CACHE_KEY = "cfc-league-breakdown-cache-v1";
-const LEAGUE_BREAKDOWN_CACHE_VERSION = 3;
+const LEAGUE_BREAKDOWN_CACHE_VERSION = 4;
 const LEAGUE_BREAKDOWN_CACHE_MAX_AGE_MS = 60 * 1000;
 const OVERALL_LEADERBOARD_CACHE_KEY = "cfc-overall-leaderboard-cache-v1";
 const OVERALL_LEADERBOARD_CACHE_VERSION = 2;
@@ -3676,6 +3676,38 @@ async function computeLastGameBreakdownFallback(leagueId, { includeRegisteredUse
   });
 }
 
+function getLatestCompletedFixtureFromActiveState() {
+  const fixtures = Array.isArray(state.activeLeagueFixtures) ? state.activeLeagueFixtures : [];
+  const withResults = fixtures
+    .filter((fixture) => fixture?.result)
+    .filter((fixture) => Number.isFinite(new Date(fixture.kickoff).getTime()))
+    .filter((fixture) => new Date(fixture.kickoff).getTime() <= Date.now());
+  if (withResults.length === 0) {
+    return null;
+  }
+  const canonicalByMatch = new Map();
+  withResults.forEach((fixture) => {
+    const key = fixtureScheduleKey(fixture.kickoff, fixture.opponent, fixture.competition);
+    const existing = canonicalByMatch.get(key);
+    if (!existing) {
+      canonicalByMatch.set(key, fixture);
+      return;
+    }
+    canonicalByMatch.set(key, pickCanonicalScoredFixture(existing, fixture));
+  });
+  return [...canonicalByMatch.values()]
+    .sort((a, b) => {
+      const aKickoff = new Date(a.kickoff).getTime();
+      const bKickoff = new Date(b.kickoff).getTime();
+      if (bKickoff !== aKickoff) {
+        return bKickoff - aKickoff;
+      }
+      const aSaved = new Date(a.result?.saved_at || 0).getTime();
+      const bSaved = new Date(b.result?.saved_at || 0).getTime();
+      return (Number.isFinite(bSaved) ? bSaved : 0) - (Number.isFinite(aSaved) ? aSaved : 0);
+    })[0] || null;
+}
+
 async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
   const force = Boolean(options.force);
   const background = Boolean(options.background);
@@ -3689,9 +3721,15 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
       state.leagueLastGameBreakdownByUser = cached;
       if (background) {
         if (!leagueBreakdownRefreshPromises.has(leagueId)) {
-          const promise = loadLeagueLastGameBreakdown(leagueId, { force: true }).finally(() => {
+          const promise = loadLeagueLastGameBreakdown(leagueId, { force: true })
+            .then(() => {
+              if (state.topView === "leagues" && state.activeLeagueId === leagueId) {
+                render();
+              }
+            })
+            .finally(() => {
             leagueBreakdownRefreshPromises.delete(leagueId);
-          });
+            });
           leagueBreakdownRefreshPromises.set(leagueId, promise);
         }
         return;
@@ -3726,6 +3764,31 @@ async function loadLeagueLastGameBreakdown(leagueId, options = {}) {
         includeRegisteredUsers: isGlobalLeagueActive
       });
       error = null;
+    } else {
+      const latestFromState = getLatestCompletedFixtureFromActiveState();
+      const rpcSample = data[0] || null;
+      const rpcKickoffMs = Number.isFinite(new Date(rpcSample?.kickoff || 0).getTime())
+        ? new Date(rpcSample.kickoff).getTime()
+        : 0;
+      const latestKickoffMs = Number.isFinite(new Date(latestFromState?.kickoff || 0).getTime())
+        ? new Date(latestFromState.kickoff).getTime()
+        : 0;
+      const rpcOpponentKey = normalizeOpponentName(rpcSample?.opponent || "");
+      const latestOpponentKey = normalizeOpponentName(latestFromState?.opponent || "");
+      const mismatchWithCanonicalLatest =
+        latestFromState &&
+        (
+          Math.abs(rpcKickoffMs - latestKickoffMs) > 60 * 1000
+          || (rpcOpponentKey && latestOpponentKey && rpcOpponentKey !== latestOpponentKey)
+        );
+      if (mismatchWithCanonicalLatest) {
+        const fallbackRows = await computeLastGameBreakdownFallback(leagueId, {
+          includeRegisteredUsers: isGlobalLeagueActive
+        });
+        if (Array.isArray(fallbackRows) && fallbackRows.length > 0) {
+          data = fallbackRows;
+        }
+      }
     }
     if (error || !Array.isArray(data)) {
       state.leagueLastGameBreakdownByUser = {};
